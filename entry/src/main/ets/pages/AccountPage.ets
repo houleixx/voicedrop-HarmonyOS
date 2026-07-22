@@ -22,6 +22,7 @@ export struct AccountPage {
   @State private token: string = '';
   @State private accountId: string = '';
   @State private showTokenImport: boolean = false;
+  @State private tokenInputFocused: boolean = false;
   @State private importingToken: boolean = false;
   @State private deletingAccount: boolean = false;
 
@@ -54,6 +55,7 @@ export struct AccountPage {
         promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌' });
         return;
       }
+      this.tokenInputFocused = false;
       this.showTokenImport = false;
       this.token = '';
       promptAction.showToast({ message: '已切换到已有账号' });
@@ -251,32 +253,64 @@ export struct AccountPage {
 
   @Builder
   private tokenImportSheet() {
-    Column({ space: 12 }) {
-      Text('在另一台设备的「账户」页面复制“访问令牌”，粘贴到这里。访问令牌以 anon_ 开头；页面上显示的账户 ID 只用于识别，不能用来登录。')
-        .fontSize(14).fontColor(Theme.SECONDARY).lineHeight(21).width('100%')
-      Text('访问令牌')
-        .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT).letterSpacing(1).width('100%')
-      TextArea({ text: this.token, placeholder: 'anon_...' })
-        .height(92)
-        .fontSize(15)
-        .fontColor(Theme.INK)
-        .placeholderColor('#C9C6C1')
-        .backgroundColor(Theme.BG)
-        .border({ width: 1, color: '#E5DED2', radius: 9 })
-        .borderRadius(9)
-        .onChange((value: string) => this.token = value)
-      Text('导入成功后，本机会读取这个令牌对应的云端空间：录音、文章、写作风格、社区配置都会切换过去。原来的本机令牌不会删除，请先保存好再操作。')
-        .fontSize(12).fontColor(Theme.FAINT).lineHeight(18).width('100%')
-      Button(this.importingToken ? '正在导入…' : '导入')
-        .height(46)
+    Column() {
+      Row() {
+        Text('登录已有账号')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.INK)
+          .layoutWeight(1)
+        Row() {
+          RemixIcon({ glyph: RI.CLOSE, iconSize: 24, color: Theme.INK })
+        }
+          .width(44)
+          .height(44)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => {
+            this.tokenInputFocused = false;
+            this.showTokenImport = false;
+          })
+      }.width('100%').alignItems(VerticalAlign.Center)
+      Scroll() {
+        Column({ space: 12 }) {
+          Text('在另一台设备的「账户」页面复制“访问令牌”，粘贴到这里。访问令牌以 anon_ 开头；页面上显示的账户 ID 只用于识别，不能用来登录。')
+            .fontSize(14).fontColor(Theme.SECONDARY).lineHeight(21).width('100%')
+          Text('访问令牌')
+            .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT).letterSpacing(1).width('100%')
+          TextArea({ text: this.token, placeholder: 'anon_...' })
+            .height(92)
+            .fontSize(15)
+            .fontColor(Theme.INK)
+            .placeholderColor('#C9C6C1')
+            .backgroundColor(Theme.BG)
+            .border({ width: 1, color: '#E5DED2', radius: 9 })
+            .borderRadius(9)
+            .onFocus(() => this.tokenInputFocused = true)
+            .onBlur(() => this.tokenInputFocused = false)
+            .onChange((value: string) => this.token = value)
+          Text('导入成功后，本机会读取这个令牌对应的云端空间：录音、文章、写作风格、社区配置都会切换过去。原来的本机令牌不会删除，请先保存好再操作。')
+            .fontSize(12).fontColor(Theme.FAINT).lineHeight(18).width('100%')
+          Button(this.importingToken ? '正在导入…' : '导入')
+            .height(46)
+            .width('100%')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Theme.WHITE)
+            .backgroundColor(Theme.ACCENT_STRONG)
+            .enabled(!this.importingToken)
+            .onClick(() => this.importToken())
+        }.padding({ top: 8, bottom: 18 }).width('100%').alignItems(HorizontalAlign.Start)
+      }
+        .layoutWeight(1)
         .width('100%')
-        .fontSize(16)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(Theme.WHITE)
-        .backgroundColor(Theme.ACCENT_STRONG)
-        .enabled(!this.importingToken)
-        .onClick(() => this.importToken())
-    }.padding({ left: 18, right: 18, bottom: 18 }).width('100%').alignItems(HorizontalAlign.Start)
+        .scrollBar(BarState.Auto)
+        .edgeEffect(EdgeEffect.Spring)
+    }
+      .padding({ left: 18, right: 18, top: 4 })
+      .width('100%')
+      .height('100%')
+      .alignItems(HorizontalAlign.Start)
   }
 
   build() {
@@ -300,10 +334,10 @@ export struct AccountPage {
       .height('100%')
       .backgroundColor(Theme.BG)
       .bindSheet($$this.showTokenImport, this.tokenImportSheet(), {
-        height: SheetSize.FIT_CONTENT,
+        height: this.tokenInputFocused ? SheetSize.LARGE : 460,
         dragBar: false,
-        showClose: true,
-        title: { title: '登录已有账号' },
+        showClose: false,
+        keyboardAvoidMode: SheetKeyboardAvoidMode.TRANSLATE_AND_RESIZE,
         backgroundColor: Theme.CARD,
         maskColor: '#66000000'
       })
