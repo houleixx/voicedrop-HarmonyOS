@@ -33,10 +33,7 @@ import { ArticleEditSession, EditAnchor, StatusSession, LibraryCommandSession, C
 import { AboutPage, COMMUNITY_TERMS, SUPPORT_EMAIL } from './AboutPage';
 import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
-import { ArticleDetailPage } from './ArticleDetailPage';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
-import { CommunityDetailPage } from './CommunityDetailPage';
-import { HomePage } from './HomePage';
 import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
 import { PromptSettingsPage } from './PromptSettingsPage';
 import { SettingsPage, SettingsTarget } from './SettingsPage';
@@ -1030,7 +1027,10 @@ struct Index {
         }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).height(44).width('100%')
       }
       if (this.loading) {
-        LoadingProgress().width(34).height(34).margin({ top: 80 })
+        Column() {
+          LoadingProgress().width(34).height(34)
+        }.layoutWeight(1).width('100%')
+          .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       } else if (this.visibleRecordings().length === 0) {
         Refresh({ refreshing: this.libraryRefreshing }) {
           List() {
@@ -2185,9 +2185,10 @@ struct Index {
 
   @Builder
   private pageContent(page: AppPage) {
-    if (page === 'home') HomePage({ tab: $tab, libraryContent: this.libraryPage, communityContent: this.communityPage })
-    else if (page === 'detail') ArticleDetailPage({ content: this.detailPage })
-    else if (page === 'communityDetail') CommunityDetailPage({ content: this.communityDetailPage })
+    if (page === 'home' && this.tab === 0) this.libraryPage()
+    else if (page === 'home') this.communityPage()
+    else if (page === 'detail') this.detailPage()
+    else if (page === 'communityDetail') this.communityDetailPage()
     else if (page === 'shared') SharedArticlePage({
       article: this.sharedArticle,
       selectedIndex: $sharedArticleIndex,

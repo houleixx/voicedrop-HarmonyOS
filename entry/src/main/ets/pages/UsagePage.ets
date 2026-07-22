@@ -54,7 +54,11 @@ export struct UsagePage {
   build() {
     Column() {
       PageHeader({ title: '算力', onBack: this.onBack })
-      if (this.loading) LoadingProgress().margin({ top: 80 })
+      if (this.loading) {
+        Column() {
+          LoadingProgress().width(48).height(48).color(Theme.ACCENT)
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
+      }
       else if (this.errorText.length > 0) {
         Column({ space: 12 }) {
           Text('算力加载失败').fontSize(18).fontWeight(FontWeight.Bold)
@@ -82,6 +86,7 @@ export struct UsagePage {
               }
               Text('包月算力还在开发中；当前算力来自注册与活动赠送。').fontSize(12).fontColor('#888888').width('100%')
             }.padding(16).width('100%').backgroundColor(Color.White).borderRadius(14)
+              .border({ width: 1, color: '#EBD9B8' })
             if (this.summary.granted.length > 0) {
               Text('算力来源').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#777777').width('100%').margin({ top: 6 })
               Column() {

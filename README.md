@@ -122,13 +122,6 @@ hdc shell aa test \
 - 实时 AI 采访会同时使用主录音与 PCM 音频采集；需在目标机型确认系统是否允许双路采集。
 - 未配置正式签名的 HAP 不能作为发布包；证书、私钥、密码和真实凭据不得提交到仓库。
 
----
-
-## 技术与产品文档
-
-- [Android → HarmonyOS 功能迁移清单](docs/android-parity-coverage.md)
-- [第三方组件声明](THIRD_PARTY_NOTICES.md)
-
 ## 相关项目
 
 - [VoiceDrop Android](https://github.com/houleixx/voicedrop-android)

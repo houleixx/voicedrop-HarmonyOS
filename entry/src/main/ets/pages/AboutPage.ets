@@ -40,14 +40,14 @@ export struct AboutPage {
           Column({ space: 6 }) {
             Text('VoiceDrop').fontSize(28).fontWeight(FontWeight.Bold)
             Text(`动动嘴，把想法变成文章 · ${this.appVersion}`).fontSize(14).fontColor('#777777')
-          }.padding({ top: 18, bottom: 18 }).width('100%')
+          }.padding({ bottom: 18 }).width('100%')
           this.row('隐私政策', '查看个人信息与权限处理说明', this.onPrivacy)
           this.row('社区公约', '发布、举报与内容治理规则', () => {
             promptAction.showDialog({ title: '社区公约', message: COMMUNITY_TERMS, buttons: [{ text: '关闭', color: '#111111' }] });
           })
           this.row('已屏蔽用户', `${this.blockedAuthorCount} 人`, this.onBlockedAuthors)
           this.row('联系我们 / 内容投诉', SUPPORT_EMAIL, this.onContact)
-        }.padding(16).width('100%')
+        }.padding({ left: 16, right: 16, top: 6, bottom: 16 }).width('100%')
       }.layoutWeight(1)
     }.height('100%')
   }
