@@ -16,7 +16,7 @@
         "description": "$string:EntryAbility_desc",
         "icon": "$media:voicedrop_launcher",
         "label": "$string:app_name",
-        "startWindowIcon": "$media:voicedrop_launcher",
+        "startWindowIcon": "$media:startup_transparent",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "metadata": [
