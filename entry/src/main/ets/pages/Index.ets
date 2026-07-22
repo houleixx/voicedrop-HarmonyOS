@@ -3,6 +3,7 @@ import { abilityAccessCtrl } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { systemShare } from '@kit.ShareKit';
 import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
 import { Api } from '../core/Api';
 import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureAction, LibraryCommandTarget, LibraryCommandTone, LibraryCommandUi } from '../core/LibraryCommandUi';
@@ -30,9 +31,10 @@ import { audioPlayback } from '../audio/AudioPlayback';
 import { AsrDictation } from '../audio/AsrDictation';
 import { RealtimeInterviewer } from '../audio/RealtimeInterviewer';
 import { ArticleEditSession, EditAnchor, StatusSession, LibraryCommandSession, CommandRef } from '../net/AgentSocket';
-import { AboutPage, COMMUNITY_TERMS, SUPPORT_EMAIL } from './AboutPage';
+import { AboutPage } from './AboutPage';
 import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
+import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
 import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
 import { PromptSettingsPage } from './PromptSettingsPage';
@@ -550,7 +552,12 @@ struct Index {
       options.newFileNames = [name]; options.fileSuffixChoices = ['ZIP 压缩包|.zip'];
       const uris: string[] = await new picker.DocumentViewPicker(this.context).save(options);
       if (uris.length === 0) { promptAction.showToast({ message: '已取消保存' }); return; }
-      fs.copyFileSync(path, uris[0]);
+      const destination: fs.File = fs.openSync(uris[0], fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try {
+        fs.copyFileSync(path, destination.fd);
+      } finally {
+        fs.closeSync(destination);
+      }
       promptAction.showToast({ message: '录音、文章、字幕和图片已导出' });
     } catch (error) { promptAction.showToast({ message: `导出失败：${String(error)}` }); }
     finally { this.exporting = false; }
@@ -644,10 +651,18 @@ struct Index {
       const reward: string = invite.suanliInviter > 0 && invite.suanliInviter === invite.suanliFriend
         ? `，咱俩各得 ${invite.suanliInviter} 算力` : '';
       const text: string = `我在用 VoiceDrop，动动嘴就能写出好文章${reward}：${invite.url}`;
-      await this.context.startAbility({ action: 'ohos.want.action.sendData', type: 'text/plain',
-        parameters: { 'ohos.extra.param.key.content': text, 'ohos.extra.param.key.contentTitle': '邀请好友使用 VoiceDrop' } });
+      await this.showTextShare(text, '邀请好友使用 VoiceDrop');
     } catch (_) { promptAction.showToast({ message: '无法打开系统分享面板' }); }
     finally { this.preparingInvite = false; }
+  }
+
+  private async showTextShare(text: string, title: string): Promise<void> {
+    if (!this.context) throw new Error('ability context unavailable');
+    const record: systemShare.SharedRecord = { utd: 'general.plain-text', content: text, title: title };
+    const data: systemShare.SharedData = new systemShare.SharedData(record);
+    await new systemShare.ShareController(data).show(this.context, {
+      previewMode: systemShare.SharePreviewMode.DEFAULT
+    });
   }
 
   private async openShareLink(id: string, fallbackUrl: string): Promise<void> {
@@ -1727,7 +1742,7 @@ struct Index {
                 if (mode === SliderChangeMode.End) audioPlayback.seek(value);
               })
             Text(this.timeLabel(this.playbackDuration)).fontSize(12).fontColor('#777777')
-          }.padding({ left: 20, right: 20, bottom: 8 }).width('100%')
+          }.padding({ left: 16, right: 16, bottom: 8 }).width('100%')
         }
         Scroll() {
           Column({ space: 12 }) {
@@ -1738,7 +1753,7 @@ struct Index {
               Text('原始转写').fontSize(18).fontWeight(FontWeight.Bold).margin({ top: 28 }).width('100%')
               Text(this.article.transcript ?? '').fontSize(15).lineHeight(25).fontColor(Theme.SECONDARY).width('100%')
             }
-          }.padding({ left: 20, right: 20, top: 8, bottom: 120 }).alignItems(HorizontalAlign.Start)
+          }.padding({ left: 16, right: 16, top: 8, bottom: 120 }).alignItems(HorizontalAlign.Start)
         }.layoutWeight(1)
         this.detailActions()
         if (this.pendingQuestion()) {
@@ -1931,7 +1946,7 @@ struct Index {
       Button('重新生成').fontSize(13).onClick(() => this.regenerateArticle())
       Button('删除').fontSize(13).fontColor('#D92D20').backgroundColor('#FEE4E2')
         .onClick(() => this.deleteRecordingWithConfirmation())
-    }.padding({ left: 20, right: 20, bottom: 12 }).width('100%')
+    }.padding({ left: 16, right: 16, bottom: 12 }).width('100%')
   }
 
   @Builder
@@ -2008,7 +2023,7 @@ struct Index {
                 .onClick(() => this.openCommunityPost(reply))
             }, (reply: CommunityPost) => reply.shareId)
           }
-        }.padding({ left: 20, right: 20, bottom: 40 }).alignItems(HorizontalAlign.Start)
+        }.padding({ left: 16, right: 16, bottom: 40 }).alignItems(HorizontalAlign.Start)
       }.layoutWeight(1)
     }.height('100%')
   }
@@ -2053,10 +2068,7 @@ struct Index {
     if (!this.selectedPost) return;
     const url: string = Api.sharePage(this.selectedPost.shareId);
     try {
-      if (!this.context) throw new Error('ability context unavailable');
-      await this.context.startAbility({ action: 'ohos.want.action.sendData', type: 'text/plain',
-        parameters: { 'ohos.extra.param.key.content': url,
-          'ohos.extra.param.key.contentTitle': this.selectedPost.title || 'VoiceDrop 社区文章' } });
+      await this.showTextShare(url, this.selectedPost.title || 'VoiceDrop 社区文章');
     } catch (_) {
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(url));
       promptAction.showToast({ message: '分享链接已复制' });
@@ -2100,8 +2112,7 @@ struct Index {
     const title: string = this.article.articles[Math.min(this.selectedArticle, this.article.articles.length - 1)]?.title ??
       this.selected.rowTitle();
     try {
-      await this.context.startAbility({ action: 'ohos.want.action.sendData', type: 'text/plain',
-        parameters: { 'ohos.extra.param.key.content': text, 'ohos.extra.param.key.contentTitle': title } });
+      await this.showTextShare(text, title);
     } catch (_) {
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(text));
       promptAction.showToast({ message: '无法打开分享面板，文章和链接已复制' });
@@ -2127,9 +2138,7 @@ struct Index {
       const text: string = pack.clipboardText();
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(text));
       promptAction.showToast({ message: '文案已复制，请在分享面板中选择小红书' });
-      await this.context.startAbility({ action: 'ohos.want.action.sendData', type: 'text/plain',
-        parameters: { 'ohos.extra.param.key.content': text,
-          'ohos.extra.param.key.contentTitle': pack.title || 'VoiceDrop 小红书文案' } });
+      await this.showTextShare(text, pack.title || 'VoiceDrop 小红书文案');
     } catch (error) { promptAction.showToast({ message: `小红书文案生成失败：${String(error)}` }); }
     finally { this.xhsPreparing = false; }
   }

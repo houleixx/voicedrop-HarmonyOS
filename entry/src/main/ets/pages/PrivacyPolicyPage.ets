@@ -32,7 +32,8 @@ export struct PrivacyPolicyPage {
   build() {
     Column() {
       PageHeader({ title: '隐私政策', onBack: this.onBack })
-      Scroll() { Text(PRIVACY_TEXT).fontSize(16).lineHeight(28).padding(22).width('100%') }.layoutWeight(1)
+      Scroll() { Text(PRIVACY_TEXT).fontSize(16).lineHeight(28).padding(16).width('100%') }
+        .layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.height('100%')
   }
 }

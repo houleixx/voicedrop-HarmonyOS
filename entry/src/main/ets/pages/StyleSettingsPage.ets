@@ -74,7 +74,7 @@ export struct StyleSettingsPage {
               }))
           }
         }.padding({ left: 16, right: 16, top: 6, bottom: 30 })
-      }.layoutWeight(1)
+      }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.height('100%').backgroundColor(Theme.BG)
   }
 }

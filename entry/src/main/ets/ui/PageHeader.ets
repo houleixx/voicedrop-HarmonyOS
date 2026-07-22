@@ -31,7 +31,7 @@ export struct PageHeader {
         Blank()
       }
         .width('100%')
-        .padding({ left: 12, right: 12 })
+        .padding({ left: 16, right: 16 })
     }
       .height(56)
       .width('100%')

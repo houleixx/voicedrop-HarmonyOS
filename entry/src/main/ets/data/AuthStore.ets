@@ -1,6 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
+import { DeviceLinkCrypto } from './DeviceLinkCrypto';
 
 export class AuthStore {
   private store?: preferences.Preferences;
@@ -32,10 +33,36 @@ export class AuthStore {
   }
   isWechatAuthenticated(): boolean { return this.session().length > 0; }
 
+  anonId(): string {
+    try {
+      return DeviceLinkCrypto.accountIdSync(this.anonymousBearer());
+    } catch (_) {
+      return 'anon-local';
+    }
+  }
+
+  storageScope(): string {
+    const signed: string = this.session();
+    if (signed.length > 0) {
+      try {
+        const payload: string = signed.split('.')[1];
+        let padded: string = payload.replace(/-/g, '+').replace(/_/g, '/');
+        while (padded.length % 4 !== 0) padded += '=';
+        const bytes: Uint8Array = new util.Base64Helper().decodeSync(padded, util.Type.BASIC);
+        const body: Record<string, string> = JSON.parse(
+          new util.TextDecoder('utf-8').decodeWithStream(bytes)) as Record<string, string>;
+        const scope: string = String(body.scope ?? '');
+        if (scope.startsWith('users/') && scope.endsWith('/')) return scope;
+      } catch (_) {}
+    }
+    return `users/${this.anonId()}/`;
+  }
+
   async adoptAnonymousToken(token: string): Promise<boolean> {
     if (!token.startsWith('anon_') || token.length < 20 || !this.store) return false;
     this.store.putSync('anon', token);
     this.store.deleteSync('session');
+    this.store.deleteSync('preWechatAnon');
     await this.store.flush();
     return true;
   }
