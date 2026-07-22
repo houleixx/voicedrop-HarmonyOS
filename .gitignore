@@ -1,0 +1,43 @@
+# macOS / IDE
+.DS_Store
+/.idea/
+*.iml
+
+# DevEco Studio / Hvigor / dependencies
+/.hvigor/
+node_modules/
+oh_modules/
+/build/
+/entry/build/
+local.properties
+*.hap
+*.har
+*.hsp
+
+# Local agent and workspace state
+/.claude/
+/.codex/
+/.agents/
+/.worktrees/
+/AGENTS.md
+/AGENT.md
+/agents.md
+/agent.md
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!.env.example.*
+/signing/
+/META-INF/
+*.p12
+*.p7b
+*.cer
+*.pfx
+*.jks
+*.keystore
+*.pem
+*.key
+*.csr
+*.mobileprovision

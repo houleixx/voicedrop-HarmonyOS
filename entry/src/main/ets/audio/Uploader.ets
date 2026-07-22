@@ -1,0 +1,123 @@
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
+import { common } from '@kit.AbilityKit';
+import { Api } from '../core/Api';
+import { RecordingName } from '../core/RecordingName';
+import { Recording } from '../model/Models';
+import { authStore } from '../data/AuthStore';
+import { appPreferences } from '../data/AppPreferences';
+import { httpClient, HttpResponse } from '../net/HttpClient';
+
+export class Uploader {
+  private context?: common.Context;
+
+  initialize(context: common.Context): void { this.context = context; }
+
+  async upload(path: string, tags: string[] = []): Promise<boolean> {
+    if (!this.isUploadable(path)) return false;
+    if (tags.length > 0) this.writeTags(path, tags);
+    const storedTags: string[] = this.readTags(path);
+    await this.uploadTags(path, storedTags);
+    const name: string = path.substring(path.lastIndexOf('/') + 1);
+    for (let attempt: number = 1; attempt <= 3; attempt++) {
+      try {
+        const bytes: ArrayBuffer = this.readFile(path);
+        const response: HttpResponse = await httpClient.putBytes(
+          `${Api.FILES}/upload/${Api.path(name)}`, authStore.bearer(), bytes, 'audio/mp4');
+        if (response.ok()) {
+          await httpClient.postJson(`${Api.FILES}/mine`, authStore.bearer());
+          this.finishLocal(path); return true;
+        }
+        if (response.code >= 400 && response.code < 500) return false;
+      } catch (_) {}
+      if (attempt < 3) await this.delay(attempt * 1500);
+    }
+    return false;
+  }
+
+  async drainPending(): Promise<number> {
+    if (!this.context) return 0;
+    let uploaded: number = 0;
+    const names: string[] = fs.listFileSync(this.context.filesDir);
+    names.sort();
+    for (const name of names) {
+      if (!RecordingName.parse(name)) continue;
+      if (await this.upload(`${this.context.filesDir}/${name}`)) uploaded++;
+    }
+    return uploaded;
+  }
+
+  pendingRecordings(): Recording[] {
+    if (!this.context) return [];
+    const result: Recording[] = [];
+    try {
+      for (const name of fs.listFileSync(this.context.filesDir).sort()) {
+        if (!RecordingName.parse(name)) continue;
+        const recording: Recording = new Recording({ name: name });
+        recording.uploading = true; recording.tags = this.readTags(`${this.context.filesDir}/${name}`); result.push(recording);
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  private readFile(path: string): ArrayBuffer {
+    const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      const bytes: ArrayBuffer = new ArrayBuffer(fs.statSync(path).size); fs.readSync(file.fd, bytes); return bytes;
+    } finally { fs.closeSync(file); }
+  }
+
+  private isUploadable(path: string): boolean {
+    try {
+      const bytes: Uint8Array = new Uint8Array(this.readFile(path)); if (bytes.byteLength <= 1024) return false;
+      for (let index: number = 0; index <= bytes.length - 4; index++) {
+        if (bytes[index] === 109 && bytes[index + 1] === 111 && bytes[index + 2] === 111 && bytes[index + 3] === 118) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  private tagPath(path: string): string { return `${path.substring(0, path.lastIndexOf('.'))}.tags.json`; }
+
+  private writeTags(path: string, tags: string[]): void {
+    const clean: string[] = tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0);
+    if (clean.length === 0) return;
+    const file: fs.File = fs.openSync(this.tagPath(path), fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+    try {
+      const bytes: Uint8Array = new util.TextEncoder().encodeInto(JSON.stringify(clean));
+      const buffer: ArrayBuffer = new ArrayBuffer(bytes.byteLength); new Uint8Array(buffer).set(bytes); fs.writeSync(file.fd, buffer);
+    } finally { fs.closeSync(file); }
+  }
+
+  private readTags(path: string): string[] {
+    try {
+      const bytes: Uint8Array = new Uint8Array(this.readFile(this.tagPath(path)));
+      return JSON.parse(new util.TextDecoder('utf-8').decodeWithStream(bytes)) as string[];
+    } catch (_) { return []; }
+  }
+
+  private async uploadTags(path: string, tags: string[]): Promise<void> {
+    if (tags.length === 0) return;
+    const name: string = path.substring(path.lastIndexOf('/') + 1);
+    const stem: string = name.endsWith('.m4a') ? name.substring(0, name.length - 4) : name;
+    const bytes: Uint8Array = new util.TextEncoder().encodeInto(JSON.stringify(tags));
+    const buffer: ArrayBuffer = new ArrayBuffer(bytes.byteLength); new Uint8Array(buffer).set(bytes);
+    await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(`articles/${stem}.tags`)}`,
+      authStore.bearer(), buffer, 'application/json');
+  }
+
+  private finishLocal(path: string): void {
+    try { fs.unlinkSync(this.tagPath(path)); } catch (_) {}
+    if (appPreferences.deleteLocalAfterUpload()) { try { fs.unlinkSync(path); } catch (_) {} return; }
+    if (!this.context) return;
+    const uploadedDir: string = `${this.context.filesDir}/uploaded`;
+    try { fs.mkdirSync(uploadedDir, true); } catch (_) {}
+    try { fs.renameSync(path, `${uploadedDir}/${path.substring(path.lastIndexOf('/') + 1)}`); } catch (_) {}
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    return new Promise<void>((resolve: () => void) => setTimeout(resolve, milliseconds));
+  }
+}
+
+export const uploader: Uploader = new Uploader();

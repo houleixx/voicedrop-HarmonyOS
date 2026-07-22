@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_test_desc", "value": "VoiceDrop unit tests" },
+    { "name": "TestAbility_desc", "value": "VoiceDrop test ability" },
+    { "name": "TestAbility_label", "value": "VoiceDrop Tests" }
+  ]
+}

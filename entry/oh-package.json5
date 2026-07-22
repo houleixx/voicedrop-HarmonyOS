@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "VoiceDrop HarmonyOS entry module",
+  "main": "",
+  "author": "BaixingAI",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@tencent/wechat_open_sdk": "1.0.19"
+  }
+}

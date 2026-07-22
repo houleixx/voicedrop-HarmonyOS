@@ -1,0 +1,20 @@
+{
+  "shortcuts": [
+    {
+      "shortcutId": "start_recording",
+      "label": "$string:shortcut_record",
+      "icon": "$media:app_icon",
+      "visible": true,
+      "wants": [
+        {
+          "bundleName": "com.baixingai.voicedrop.hm",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "voicedrop.uri": "voicedrop://record"
+          }
+        }
+      ]
+    }
+  ]
+}
