@@ -378,7 +378,7 @@ export struct PromptSettingsView {
               promptAction.showToast({ message: error.length > 0 ? error : '已恢复默认值' });
             })
           }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).width('100%')
-        }.layoutWeight(1)
+        }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }.height('100%').backgroundColor(Theme.BG)
       if (this.showEditor) {
         Column() { this.editor() }.width('100%').height('100%').justifyContent(FlexAlign.Center).backgroundColor('#66000000')

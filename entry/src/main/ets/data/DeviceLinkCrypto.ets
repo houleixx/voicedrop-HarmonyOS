@@ -47,6 +47,15 @@ export class DeviceLinkCrypto {
     return value;
   }
 
+  static accountIdSync(token: string): string {
+    const digest: cryptoFramework.Md = cryptoFramework.createMd('SHA256');
+    digest.updateSync({ data: new util.TextEncoder().encodeInto(token) });
+    const bytes: Uint8Array = digest.digestSync().data;
+    let value: string = 'anon-';
+    for (let index: number = 0; index < 16; index++) value += bytes[index].toString(16).padStart(2, '0');
+    return value;
+  }
+
   static async encrypt(token: string, toPublicKeyB64: string): Promise<DeviceLinkBlob> {
     const ephemeral: DeviceLinkKeypair = await DeviceLinkCrypto.newKeypair();
     try {

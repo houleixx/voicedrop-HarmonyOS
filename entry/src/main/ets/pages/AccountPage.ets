@@ -1,12 +1,106 @@
-import { promptAction } from '@kit.ArkUI';
+import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
+import { AccountIdentity } from '../core/AccountIdentity';
 import { appPreferences } from '../data/AppPreferences';
 import { authStore } from '../data/AuthStore';
-import { DeviceLinkCrypto } from '../data/DeviceLinkCrypto';
 import { libraryStore } from '../data/LibraryStore';
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
+
+@CustomDialog
+struct TokenImportDialog {
+  controller?: CustomDialogController;
+  onImport: (token: string) => Promise<boolean> = async () => false;
+  onImported: () => void = () => {};
+  @State private token: string = '';
+  @State private importing: boolean = false;
+  @State private closing: boolean = false;
+  @State private sheetOffsetY: string = '0%';
+  @State private sheetOpacity: number = 1;
+
+  private async submit(): Promise<void> {
+    if (this.importing || this.closing) return;
+    this.importing = true;
+    try {
+      if (await this.onImport(this.token)) this.closeDownward(this.onImported);
+    } finally {
+      this.importing = false;
+    }
+  }
+
+  private closeDownward(afterClose: () => void = () => {}): void {
+    if (this.closing) return;
+    this.closing = true;
+    animateTo({
+      duration: 200,
+      curve: Curve.EaseIn,
+      onFinish: () => {
+        this.controller?.close();
+        afterClose();
+      }
+    }, () => {
+      this.sheetOffsetY = '100%';
+      this.sheetOpacity = 0.96;
+    });
+  }
+
+  build() {
+    Column({ space: 8 }) {
+      Row() {
+        Text('登录已有账号')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.INK)
+          .layoutWeight(1)
+        Row() {
+          RemixIcon({ glyph: RI.CLOSE, iconSize: 24, color: Theme.INK })
+        }
+          .width(44)
+          .height(44)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
+          .enabled(!this.closing)
+          .onClick(() => this.closeDownward())
+      }.width('100%').alignItems(VerticalAlign.Center)
+      Text('在另一台设备的「账户」页面复制“访问令牌”，粘贴到这里。访问令牌以 anon_ 开头；页面上显示的账户 ID 只用于识别，不能用来登录。')
+        .fontSize(14).fontColor(Theme.SECONDARY).lineHeight(20).width('100%')
+      Text('访问令牌')
+        .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT).letterSpacing(1).width('100%')
+      TextArea({ text: this.token, placeholder: 'anon_...' })
+        .height(72)
+        .defaultFocus(true)
+        .fontSize(15)
+        .fontColor(Theme.INK)
+        .placeholderColor('#C9C6C1')
+        .backgroundColor(Theme.BG)
+        .border({ width: 1, color: '#E5DED2', radius: 9 })
+        .borderRadius(9)
+        .onChange((value: string) => this.token = value)
+      Text('导入后，本机会切换到该令牌对应的云端空间。原本机令牌不会删除，请保存后再操作。')
+        .fontSize(12).fontColor(Theme.FAINT).lineHeight(17).width('100%')
+      Button(this.importing ? '正在导入…' : '导入')
+        .height(44)
+        .width('100%')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Theme.WHITE)
+        .backgroundColor(Theme.ACCENT_STRONG)
+        .enabled(!this.importing)
+        .onClick(() => this.submit())
+    }
+      .padding({ left: 18, right: 18, top: 4, bottom: 12 })
+      .width('100%')
+      .backgroundColor(Theme.CARD)
+      .borderRadius({ topLeft: 28, topRight: 28 })
+      .translate({ y: this.sheetOffsetY })
+      .opacity(this.sheetOpacity)
+      .transition(TransitionEffect.move(TransitionEdge.BOTTOM)
+        .combine(TransitionEffect.opacity(0.92))
+        .animation({ duration: 260, curve: Curve.EaseOut }))
+      .alignItems(HorizontalAlign.Start)
+  }
+}
 
 @Component
 export struct AccountPage {
@@ -19,22 +113,34 @@ export struct AccountPage {
   recordingNames: string[] = [];
   recordingCount: number = 0;
   articleCount: number = 0;
-  @State private token: string = '';
   @State private accountId: string = '';
-  @State private showTokenImport: boolean = false;
-  @State private tokenInputFocused: boolean = false;
-  @State private importingToken: boolean = false;
   @State private deletingAccount: boolean = false;
+  private tokenImportDialog: CustomDialogController = new CustomDialogController({
+    builder: TokenImportDialog({
+      onImport: (token: string): Promise<boolean> => this.importToken(token),
+      onImported: this.onAccountChanged
+    }),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Bottom,
+    width: '100%',
+    keyboardAvoidMode: KeyboardAvoidMode.DEFAULT,
+    keyboardAvoidDistance: LengthMetrics.vp(0),
+    maskColor: '#66000000',
+    openAnimation: { duration: 260, curve: Curve.EaseOut },
+    closeAnimation: { duration: 0 }
+  });
 
   aboutToAppear(): void {
-    DeviceLinkCrypto.accountId(authStore.anonymousBearer())
-      .then((value: string) => this.accountId = value)
-      .catch(() => {});
+    this.refreshAccountIdentity();
+  }
+
+  private refreshAccountIdentity(): void {
+    this.accountId = AccountIdentity.accountIdFromScope(authStore.storageScope());
   }
 
   private maskedToken(): string {
-    const token: string = authStore.anonymousBearer();
-    return token.length <= 16 ? token : `${token.substring(0, 10)}••••••${token.substring(token.length - 4)}`;
+    return AccountIdentity.maskedToken(authStore.anonymousBearer());
   }
 
   private async copyAccountValue(value: string, message: string): Promise<void> {
@@ -46,23 +152,15 @@ export struct AccountPage {
     promptAction.showToast({ message: message });
   }
 
-  private async importToken(): Promise<void> {
-    if (this.importingToken) return;
-    this.importingToken = true;
-    try {
-      const ok: boolean = await authStore.adoptAnonymousToken(this.token.trim());
-      if (!ok) {
-        promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌' });
-        return;
-      }
-      this.tokenInputFocused = false;
-      this.showTokenImport = false;
-      this.token = '';
-      promptAction.showToast({ message: '已切换到已有账号' });
-      this.onAccountChanged();
-    } finally {
-      this.importingToken = false;
+  private async importToken(token: string): Promise<boolean> {
+    const ok: boolean = await authStore.adoptAnonymousToken(token.trim());
+    if (!ok) {
+      promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌' });
+      return false;
     }
+    this.refreshAccountIdentity();
+    promptAction.showToast({ message: '已切换到已有账号' });
+    return true;
   }
 
   private async deleteAccount(): Promise<void> {
@@ -81,7 +179,6 @@ export struct AccountPage {
       }
       await appPreferences.clearAccountQueues(this.recordingNames);
       await authStore.resetAnonymous();
-      this.token = '';
       promptAction.showToast({ message: '账户已删除' });
       this.onDeleted();
     } catch (error) {
@@ -122,9 +219,10 @@ export struct AccountPage {
       Row() {
         Text(value)
           .fontSize(masked ? 14 : 15)
-          .fontColor(masked ? Theme.SECONDARY : Theme.INK)
+          .fontColor(Theme.INK)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .ellipsisMode(AccountIdentity.valueEllipsisMode)
           .layoutWeight(1)
         Row() {
           RemixIcon({ glyph: RI.FILE_COPY, iconSize: 20, color: Theme.ACCENT_STRONG })
@@ -172,7 +270,7 @@ export struct AccountPage {
         Text('登录已有账号')
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG).margin({ left: 10 })
       }.height(28).width('100%').alignItems(VerticalAlign.Center).margin({ top: 3 })
-        .onClick(() => this.showTokenImport = true)
+        .onClick(() => this.tokenImportDialog.open())
     }
       .padding(18)
       .width('100%')
@@ -251,68 +349,6 @@ export struct AccountPage {
     }.width('100%')
   }
 
-  @Builder
-  private tokenImportSheet() {
-    Column() {
-      Row() {
-        Text('登录已有账号')
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Theme.INK)
-          .layoutWeight(1)
-        Row() {
-          RemixIcon({ glyph: RI.CLOSE, iconSize: 24, color: Theme.INK })
-        }
-          .width(44)
-          .height(44)
-          .justifyContent(FlexAlign.Center)
-          .alignItems(VerticalAlign.Center)
-          .onClick(() => {
-            this.tokenInputFocused = false;
-            this.showTokenImport = false;
-          })
-      }.width('100%').alignItems(VerticalAlign.Center)
-      Scroll() {
-        Column({ space: 12 }) {
-          Text('在另一台设备的「账户」页面复制“访问令牌”，粘贴到这里。访问令牌以 anon_ 开头；页面上显示的账户 ID 只用于识别，不能用来登录。')
-            .fontSize(14).fontColor(Theme.SECONDARY).lineHeight(21).width('100%')
-          Text('访问令牌')
-            .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT).letterSpacing(1).width('100%')
-          TextArea({ text: this.token, placeholder: 'anon_...' })
-            .height(92)
-            .fontSize(15)
-            .fontColor(Theme.INK)
-            .placeholderColor('#C9C6C1')
-            .backgroundColor(Theme.BG)
-            .border({ width: 1, color: '#E5DED2', radius: 9 })
-            .borderRadius(9)
-            .onFocus(() => this.tokenInputFocused = true)
-            .onBlur(() => this.tokenInputFocused = false)
-            .onChange((value: string) => this.token = value)
-          Text('导入成功后，本机会读取这个令牌对应的云端空间：录音、文章、写作风格、社区配置都会切换过去。原来的本机令牌不会删除，请先保存好再操作。')
-            .fontSize(12).fontColor(Theme.FAINT).lineHeight(18).width('100%')
-          Button(this.importingToken ? '正在导入…' : '导入')
-            .height(46)
-            .width('100%')
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(Theme.WHITE)
-            .backgroundColor(Theme.ACCENT_STRONG)
-            .enabled(!this.importingToken)
-            .onClick(() => this.importToken())
-        }.padding({ top: 8, bottom: 18 }).width('100%').alignItems(HorizontalAlign.Start)
-      }
-        .layoutWeight(1)
-        .width('100%')
-        .scrollBar(BarState.Auto)
-        .edgeEffect(EdgeEffect.Spring)
-    }
-      .padding({ left: 18, right: 18, top: 4 })
-      .width('100%')
-      .height('100%')
-      .alignItems(HorizontalAlign.Start)
-  }
-
   build() {
     Column() {
       PageHeader({ title: '账户', onBack: this.onBack })
@@ -330,16 +366,9 @@ export struct AccountPage {
           this.deleteCard()
         }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).width('100%')
       }.layoutWeight(1).width('100%').scrollBar(BarState.Auto)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }
       .height('100%')
       .backgroundColor(Theme.BG)
-      .bindSheet($$this.showTokenImport, this.tokenImportSheet(), {
-        height: this.tokenInputFocused ? SheetSize.LARGE : 460,
-        dragBar: false,
-        showClose: false,
-        keyboardAvoidMode: SheetKeyboardAvoidMode.TRANSLATE_AND_RESIZE,
-        backgroundColor: Theme.CARD,
-        maskColor: '#66000000'
-      })
   }
 }
