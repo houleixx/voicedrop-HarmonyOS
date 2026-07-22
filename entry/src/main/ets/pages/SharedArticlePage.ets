@@ -49,7 +49,7 @@ export struct SharedArticlePage {
             Text(this.article!.articles[this.selectedIndex].title).fontSize(28).fontWeight(FontWeight.Bold).width('100%')
             ForEach(ArticleBody.blocks(this.article!.articles[this.selectedIndex].body),
               (block: ArticleBlock) => this.articleBlock(block))
-          }.padding({ left: 16, right: 16, top: 12, bottom: 40 }).alignItems(HorizontalAlign.Start).width('100%')
+          }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).alignItems(HorizontalAlign.Start).width('100%')
         }.layoutWeight(1).width('100%')
       }
     }.height('100%')

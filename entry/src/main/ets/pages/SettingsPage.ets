@@ -96,7 +96,7 @@ export struct SettingsPage {
             this.divider()
             this.row('关于', '隐私 · 公约 · 屏蔽 · 联系', 'about', RI.INFORMATION)
           }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
-        }.padding({ left: 16, right: 16, top: 0, bottom: 28 }).width('100%')
+        }.padding({ left: 16, right: 16, top: 6, bottom: 28 }).width('100%')
       }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.height('100%').backgroundColor(Theme.BG)
   }

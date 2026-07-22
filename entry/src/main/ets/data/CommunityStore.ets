@@ -4,7 +4,6 @@ import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
 
 interface CommunityFeedResponse { posts?: CommunityPost[]; order?: string[]; }
-interface CommunityRankingResponse { order?: string[]; liked?: string[]; likes?: Record<string, number>; }
 export class CommunityFeed {
   recommended: CommunityPost[];
   latest: CommunityPost[];
@@ -33,17 +32,6 @@ class FeedStatesBody {
 class FeedBody {
   share_id: string;
   constructor(id: string) { this.share_id = id; }
-}
-class RankPostBody {
-  shareId: string; firstSharedAt: number; author: string; replyCount: number;
-  constructor(post: CommunityPost, replyCount: number) {
-    this.shareId = post.shareId; this.firstSharedAt = post.firstSharedAt ?? post.sharedAt ?? post.updatedAt ?? 0;
-    this.author = post.author ?? ''; this.replyCount = replyCount;
-  }
-}
-class RankBody {
-  posts: RankPostBody[];
-  constructor(posts: RankPostBody[]) { this.posts = posts; }
 }
 interface FeedStateWire { count?: number; fed?: boolean; }
 interface FeedStatesResponse { states?: Record<string, FeedStateWire>; }
@@ -76,36 +64,14 @@ export class CommunityShareResult {
 
 export class CommunityStore {
   async feed(): Promise<CommunityFeed> {
-    let response: HttpResponse = await httpClient.get(`${Api.RECO}/feed`, authStore.anonymousBearer());
-    const unified: boolean = response.ok();
-    if (!unified) response = await httpClient.get(`${Api.FILES}/community/list`, authStore.bearer());
+    const response: HttpResponse = await httpClient.get(`${Api.RECO}/feed`, authStore.anonymousBearer());
     if (!response.ok()) throw new Error(`社区加载失败 HTTP ${response.code}`);
     const wire: CommunityFeedResponse = JSON.parse(response.text) as CommunityFeedResponse;
     const posts: CommunityPost[] = wire.posts ?? [];
     for (const post of posts) {
       this.normalize(post);
     }
-    let order: string[] = wire.order ?? [];
-    if (!unified && posts.length > 0) {
-      const replyCounts: Map<string, number> = new Map<string, number>();
-      posts.forEach((post: CommunityPost) => {
-        const parent: string = post.replyTo ?? '';
-        if (parent.length > 0) replyCounts.set(parent, (replyCounts.get(parent) ?? 0) + 1);
-      });
-      posts.forEach((post: CommunityPost) => post.replies = replyCounts.get(post.shareId) ?? 0);
-      try {
-        const payload: RankPostBody[] = posts.map((post: CommunityPost) => new RankPostBody(post, post.replies));
-        const rankResponse: HttpResponse = await httpClient.postJson(`${Api.RECO}/rank`, authStore.anonymousBearer(), new RankBody(payload));
-        if (rankResponse.ok()) {
-          const rank: CommunityRankingResponse = JSON.parse(rankResponse.text) as CommunityRankingResponse;
-          order = rank.order ?? [];
-          const liked: string[] = rank.liked ?? [];
-          posts.forEach((post: CommunityPost) => {
-            post.likes = rank.likes?.[post.shareId] ?? 0; post.liked = liked.includes(post.shareId);
-          });
-        }
-      } catch (_) {}
-    }
+    const order: string[] = wire.order ?? [];
     const byId: Map<string, CommunityPost> = new Map<string, CommunityPost>();
     posts.forEach((post: CommunityPost) => byId.set(post.shareId, post));
     const recommended: CommunityPost[] = [];
