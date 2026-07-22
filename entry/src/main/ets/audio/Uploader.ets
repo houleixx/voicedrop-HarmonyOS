@@ -10,21 +10,26 @@ import { httpClient, HttpResponse } from '../net/HttpClient';
 
 export class Uploader {
   private context?: common.Context;
+  private discardedNames: Set<string> = new Set<string>();
 
   initialize(context: common.Context): void { this.context = context; }
 
   async upload(path: string, tags: string[] = []): Promise<boolean> {
     if (!this.isUploadable(path)) return false;
+    const name: string = path.substring(path.lastIndexOf('/') + 1);
+    if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
     if (tags.length > 0) this.writeTags(path, tags);
     const storedTags: string[] = this.readTags(path);
     await this.uploadTags(path, storedTags);
-    const name: string = path.substring(path.lastIndexOf('/') + 1);
+    if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
     for (let attempt: number = 1; attempt <= 3; attempt++) {
+      if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
       try {
         const bytes: ArrayBuffer = this.readFile(path);
         const response: HttpResponse = await httpClient.putBytes(
           `${Api.FILES}/upload/${Api.path(name)}`, authStore.bearer(), bytes, 'audio/mp4');
         if (response.ok()) {
+          if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
           await httpClient.postJson(`${Api.FILES}/mine`, authStore.bearer());
           this.finishLocal(path); return true;
         }
@@ -52,12 +57,24 @@ export class Uploader {
     const result: Recording[] = [];
     try {
       for (const name of fs.listFileSync(this.context.filesDir).sort()) {
-        if (!RecordingName.parse(name)) continue;
+        if (!RecordingName.parse(name) || this.discardedNames.has(name)) continue;
         const recording: Recording = new Recording({ name: name });
         recording.uploading = true; recording.tags = this.readTags(`${this.context.filesDir}/${name}`); result.push(recording);
       }
     } catch (_) {}
     return result;
+  }
+
+  discardPending(recordingName: string): boolean {
+    if (!this.context) return false;
+    let pending: boolean = false;
+    try { pending = fs.listFileSync(this.context.filesDir).includes(recordingName); } catch (_) {}
+    if (!pending) return false;
+    this.discardedNames.add(recordingName);
+    const path: string = `${this.context.filesDir}/${recordingName}`;
+    try { fs.unlinkSync(path); } catch (_) {}
+    try { fs.unlinkSync(this.tagPath(path)); } catch (_) {}
+    return true;
   }
 
   private readFile(path: string): ArrayBuffer {
@@ -113,6 +130,16 @@ export class Uploader {
     const uploadedDir: string = `${this.context.filesDir}/uploaded`;
     try { fs.mkdirSync(uploadedDir, true); } catch (_) {}
     try { fs.renameSync(path, `${uploadedDir}/${path.substring(path.lastIndexOf('/') + 1)}`); } catch (_) {}
+  }
+
+  private async finishDiscarded(path: string, name: string): Promise<void> {
+    try { fs.unlinkSync(path); } catch (_) {}
+    try { fs.unlinkSync(this.tagPath(path)); } catch (_) {}
+    await Promise.all([
+      httpClient.delete(`${Api.FILES}/file/${Api.path(name)}`, authStore.bearer()).catch(() => undefined),
+      httpClient.delete(`${Api.FILES}/file/${Api.path(`articles/${RecordingName.stem(name)}.tags`)}`,
+        authStore.bearer()).catch(() => undefined)
+    ]);
   }
 
   private delay(milliseconds: number): Promise<void> {

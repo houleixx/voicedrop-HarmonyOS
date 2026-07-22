@@ -5,8 +5,6 @@ import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
 
 interface RecordingsResponse { recordings?: RecordingRowPayload[]; }
-interface LegacyFileRow { name: string; uploaded?: string; }
-interface FilesResponse { files?: LegacyFileRow[]; }
 interface ShareResponse { url?: string; }
 interface WhoamiResponse { scope?: string; }
 interface XhsPackWire { title?: string; body?: string; tags?: string[]; photoKeys?: string[]; }
@@ -65,22 +63,9 @@ export class LibraryStore {
   private cachedScopeToken: string = '';
   private cachedScope: string = '';
   async load(): Promise<Recording[]> {
-    let rows: RecordingRowPayload[] = [];
-    try {
-      const indexed: HttpResponse = await httpClient.get(`${Api.FILES}/recordings`, authStore.bearer());
-      if (indexed.ok()) rows = (JSON.parse(indexed.text) as RecordingsResponse).recordings ?? [];
-    } catch (_) {}
-    if (rows.length === 0) {
-      const legacy: HttpResponse = await httpClient.get(`${Api.FILES}/list`, authStore.bearer());
-      if (!legacy.ok()) throw new Error(`加载失败 HTTP ${legacy.code}`);
-      const files: LegacyFileRow[] = (JSON.parse(legacy.text) as FilesResponse).files ?? [];
-      const names: Set<string> = new Set<string>(); files.forEach((row: LegacyFileRow) => names.add(row.name));
-      rows = files.filter((row: LegacyFileRow) => row.name.endsWith('.m4a')).map((row: LegacyFileRow) => {
-        const stem: string = row.name.substring(0, row.name.length - 4);
-        return { name: row.name, uploaded: row.uploaded ?? '', hasArticles: names.has(`articles/${stem}.json`),
-          isEmpty: names.has(`articles/${stem}.empty`), hasTags: names.has(`articles/${stem}.tags`) } as RecordingRowPayload;
-      });
-    }
+    const response: HttpResponse = await httpClient.get(`${Api.FILES}/recordings`, authStore.bearer());
+    if (!response.ok()) throw new Error(`加载失败 HTTP ${response.code}`);
+    const rows: RecordingRowPayload[] = (JSON.parse(response.text) as RecordingsResponse).recordings ?? [];
     return rows.filter((row: RecordingRowPayload) => row.name.endsWith('.m4a'))
       .map((row: RecordingRowPayload) => new Recording(row))
       .sort((left: Recording, right: Recording) => right.uploaded.localeCompare(left.uploaded) || right.name.localeCompare(left.name));

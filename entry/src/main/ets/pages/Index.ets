@@ -1,6 +1,6 @@
 import { common, Permissions } from '@kit.AbilityKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
-import { promptAction } from '@kit.ArkUI';
+import { FrameNode, promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
@@ -8,6 +8,7 @@ import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
 import { Api } from '../core/Api';
 import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureAction, LibraryCommandTarget, LibraryCommandTone, LibraryCommandUi } from '../core/LibraryCommandUi';
 import { PromptNode, PromptTree } from '../core/PromptTree';
+import { RecordingListUi } from '../core/RecordingListUi';
 import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, MinedArticle, CommunityPost } from '../model/Models';
 import { authStore } from '../data/AuthStore';
 import { appPreferences } from '../data/AppPreferences';
@@ -88,12 +89,16 @@ struct Index {
   @State private page: AppPage = 'home';
   @State private tab: number = 0;
   @State private recordings: Recording[] = [];
+  @State private deletedRecordingNames: string[] = [];
   @State private posts: CommunityPost[] = [];
   @State private communityRecommended: CommunityPost[] = [];
   @State private communityLatest: CommunityPost[] = [];
   @State private communityFilter: string = 'recommended';
   @State private selectedTag: string = '';
   @State private selected?: Recording = undefined;
+  @State private deletingRecordingName: string = '';
+  @State private openRecordingSwipeName: string = '';
+  @State private recordingSwipeRevision: number = 0;
   @State private article?: ArticleDoc = undefined;
   @State private loading: boolean = true;
   @State private libraryRefreshing: boolean = false;
@@ -710,8 +715,11 @@ struct Index {
     this.errorText = '';
     try {
       const remote: Recording[] = await libraryStore.load();
-      const remoteNames: Set<string> = new Set<string>(); remote.forEach((recording: Recording) => remoteNames.add(recording.name));
-      this.recordings = uploader.pendingRecordings().filter((recording: Recording) => !remoteNames.has(recording.name)).concat(remote);
+      const staleDeleted: Recording[] = remote.filter((recording: Recording) =>
+        this.deletedRecordingNames.includes(recording.name));
+      this.recordings = RecordingListUi.afterRefresh(
+        uploader.pendingRecordings(), remote, this.deletedRecordingNames);
+      staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
       libraryStore.enrichMissingMetadata(remote).then((changed: boolean) => {
         if (changed) this.recordings = this.recordings.slice();
       }).catch(() => {});
@@ -1013,6 +1021,43 @@ struct Index {
   }
 
   @Builder
+  private recordingDeleteAction(recording: Recording) {
+    Button(this.deletingRecordingName === recording.name ? '删除中…' : '删除')
+      .width(80)
+      .height('100%')
+      .fontSize(17)
+      .fontWeight(FontWeight.Bold)
+      .fontColor(Theme.WHITE)
+      .backgroundColor(Theme.ACCENT_STRONG)
+      .borderRadius(18)
+      .margin({ left: 10 })
+      .enabled(this.deletingRecordingName.length === 0)
+      .onClick(() => {
+        this.closeOpenRecordingSwipe();
+        this.deleteRecordingWithConfirmation(recording, false);
+      })
+  }
+
+  private closeOpenRecordingSwipe(): void {
+    if (this.openRecordingSwipeName.length === 0) return;
+    const node: FrameNode | null = this.getUIContext().getFrameNodeById(
+      this.recordingSwipeItemId(this.openRecordingSwipeName));
+    if (node) {
+      try {
+        ListItemSwipeActionManager.collapse(node);
+        this.openRecordingSwipeName = '';
+        return;
+      } catch (_) {}
+    }
+    this.openRecordingSwipeName = '';
+    this.recordingSwipeRevision++;
+  }
+
+  private recordingSwipeItemId(recordingName: string): string {
+    return `recording-swipe-${recordingName}`;
+  }
+
+  @Builder
   private libraryPage() {
     Column() {
       this.topBar('VoiceDrop 口述')
@@ -1084,10 +1129,31 @@ struct Index {
                   RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 24, color: Theme.FAINT })
                 }.padding({ left: 16, right: 16, top: 15, bottom: 15 }).width('100%')
                   .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 1, color: Theme.BORDER })
-              }.onClick(() => this.openRecording(item))
-            }, (item: Recording) => item.name)
+              }
+                .id(this.recordingSwipeItemId(item.name))
+                .swipeAction({
+                  end: {
+                    builder: () => this.recordingDeleteAction(item),
+                    actionAreaDistance: 80,
+                    onStateChange: (state: SwipeActionState) => {
+                      if (state === SwipeActionState.EXPANDED) {
+                        this.openRecordingSwipeName = item.name;
+                      } else if (state === SwipeActionState.COLLAPSED && this.openRecordingSwipeName === item.name) {
+                        this.openRecordingSwipeName = '';
+                      }
+                    }
+                  },
+                  edgeEffect: SwipeEdgeEffect.Spring
+                })
+                .onClick(() => this.openRecording(item))
+            }, (item: Recording) => `${item.name}-${this.recordingSwipeRevision}`)
           }.width('100%').height('100%').padding({ left: 16, right: 16, bottom: 8 })
-        }.layoutWeight(1).width('100%').onRefreshing(() => this.pullRefreshLibrary())
+            .onScrollStart(() => this.closeOpenRecordingSwipe())
+        }.layoutWeight(1).width('100%')
+          .onOffsetChange((offset: number) => {
+            if (offset > 0) this.closeOpenRecordingSwipe();
+          })
+          .onRefreshing(() => this.pullRefreshLibrary())
       }
       if (this.errorText.length > 0) Text(this.errorText).fontSize(13).fontColor('#B42318').padding(12)
       if (this.pendingReplyTarget.length > 0) {
@@ -1499,7 +1565,7 @@ struct Index {
           .padding({ left: 4, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.selectCommunityFilter('replies'))
         Blank()
-      }.height(36).padding({ left: 14, right: 14 }).width('100%')
+      }.height(38).padding({ left: 14, right: 14 }).width('100%')
       if (this.posts.length === 0 && !this.loading) {
         Refresh({ refreshing: this.communityRefreshing }) {
           List() {
@@ -1732,7 +1798,7 @@ struct Index {
             Button(this.showArticleLines ? '关行号' : '行号').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.showArticleLines = !this.showArticleLines)
             Button('编辑').fontSize(14).height(34).fontColor(Theme.ACCENT).backgroundColor(Theme.ACCENT_SOFT).onClick(() => this.beginDirectEdit())
             Button('公众号').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.publishWechat())
-          }.padding({ left: 16, right: 16, bottom: 8 })
+          }.padding({ left: 16, right: 16, top: 6, bottom: 8 })
         }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
         if (this.playing || this.playbackDuration > 0) {
           Row({ space: 10 }) {
@@ -1917,20 +1983,32 @@ struct Index {
     }
   }
 
-  private deleteRecordingWithConfirmation(): void {
-    if (!this.selected) return;
+  private deleteRecordingWithConfirmation(recording?: Recording, returnHome: boolean = true): void {
+    const target: Recording | undefined = recording ?? this.selected;
+    if (!target || this.deletingRecordingName.length > 0) return;
     promptAction.showDialog({
       title: '删除这条录音？',
-      message: '录音、文章、字幕和标签都会从云端删除，且无法恢复。',
+      message: RecordingListUi.deleteMessage,
       buttons: [{ text: '取消', color: '#666666' }, { text: '删除', color: '#D92D20' }]
     }).then(async (result) => {
-      if (result.index !== 1 || !this.selected) return;
-      await audioPlayback.stop();
-      const ok: boolean = await libraryStore.delete(this.selected);
-      promptAction.showToast({ message: ok ? '已删除' : '删除失败' });
-      if (ok) {
-        this.navigateHome();
-        await this.refreshLibrary();
+      if (result.index !== 1) return;
+      this.deletingRecordingName = target.name;
+      try {
+        uploader.discardPending(target.name);
+        if (returnHome) await audioPlayback.stop();
+        const ok: boolean = await libraryStore.delete(target);
+        promptAction.showToast({ message: ok ? '已删除' : '删除失败' });
+        if (ok) {
+          if (!this.deletedRecordingNames.includes(target.name)) {
+            this.deletedRecordingNames = this.deletedRecordingNames.concat(target.name);
+          }
+          this.recordings = RecordingListUi.afterSuccessfulDelete(this.recordings, target.name);
+          if (returnHome) this.navigateHome();
+        }
+      } catch (_) {
+        promptAction.showToast({ message: '删除失败' });
+      } finally {
+        this.deletingRecordingName = '';
       }
     });
   }
@@ -1945,7 +2023,7 @@ struct Index {
       Button('换文风').fontSize(13).onClick(() => this.openStyleRewrite())
       Button('重新生成').fontSize(13).onClick(() => this.regenerateArticle())
       Button('删除').fontSize(13).fontColor('#D92D20').backgroundColor('#FEE4E2')
-        .onClick(() => this.deleteRecordingWithConfirmation())
+        .onClick(() => this.deleteRecordingWithConfirmation(this.selected, true))
     }.padding({ left: 16, right: 16, bottom: 12 }).width('100%')
   }
 
@@ -2023,7 +2101,7 @@ struct Index {
                 .onClick(() => this.openCommunityPost(reply))
             }, (reply: CommunityPost) => reply.shareId)
           }
-        }.padding({ left: 16, right: 16, bottom: 40 }).alignItems(HorizontalAlign.Start)
+        }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).alignItems(HorizontalAlign.Start)
       }.layoutWeight(1)
     }.height('100%')
   }
