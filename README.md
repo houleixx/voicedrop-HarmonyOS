@@ -8,17 +8,22 @@
 
 ## HarmonyOS App（本仓库）
 
-### 核心行为
+### 功能
 
-- 首次启动先展示隐私政策；同意前不创建身份、不联网，也不初始化录音或 WebSocket。
-- 轻点首页麦克风开始录音，再次点击停止。录音保存为 AAC/M4A，并在停止后自动上传、转写和生成文章。
-- 上传失败或应用中断时保留本地录音；下次启动或回到前台继续上传，避免录音丢失。
-- 长按首页麦克风可说出图库指令；松开发送、上滑取消，可按当前列表编号操作录音。
-- 录音时可添加标签和照片，也可开启实时 AI 采访。
-- 生成后的文章支持播放原录音、编辑、重新生成、历史版本、撤销/重做、图片、公开分享和公众号草稿发布。
-- “VD社区”支持推荐、最新、回应、点赞、举报、回复、算力投币和提示词分享。
-- 默认使用本机生成的匿名身份；也支持微信登录、匿名 Token 导入和跨设备安全配对。
-- 支持系统分享接收、`voicedrop://` 深链、静态快捷方式“记一条”和 ZIP 数据导出。
+- **轻点即录音**：在“我的录音”中轻点麦克风开始录音，再次点击停止。音频以单声道 AAC/M4A 保存，并立即进入上传和文章生成流程。
+- **失败不丢录音**：断网或上传失败时，录音保留在本地待传队列；下次启动或回到前台会继续上传。
+- **自动生成文章**：录音上传后自动转写并生成文章，列表会实时显示待处理、听录音、挖文章、已成文和无语音等状态。
+- **语音管理图库**：长按首页麦克风说出指令，松开发送、上滑取消；可以按当前列表编号删除录音、修改标签或执行其他图库操作。
+- **录音增强**：录音时可添加标签、拍照或选择相册图片，也可开启实时 AI 采访。
+- **阅读与编辑**：文章详情支持阅读、播放原录音、修改标题和正文、自然语言改写、重新生成、历史版本、撤销与重做。
+- **语音修改文章**：长按说出修改要求，AI 会根据指令改写文章并实时刷新结果。
+- **文章配图**：从相册选择图片或拍照上传，让 AI 将图片插入文章正文；公开分享、社区和公众号沿用相同图片规则。
+- **分享与发布**：支持公开链接、系统分享、小红书文案以及微信公众号草稿创建和更新。
+- **VD社区**：浏览推荐、最新和回应内容，支持点赞、举报、回复、作者屏蔽、算力投币和提示词分享。
+- **文风与提示词**：保存个人写作文风，管理快捷提示词，并可通过分享码浏览和导入社区提示词。
+- **账号与迁移**：默认使用本机生成的匿名身份，也支持微信登录、匿名 Token 导入和跨设备安全配对。
+- **导入与导出**：支持系统分享接收、`voicedrop://` 深链、静态快捷方式“记一条”，并可导出文章、音频、字幕、图片和索引。
+- **隐私启动门禁**：首次启动先展示隐私政策；同意前不创建身份、不联网，也不初始化录音或 WebSocket。
 
 跨端接口、文章结构、图片 marker、录音状态和用户可见结果主要与 VoiceDrop Android/iOS 客户端保持一致；HarmonyOS 请求统一携带 `X-VD-Platform: harmonyos`。
 
@@ -119,48 +124,15 @@ hdc shell aa test \
 
 ---
 
-## 代码结构
-
-| 路径 | 作用 |
-|---|---|
-| `AppScope/` | 应用级名称、图标、版本和 bundle 配置 |
-| `entry/src/main/ets/entryability/` | Stage 模型入口，处理冷启动、深链和系统分享 Want |
-| `entry/src/main/ets/pages/` | 首页、录音列表、文章、社区、设置及二级页面 |
-| `entry/src/main/ets/components/` | 可复用 ArkUI 组件 |
-| `entry/src/main/ets/ui/` | 主题、统一标题栏和 Remix Icon 封装 |
-| `entry/src/main/ets/audio/` | M4A 录音、播放、上传、ASR 听写和实时采访 |
-| `entry/src/main/ets/net/` | HTTP、WebSocket 和火山 ASR 二进制协议 |
-| `entry/src/main/ets/data/` | 身份、设置、录音库、社区、提示词、用量和导出 |
-| `entry/src/main/ets/core/` | 录音命名、文章解析、提示词树及可单测业务逻辑 |
-| `entry/src/main/ets/share/` | 系统分享内容收集、预览和导入 |
-| `entry/src/main/ets/model/` | 跨页面共享的数据模型 |
-| `entry/src/main/module.json5` | Ability、权限、深链、分享和快捷方式声明 |
-| `entry/src/ohosTest/` | Hypium 单元测试与测试运行器 |
-| `docs/android-parity-coverage.md` | Android 功能迁移覆盖情况和待真机验证项 |
-
----
-
 ## 技术与产品文档
 
 - [Android → HarmonyOS 功能迁移清单](docs/android-parity-coverage.md)
 - [第三方组件声明](THIRD_PARTY_NOTICES.md)
 
-相关实现分布在多个仓库：
+## 相关项目
 
-- `voicedrop-android`：当前主要功能、交互和跨端契约参考。
-- `voicedrop`：iOS 客户端及早期产品行为参考。
-- `voicedrop-mini`：微信小程序实现和受限平台行为参考。
-- `jianshuo.dev`：Files、Agent、Reco、WebSocket、分享页及服务端业务逻辑。
+- [VoiceDrop Android](https://github.com/houleixx/voicedrop-android)
+- [VoiceDrop iOS](https://github.com/houleixx/voicedrop)
+- [VoiceDrop 微信小程序](https://github.com/houleixx/voicedrop-mini)
 
----
-
-## 给未来开发者和 Agent 的指引
-
-- 修改功能前先阅读根目录 `AGENTS.md` 和 `docs/android-parity-coverage.md`。
-- 用户可见行为优先对照 Android；Android 未覆盖或语义不清时继续核对 iOS。
-- API、WebSocket、认证、上传、状态值和错误处理必须以服务端当前实现为准，不凭客户端代码猜测。
-- 不要随意改变 API path、JSON 字段、录音命名、文章 schema、图片 marker 或 `X-VD-Platform`。
-- 不在源码、README、日志或测试数据中记录真实 Token、AppSecret、证书密码或私钥。
-- 修改权限、Ability、深链、分享或快捷方式时，同时检查 `module.json5`、`EntryAbility` 和目标页面。
-- 新功能和缺陷修复应补充可行的测试；无法自动化的平台行为应写明模拟器或真机验证步骤。
-- 提交前至少确保主 HAP 构建成功，并运行与修改范围相关的单元测试。
+各客户端共享后端 API、文章格式、录音命名、图片 marker 和分享链路，并根据各自平台的权限及交互习惯进行适配。
