@@ -999,11 +999,8 @@ struct Index {
       } })
     } else {
       Row() {
-        Row({ space: 3 }) {
-          Blank().width(3).height(10).backgroundColor(Theme.ACCENT).borderRadius(2)
-          Blank().width(3).height(17).backgroundColor(Theme.ACCENT).borderRadius(2)
-          Blank().width(3).height(10).backgroundColor(Theme.ACCENT).borderRadius(2)
-        }.width(18).justifyContent(FlexAlign.Center)
+        Image($rawfile('voicedrop-brand-waveform.svg'))
+          .width(19.5).height(16).objectFit(ImageFit.Fill)
         Text(title).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ left: 4 })
         Blank()
         Button({ type: ButtonType.Normal }) { RemixIcon({ glyph: RI.SETTINGS, iconSize: 21, color: Theme.SECONDARY }) }
