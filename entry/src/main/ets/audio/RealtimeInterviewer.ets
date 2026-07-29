@@ -38,6 +38,8 @@ export class RealtimeInterviewer {
   private handler: InterviewStateHandler;
   private base64: util.Base64Helper = new util.Base64Helper();
   private playback: Promise<void> = Promise.resolve();
+  private captureTask?: Promise<void>;
+  private lifecycle: Promise<void> = Promise.resolve();
 
   constructor(handler: InterviewStateHandler = () => {}) { this.handler = handler; }
 
@@ -50,7 +52,20 @@ export class RealtimeInterviewer {
     return this.muted ? 'AI 正在说话' : 'AI 采访中 · 再点一下结束';
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    const operation: Promise<void> = this.lifecycle.then(() => this.startNow());
+    this.lifecycle = operation.catch(() => {});
+    return operation;
+  }
+
+  stop(): Promise<void> {
+    const operation: Promise<void> = this.lifecycle.then(
+      () => this.stopNow(), () => this.stopNow());
+    this.lifecycle = operation.catch(() => {});
+    return operation;
+  }
+
+  private async startNow(): Promise<void> {
     if (this.active) return;
     this.active = true; this.muted = false; this.fatal = false; this.reconnectAttempt = 0;
     this.notify();
@@ -58,19 +73,26 @@ export class RealtimeInterviewer {
       await this.startCapture();
       await this.connect();
     } catch (error) {
-      await this.stop();
+      await this.stopNow();
       throw new Error(String(error));
     }
   }
 
-  async stop(): Promise<void> {
+  private async stopNow(): Promise<void> {
     this.active = false; this.muted = false; this.connected = false;
     if (this.reconnectTimer >= 0) clearTimeout(this.reconnectTimer);
     if (this.reopenTimer >= 0) clearTimeout(this.reopenTimer);
     this.reconnectTimer = -1; this.reopenTimer = -1;
     this.session?.close(); this.session = undefined;
     const capturer: audio.AudioCapturer | undefined = this.capturer; this.capturer = undefined;
-    if (capturer) { try { await capturer.stop(); } catch (_) {} try { await capturer.release(); } catch (_) {} }
+    const captureTask: Promise<void> | undefined = this.captureTask; this.captureTask = undefined;
+    if (capturer) {
+      try { await capturer.stop(); } catch (_) {}
+      if (captureTask) await captureTask.catch(() => {});
+      try { await capturer.release(); } catch (_) {}
+    }
+    const playback: Promise<void> = this.playback; this.playback = Promise.resolve();
+    await playback.catch(() => {});
     const renderer: audio.AudioRenderer | undefined = this.renderer; this.renderer = undefined;
     if (renderer) { try { await renderer.stop(); } catch (_) {} try { await renderer.release(); } catch (_) {} }
     this.notify();
@@ -153,7 +175,7 @@ export class RealtimeInterviewer {
     };
     const capturer: audio.AudioCapturer = await audio.createAudioCapturer(options); this.capturer = capturer;
     const size: number = await capturer.getBufferSize(); await capturer.start();
-    this.captureLoop(capturer, size).catch(() => {
+    this.captureTask = this.captureLoop(capturer, size).catch(() => {
       if (this.active && this.capturer === capturer) {
         this.fatal = true; this.connected = false; this.session?.close(); this.notify();
       }

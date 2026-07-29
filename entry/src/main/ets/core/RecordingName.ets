@@ -24,6 +24,13 @@ export class RecordingName {
     return name.endsWith('.m4a') ? name.substring(0, name.length - 4) : name;
   }
 
+  static photoKey(sessionTimestamp: string, offsetSeconds: number, randomTag: string = ''): string {
+    const generated: string = Math.random().toString(36).substring(2, 5).padEnd(3, '0');
+    const tag: string = (randomTag.length > 0 ? randomTag : generated)
+      .toLowerCase().replace(/[^0-9a-z]/g, '').substring(0, 3).padEnd(3, '0');
+    return `photos/${sessionTimestamp}/${Math.max(0, Math.floor(offsetSeconds))}-${tag}.jpg`;
+  }
+
   static parse(name: string): ParsedRecordingName | undefined {
     const stem: string = RecordingName.stem(name);
     const match: RegExpMatchArray | null = stem.match(/^VoiceDrop-(\d{4}-\d{2}-\d{2}-\d{6})-(\d+m\d+s)-([A-Za-z]+)-([A-Za-z]+)(?:-(.+))?$/);

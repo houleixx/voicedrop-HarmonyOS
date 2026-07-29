@@ -46,13 +46,13 @@ export struct WechatSettingsPage {
         uri: WECHAT_CONSOLE_URL
       });
     } catch (_) {
-      promptAction.showToast({ message: '无法打开浏览器' });
+      promptAction.showToast({ message: '无法打开浏览器'});
     }
   }
 
   private async copyServerIp(): Promise<void> {
     await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(WECHAT_SERVER_IP));
-    promptAction.showToast({ message: 'IP 已复制' });
+    promptAction.showToast({ message: 'IP 已复制'});
   }
 
   private async save(): Promise<void> {
@@ -80,7 +80,7 @@ export struct WechatSettingsPage {
         return;
       }
       this.saved = true;
-      promptAction.showToast({ message: '公众号配置已保存' });
+      promptAction.showToast({ message: '公众号配置已保存'});
     } catch (error) {
       this.errorText = `公众号配置失败：${String(error)}`;
     } finally {
@@ -91,8 +91,8 @@ export struct WechatSettingsPage {
   @Builder
   private inputField() {
     TextInput({ text: this.appid, placeholder: 'AppID（wx...）' })
-      .height(54)
-      .fontSize(17)
+      .height(46)
+      .fontSize(15)
       .fontColor(Theme.INK)
       .placeholderColor(Theme.FAINT)
       .padding({ left: 14, right: 14 })
@@ -111,8 +111,8 @@ export struct WechatSettingsPage {
       TextInput({ text: this.secret, placeholder: 'AppSecret' })
         .type(this.secretVisible ? InputType.Normal : InputType.Password)
         .layoutWeight(1)
-        .height(52)
-        .fontSize(17)
+        .height(44)
+        .fontSize(15)
         .fontColor(Theme.INK)
         .placeholderColor(Theme.FAINT)
         .padding({ left: 14, right: 4 })
@@ -122,14 +122,14 @@ export struct WechatSettingsPage {
           this.fieldChanged();
         })
       Button(this.secretVisible ? '隐藏' : '显示')
-        .height(44)
+        .height(38)
         .fontSize(13)
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.SECONDARY)
         .backgroundColor(Color.Transparent)
         .onClick(() => this.secretVisible = !this.secretVisible)
     }
-      .height(54)
+      .height(46)
       .width('100%')
       .padding({ right: 4 })
       .backgroundColor(Theme.CARD)
@@ -143,23 +143,23 @@ export struct WechatSettingsPage {
       Scroll() {
         Column() {
           Row({ space: 10 }) {
-            RemixIcon({ glyph: RI.SEND_PLANE, iconSize: 24, color: Theme.SECONDARY })
+            RemixIcon({ glyph: RI.SEND_PLANE, iconSize: 18, color: Theme.SECONDARY })
             Text('填入公众号 AppID / AppSecret 即可连接。')
-              .fontSize(15)
+              .fontSize(13)
               .fontColor(Theme.SECONDARY)
               .layoutWeight(1)
           }
-            .height(50)
-            .padding({ left: 16, right: 16 })
+            .height(42)
+            .padding({ left: 14, right: 14 })
             .backgroundColor(Theme.CARD)
             .border({ width: 1, color: Theme.BORDER })
             .borderRadius(9)
-            .margin({ bottom: 24 })
+            .margin({ bottom: 20 })
 
           Row() {
-            Column({ space: 3 }) {
-              Text('自动推草稿').fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-              Text('挖出新文章后自动发到公众号草稿箱').fontSize(14).fontColor(Theme.SECONDARY)
+            Column({ space: 2 }) {
+              Text('自动推草稿').fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+              Text('挖出新文章后自动发到公众号草稿箱').fontSize(13).fontColor(Theme.SECONDARY)
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             Toggle({ type: ToggleType.Switch, isOn: this.isEnabled })
               .selectedColor(Theme.ACCENT)
@@ -168,52 +168,52 @@ export struct WechatSettingsPage {
                 this.fieldChanged();
               })
           }
-            .height(70)
-            .padding({ left: 16, right: 16 })
+            .height(56)
+            .padding({ left: 14, right: 14 })
             .backgroundColor(Theme.CARD)
             .border({ width: 1, color: Theme.BORDER })
             .borderRadius(9)
-            .margin({ bottom: 24 })
+            .margin({ bottom: 20 })
 
-          Text('凭据').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-            .width('100%').margin({ bottom: 10 })
+          Text('凭据').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            .width('100%').margin({ bottom: 8 })
           this.inputField()
-          Blank().height(10)
+          Blank().height(8)
           this.secretField()
           Text('凭证只保存在你的设备与服务器的加密配置里，不会出现在文章中。')
-            .fontSize(14).lineHeight(21).fontColor(Theme.FAINT).width('100%').margin({ top: 12, bottom: 6 })
+            .fontSize(13).lineHeight(19).fontColor(Theme.FAINT).width('100%').margin({ top: 10, bottom: 4 })
           if (this.errorText.length > 0) {
             Text(this.errorText).fontSize(13).lineHeight(20).fontColor('#C66A35').width('100%').margin({ bottom: 8 })
           }
 
           Row({ space: 6 }) {
-            RemixIcon({ glyph: RI.LINK, iconSize: 18, color: Theme.ACCENT })
-            Text('去哪里找 AppID / AppSecret？').fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
-            RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 16, color: Theme.ACCENT })
+            RemixIcon({ glyph: RI.LINK, iconSize: 14, color: Theme.ACCENT })
+            Text('去哪里找 AppID / AppSecret？').fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
+            RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 13, color: Theme.ACCENT })
           }
-            .height(44)
+            .height(38)
             .width('100%')
             .onClick(() => this.openWechatConsole())
           Text('点上方链接打开公众平台后台，出现登录二维码时先截屏，再打开微信「扫一扫 → 右上角相册」选中截图，选择要绑定的公众号完成登录；进「设置与开发 → 基本配置」：AppID 直接复制，AppSecret 需点「生成」（或「重置」）、管理员扫码确认后显示；同时在该页把下方的 IP 地址加入「IP 白名单」。')
-            .fontSize(13).lineHeight(20).fontColor(Theme.FAINT).width('100%').margin({ bottom: 24 })
+            .fontSize(13).lineHeight(19).fontColor(Theme.FAINT).width('100%').margin({ bottom: 24 })
 
-          Divider().strokeWidth(1).color(Theme.DIVIDER).margin({ bottom: 24 })
-          Text('IP 白名单').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-            .width('100%').margin({ bottom: 10 })
+          Divider().strokeWidth(1).color(Theme.DIVIDER).margin({ bottom: 20 })
+          Text('IP 白名单').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            .width('100%').margin({ bottom: 8 })
           Text('在公众号后台 → 开发 → 基本配置 → IP 白名单中加入以下地址，服务器才能正常调用接口推草稿。')
-            .fontSize(14).lineHeight(21).fontColor(Theme.SECONDARY).width('100%').margin({ bottom: 14 })
+            .fontSize(13).lineHeight(19).fontColor(Theme.SECONDARY).width('100%').margin({ bottom: 10 })
           Row() {
-            Text(WECHAT_SERVER_IP).fontSize(18).fontColor(Theme.INK).fontFamily('monospace').layoutWeight(1)
+            Text(WECHAT_SERVER_IP).fontSize(15).fontColor(Theme.INK).fontFamily('monospace').layoutWeight(1)
             Button({ type: ButtonType.Normal }) {
-              RemixIcon({ glyph: RI.FILE_COPY, iconSize: 24, color: Theme.SECONDARY })
+              RemixIcon({ glyph: RI.FILE_COPY, iconSize: 20, color: Theme.SECONDARY })
             }
-              .width(44)
-              .height(44)
+              .width(40)
+              .height(40)
               .padding(0)
               .backgroundColor(Color.Transparent)
               .onClick(() => this.copyServerIp())
           }
-            .height(54)
+            .height(46)
             .padding({ left: 14, right: 5 })
             .backgroundColor(Theme.CARD)
             .border({ width: 1, color: Theme.BORDER })
@@ -222,8 +222,8 @@ export struct WechatSettingsPage {
 
           Button(this.validating ? '保存中…' : (this.saved ? '已保存' : '保存'))
             .width('100%')
-            .height(56)
-            .fontSize(18)
+            .height(52)
+            .fontSize(16)
             .fontWeight(FontWeight.Bold)
             .fontColor(Color.White)
             .backgroundColor(this.canSave() || this.validating || this.saved ? Theme.ACCENT : '#EBA092')

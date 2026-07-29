@@ -76,16 +76,31 @@ export class CommunityStore {
     posts.forEach((post: CommunityPost) => byId.set(post.shareId, post));
     const recommended: CommunityPost[] = [];
     order.forEach((id: string) => { const post: CommunityPost | undefined = byId.get(id); if (post) recommended.push(post); });
-    return new CommunityFeed(recommended.length === posts.length ? recommended : posts.slice(), posts);
+    const feed: CommunityFeed = new CommunityFeed(recommended.length === posts.length ? recommended : posts.slice(), posts);
+    authStore.storeCommunityFeedCache(response.text);
+    return feed;
   }
+
+  cachedFeed(): CommunityFeed {
+    try {
+      const raw: string = authStore.communityFeedCache();
+      if (raw.length === 0) return new CommunityFeed();
+      return this.feedFromWire(JSON.parse(raw) as CommunityFeedResponse);
+    } catch (_) { return new CommunityFeed(); }
+  }
+
+  invalidateFeed(): void { authStore.clearCommunityFeedCache(); }
 
   async engage(shareId: string, action: string, on?: boolean): Promise<void> {
     const body: EngageBody = new EngageBody(action, on);
-    await httpClient.postJson(`${Api.RECO}/engage/${Api.path(shareId)}`, authStore.anonymousBearer(), body);
+    const response: HttpResponse = await httpClient.postJson(`${Api.RECO}/engage/${Api.path(shareId)}`, authStore.anonymousBearer(), body);
+    if (response.ok()) this.invalidateFeed();
   }
 
   async report(shareId: string): Promise<boolean> {
-    return (await httpClient.postJson(`${Api.FILES}/community/report/${Api.path(shareId)}`, authStore.bearer())).ok();
+    const ok: boolean = (await httpClient.postJson(`${Api.FILES}/community/report/${Api.path(shareId)}`, authStore.bearer())).ok();
+    if (ok) this.invalidateFeed();
+    return ok;
   }
 
   async feedState(shareId: string): Promise<CommunityFeedState> {
@@ -101,8 +116,10 @@ export class CommunityStore {
     const response: HttpResponse = await httpClient.postJson(`${Api.AGENT}/feed`, authStore.bearer(), new FeedBody(shareId));
     try {
       const parsed: FeedResultWire = JSON.parse(response.text.length > 0 ? response.text : '{}') as FeedResultWire;
-      return new CommunityFeedResult(parsed.ok ?? response.ok(), parsed.already ?? false, parsed.error ?? '',
+      const result: CommunityFeedResult = new CommunityFeedResult(parsed.ok ?? response.ok(), parsed.already ?? false, parsed.error ?? '',
         parsed.suanli?.author ?? 0, parsed.suanli?.feeder ?? 0);
+      if (result.ok || result.already) this.invalidateFeed();
+      return result;
     } catch (_) { return new CommunityFeedResult(false, false, '', 0, 0); }
   }
 
@@ -122,7 +139,9 @@ export class CommunityStore {
     try {
       if (response.ok()) {
         const id: string = (JSON.parse(response.text) as CommunityIdResponse).shareId ?? '';
-        return new CommunityShareResult(id.length > 0, id, response.code, '');
+        const result: CommunityShareResult = new CommunityShareResult(id.length > 0, id, response.code, '');
+        if (result.ok) this.invalidateFeed();
+        return result;
       }
       return new CommunityShareResult(false, '', response.code,
         response.text.length > 0 ? (JSON.parse(response.text) as CommunityErrorResponse).error ?? '' : '');
@@ -130,7 +149,9 @@ export class CommunityStore {
   }
 
   async unshare(shareId: string): Promise<boolean> {
-    return (await httpClient.postJson(`${Api.FILES}/community/unshare/${Api.path(shareId)}`, authStore.bearer())).ok();
+    const ok: boolean = (await httpClient.postJson(`${Api.FILES}/community/unshare/${Api.path(shareId)}`, authStore.bearer())).ok();
+    if (ok) this.invalidateFeed();
+    return ok;
   }
 
   async replies(shareId: string): Promise<CommunityPost[]> {
@@ -157,6 +178,16 @@ export class CommunityStore {
       const articles = post.articles ?? [{ title: post.title || '(无题)', body: post.body ?? '' }];
       post.doc = { owner: post.owner, transcript: post.transcript, articles: articles, photos: post.photos };
     }
+  }
+
+  private feedFromWire(wire: CommunityFeedResponse): CommunityFeed {
+    const posts: CommunityPost[] = wire.posts ?? [];
+    posts.forEach((post: CommunityPost) => this.normalize(post));
+    const byId: Map<string, CommunityPost> = new Map<string, CommunityPost>();
+    posts.forEach((post: CommunityPost) => byId.set(post.shareId, post));
+    const recommended: CommunityPost[] = [];
+    (wire.order ?? []).forEach((id: string) => { const post: CommunityPost | undefined = byId.get(id); if (post) recommended.push(post); });
+    return new CommunityFeed(recommended.length === posts.length ? recommended : posts.slice(), posts);
   }
 }
 

@@ -45,7 +45,12 @@ export class ArticleBody {
   }
 
   static photoUrl(key: string): string {
-    return `https://voicedrop.cn/photo/${key.split('/').map((part: string) => encodeURIComponent(part)).join('/')}`;
+    return `https://voicedrop.cn/files/api/photo/${key.split('/').map((part: string) => encodeURIComponent(part)).join('/')}`;
+  }
+
+  /** Small feed/list images use Cloudflare's edge rendition; article bodies use photoUrl. */
+  static photoThumbnailUrl(key: string): string {
+    return `https://jianshuo.dev/cdn-cgi/image/width=512,quality=60/files/api/photo/${key.split('/').map((part: string) => encodeURIComponent(part)).join('/')}`;
   }
 
   static insertPhoto(body: string, key: string, offset: number): string {

@@ -5,6 +5,7 @@
 
 # DevEco Studio / Hvigor / dependencies
 /.hvigor/
+/.appanalyzer/
 node_modules/
 oh_modules/
 /build/
@@ -20,6 +21,7 @@ local.properties
 /.agents/
 /.worktrees/
 /AGENTS.md
+/CLAUDE.md
 /AGENT.md
 /agents.md
 /agent.md

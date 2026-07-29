@@ -1,4 +1,6 @@
 import { http } from '@kit.NetworkKit';
+import { Api } from '../core/Api';
+import { ClientReliability } from '../core/ClientReliability';
 
 export class HttpResponse {
   code: number;
@@ -66,6 +68,24 @@ export class HttpClient {
 
   private async request(url: string, method: http.RequestMethod, bearer: string,
     body?: Object | string | ArrayBuffer, contentType: string = 'application/json', timeout: number = 30000): Promise<HttpResponse> {
+    const methodName: string = String(method);
+    try {
+      const primary: HttpResponse = await this.requestOnce(url, method, bearer, body, contentType, timeout);
+      if (ClientReliability.shouldRetryDirectApi(methodName, url, primary.code, false)) {
+        return this.requestOnce(Api.directApiUrl(url), method, bearer, body, contentType, timeout);
+      }
+      return primary;
+    } catch (error) {
+      if (ClientReliability.shouldRetryDirectApi(methodName, url, 0, true)) {
+        return this.requestOnce(Api.directApiUrl(url), method, bearer, body, contentType, timeout);
+      }
+      throw new Error(ClientReliability.errorMessage(error as Object));
+    }
+  }
+
+  private async requestOnce(url: string, method: http.RequestMethod, bearer: string,
+    body?: Object | string | ArrayBuffer, contentType: string = 'application/json',
+    timeout: number = 30000): Promise<HttpResponse> {
     const request: http.HttpRequest = http.createHttp();
     const headers: Record<string, string> = {
       'Accept': 'application/json', 'Content-Type': contentType, 'X-VD-Platform': 'harmonyos'

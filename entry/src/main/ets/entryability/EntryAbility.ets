@@ -27,7 +27,13 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
       if (response.errCode === ErrCode.ERR_OK && response.state === WechatLogin.STATE) code = response.code?.trim() ?? '';
       else if (response.errCode === ErrCode.ERR_USER_CANCEL) message = '已取消微信登录';
       else message = response.errStr?.trim() || '微信登录失败';
-    } else message = '微信登录返回无效';
+    } else if ((response.transaction ?? '').startsWith('voicedrop-community-share-')) {
+      if (response.errCode === ErrCode.ERR_USER_CANCEL) message = '已取消微信分享';
+      else if (response.errCode !== ErrCode.ERR_OK) message = response.errStr?.trim() || '微信分享失败';
+      else return;
+    } else {
+      return;
+    }
     if (code.length === 0 && message.length === 0) message = '微信登录返回无效';
     AppStorage.setOrCreate<string>('wechatCode', code);
     AppStorage.setOrCreate<string>('wechatMessage', message);

@@ -2,6 +2,7 @@ import { preferences } from '@kit.ArkData';
 import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
 import { DeviceLinkCrypto } from './DeviceLinkCrypto';
+import { ClientReliability } from '../core/ClientReliability';
 
 export class AuthStore {
   private store?: preferences.Preferences;
@@ -95,6 +96,19 @@ export class AuthStore {
     this.store.clearSync();
     this.store.putSync('anon', this.newAnonymousToken());
     await this.store.flush();
+  }
+
+  /** Last successful home-list snapshots. Keys are account-scoped, never raw tokens. */
+  libraryListCache(): string { return String(this.store?.getSync(this.homeCacheKey('libraryList'), '') ?? ''); }
+  communityFeedCache(): string { return String(this.store?.getSync(this.homeCacheKey('communityFeed'), '') ?? ''); }
+
+  storeLibraryListCache(json: string): void { this.store?.putSync(this.homeCacheKey('libraryList'), json); this.store?.flush(); }
+  storeCommunityFeedCache(json: string): void { this.store?.putSync(this.homeCacheKey('communityFeed'), json); this.store?.flush(); }
+  clearLibraryListCache(): void { this.store?.deleteSync(this.homeCacheKey('libraryList')); this.store?.flush(); }
+  clearCommunityFeedCache(): void { this.store?.deleteSync(this.homeCacheKey('communityFeed')); this.store?.flush(); }
+
+  private homeCacheKey(kind: string): string {
+    return ClientReliability.homeSnapshotCacheKey(kind, this.bearer());
   }
 
   private newAnonymousToken(): string {

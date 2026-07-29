@@ -1,9 +1,12 @@
 import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { AccountIdentity } from '../core/AccountIdentity';
+import { ClientReliability } from '../core/ClientReliability';
+import { uploader } from '../audio/Uploader';
 import { appPreferences } from '../data/AppPreferences';
 import { authStore } from '../data/AuthStore';
 import { libraryStore } from '../data/LibraryStore';
+import { promptStore } from '../data/PromptStore';
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
@@ -145,21 +148,25 @@ export struct AccountPage {
 
   private async copyAccountValue(value: string, message: string): Promise<void> {
     if (value.length === 0) {
-      promptAction.showToast({ message: '账户信息尚未加载' });
+      promptAction.showToast({ message: '账户信息尚未加载'});
       return;
     }
     await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(value));
-    promptAction.showToast({ message: message });
+    promptAction.showToast({ message: message});
   }
 
   private async importToken(token: string): Promise<boolean> {
+    const previousBearer: string = authStore.bearer();
     const ok: boolean = await authStore.adoptAnonymousToken(token.trim());
     if (!ok) {
-      promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌' });
+      promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌'});
       return false;
     }
+    if (ClientReliability.accountIdentityChanged(previousBearer, authStore.bearer())) {
+      await appPreferences.clearAccountQueues(this.recordingNames);
+    }
     this.refreshAccountIdentity();
-    promptAction.showToast({ message: '已切换到已有账号' });
+    promptAction.showToast({ message: '已切换到已有账号'});
     return true;
   }
 
@@ -174,15 +181,17 @@ export struct AccountPage {
     try {
       const deleted: boolean = await libraryStore.deleteAccount();
       if (!deleted) {
-        promptAction.showToast({ message: '删除失败，请稍后再试' });
+        promptAction.showToast({ message: '删除失败，请稍后再试'});
         return;
       }
-      await appPreferences.clearAccountQueues(this.recordingNames);
+      uploader.clearLocalAccountFiles();
+      await appPreferences.clearDeletedAccountState();
+      await promptStore.clearLocalCache();
       await authStore.resetAnonymous();
-      promptAction.showToast({ message: '账户已删除' });
+      promptAction.showToast({ message: '账户已删除'});
       this.onDeleted();
     } catch (error) {
-      promptAction.showToast({ message: `删除失败：${String(error)}` });
+      promptAction.showToast({ message: `删除失败：${String(error)}`});
     } finally {
       this.deletingAccount = false;
     }

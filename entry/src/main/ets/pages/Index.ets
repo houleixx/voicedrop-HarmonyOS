@@ -6,9 +6,13 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
 import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
 import { Api } from '../core/Api';
+import { PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
 import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureAction, LibraryCommandTarget, LibraryCommandTone, LibraryCommandUi } from '../core/LibraryCommandUi';
 import { PromptNode, PromptTree } from '../core/PromptTree';
 import { RecordingListUi } from '../core/RecordingListUi';
+import { RecordingName } from '../core/RecordingName';
+import { isRecordingTooShort } from '../core/RecordingPolicy';
+import { normalizeAmplitude } from '../core/RecordingUi';
 import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, MinedArticle, CommunityPost } from '../model/Models';
 import { authStore } from '../data/AuthStore';
 import { appPreferences } from '../data/AppPreferences';
@@ -24,6 +28,7 @@ import { referralService, InviteLink } from '../data/ReferralService';
 import { DeviceLinkPending, DeviceLinkStore } from '../data/DeviceLinkStore';
 import { DeviceLinkCrypto } from '../data/DeviceLinkCrypto';
 import { WechatLogin } from '../data/WechatLogin';
+import { WechatCommunityShare } from '../data/WechatCommunityShare';
 import { WechatAuthResult, WechatAuthStore } from '../data/WechatAuthStore';
 import { shareCollectService } from '../share/ShareCollectService';
 import { voiceRecorder } from '../audio/VoiceRecorder';
@@ -36,6 +41,7 @@ import { AboutPage } from './AboutPage';
 import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
 import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
+import { CommunityLikeState } from '../core/CommunityLikeState';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
 import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
 import { PromptSettingsPage } from './PromptSettingsPage';
@@ -47,6 +53,9 @@ import { WechatSettingsPage } from './WechatSettingsPage';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { PageHeader } from '../ui/PageHeader';
+import { ClientReliability } from '../core/ClientReliability';
+import { ArticlePhotoView } from '../components/ArticlePhotoView';
+import { RecordingSession } from '../components/RecordingSession';
 
 interface CommandMessage {
   type: string;
@@ -57,7 +66,14 @@ interface CommandMessage {
   state?: string;
   stems?: string[];
 }
-interface StatusMessage { type?: string; pairingId?: string; code?: string; pubkey?: string; }
+interface StatusMessage {
+  type?: string;
+  pairingId?: string;
+  code?: string;
+  pubkey?: string;
+  stem?: string;
+  status?: string;
+}
 interface PreviewDeltaValue { a?: number; field?: string; text?: string; }
 interface EditSocketMessage {
   type?: string;
@@ -65,7 +81,9 @@ interface EditSocketMessage {
   doc?: ArticleDoc;
   items?: PreviewDeltaValue[];
   ok?: boolean;
+  queue?: EditQueueState[];
 }
+interface EditQueueState { id?: string; status?: string; }
 interface PendingCommunityShareValue { articleKey: string; replyTo?: string; createdAt?: number; }
 class IncomingShareDraft {
   mime: string;
@@ -86,7 +104,6 @@ struct Index {
   @StorageLink('shareSequence') @Watch('onShareSequence') private shareSequence: number = 0;
   @StorageLink('wechatSequence') @Watch('onWechatSequence') private wechatSequence: number = 0;
   @StorageLink('foregroundSequence') @Watch('onForegroundSequence') private foregroundSequence: number = 0;
-  @State private page: AppPage = 'home';
   @State private tab: number = 0;
   @State private recordings: Recording[] = [];
   @State private deletedRecordingNames: string[] = [];
@@ -100,6 +117,9 @@ struct Index {
   @State private openRecordingSwipeName: string = '';
   @State private recordingSwipeRevision: number = 0;
   @State private article?: ArticleDoc = undefined;
+  @State private detailLoading: boolean = false;
+  @State private detailLoadError: string = '';
+  @State private showDetailMenu: boolean = false;
   @State private loading: boolean = true;
   @State private libraryRefreshing: boolean = false;
   @State private communityRefreshing: boolean = false;
@@ -107,6 +127,7 @@ struct Index {
   @State private recording: boolean = false;
   @State private recordingTransitioning: boolean = false;
   @State private recordingSeconds: number = 0;
+  @State private recordingLevel: number = 0;
   @State private interviewActive: boolean = false;
   @State private interviewStatus: string = '';
   @State private capturedPhotos: CapturedPhoto[] = [];
@@ -124,9 +145,13 @@ struct Index {
   @State private selectedPost?: CommunityPost = undefined;
   @State private selectedReplyParent?: CommunityPost = undefined;
   @State private communityReplies: CommunityPost[] = [];
+  @State private communityDetailLoading: boolean = false;
+  @State private communityDetailError: string = '';
   @State private postFed: boolean = false;
+  @State private postLiked: boolean = false;
   @State private postFeedCount: number = 0;
   @State private postFeeding: boolean = false;
+  @State private showCommunityMenu: boolean = false;
   @State private promptImporting: boolean = false;
   @State private wechatLoggedIn: boolean = false;
   @State private pendingReplyTarget: string = '';
@@ -170,10 +195,15 @@ struct Index {
   @State private preparingInvite: boolean = false;
   @State private sharedArticle?: ArticleDoc = undefined;
   @State private sharedArticleIndex: number = 0;
+  @State private generatedPhotoKeys: string[] = [];
+  @State private processingPhotoKeys: string[] = [];
+  @State private thumbnailFallbackKeys: string[] = [];
   private context?: common.UIAbilityContext;
   private timer: number = -1;
+  private recordingMeterSampling: boolean = false;
   private statusSession?: StatusSession;
   private editSession?: ArticleEditSession;
+  private pendingPhotoRefreshKeys: string[] = [];
   private commandSession?: LibraryCommandSession;
   private dictation?: AsrDictation;
   private commandHoldPressed: boolean = false;
@@ -197,39 +227,45 @@ struct Index {
   private restyleBodies: Map<number, string> = new Map<number, string>();
   private incomingShare?: IncomingShareDraft;
   private defaultRecordTag: string = '';
+  private recordingDetailOpenBlockedUntil: number = 0;
+  private detailLoadSequence: number = 0;
   private initialized: boolean = false;
-  @State private pageStack: AppPage[] = ['home'];
+  @Provide('pathStack') pathStack: NavPathStack = new NavPathStack();
 
   private navigateTo(target: AppPage): void {
-    if (target === this.page) return;
-    animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
-      this.page = target;
-      this.pageStack = this.pageStack.concat(target);
-    });
+    if (target === 'home') {
+      this.navigateHome();
+      return;
+    }
+    const paths: string[] = this.pathStack.getAllPathName();
+    if (paths.length > 0 && paths[paths.length - 1] === target) return;
+    this.pathStack.pushPath({ name: target });
   }
 
   private navigateBack(): void {
-    const target: AppPage = this.pageStack.length > 1 ? this.pageStack[this.pageStack.length - 2] :
-      (this.page === 'style' || this.page === 'wechat' || this.page === 'account' || this.page === 'prompts' ||
-        this.page === 'blocked' || this.page === 'privacy' || this.page === 'usage' || this.page === 'about' ? 'settings' : 'home');
-    animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
-      this.page = target;
-      this.pageStack = this.pageStack.length > 1 ? this.pageStack.slice(0, this.pageStack.length - 1) : [target];
-    });
+    if (this.pathStack.size() > 0) this.pathStack.pop();
   }
 
-  private navigateHome(): void {
-    animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
-      this.page = 'home';
-      this.pageStack = ['home'];
-    });
+  private navigateHome(animated: boolean = true): void {
+    this.pathStack.clear(animated);
   }
 
-  private secondaryPageTransition(page: AppPage): TransitionEffect {
-    if (page === 'home') return TransitionEffect.IDENTITY;
-    const slideRight: TransitionEffect = TransitionEffect.translate({ x: '100%' });
-    return TransitionEffect.asymmetric(slideRight, slideRight)
-      .animation({ duration: 300, curve: Curve.EaseOut });
+  private isCommunityDetailActive(): boolean {
+    const paths: string[] = this.pathStack.getAllPathName();
+    return paths.length > 0 && paths[paths.length - 1] === 'communityDetail';
+  }
+
+  private handleDestinationHidden(routeName: string): void {
+    if (routeName === 'detail') {
+      this.showDetailMenu = false;
+      this.showPromptMenu = false;
+      this.showDirectEditor = false;
+      this.showHistoryBrowser = false;
+      this.showStyleRewrite = false;
+      this.editSession?.close();
+      audioPlayback.stop().catch(() => {});
+    }
+    if (routeName === 'communityDetail') this.showCommunityMenu = false;
   }
 
   private safeAreaTop(): number {
@@ -270,16 +306,24 @@ struct Index {
   private async activateBusiness(): Promise<void> {
     if (this.initialized || !this.context) return;
     await authStore.initialize(this.context);
+    libraryStore.initialize(this.context);
     this.wechatLoggedIn = authStore.isWechatAuthenticated();
     await promptStore.initialize(this.context);
     await this.handleWechatCallback();
     voiceRecorder.initialize(this.context);
     uploader.initialize(this.context);
-    uploader.drainPending().then((count: number) => {
+    photoService.initialize(this.context);
+    this.restoreCachedHomeSnapshots();
+    photoService.retryPending().then(async () => {
+      // Uploading an audio file immediately kicks the miner. Do not let a recovered
+      // recording overtake its session photos or the generated article will miss them.
+      if (photoService.pendingCount() > 0) {
+        promptAction.showToast({ message: '照片等待续传，关联录音已保留' });
+        return;
+      }
+      const count: number = await uploader.drainPending();
       if (count > 0) { promptAction.showToast({ message: `已续传 ${count} 条录音` }); this.refreshLibrary(); }
     }).catch(() => {});
-    photoService.initialize(this.context);
-    photoService.retryPending().catch(() => {});
     audioPlayback.initialize(this.context);
     audioPlayback.setProgressHandler((playing: boolean, progress: number, duration: number) => {
       this.playing = playing;
@@ -289,26 +333,53 @@ struct Index {
     this.appVersion = await appUpdateService.currentVersion();
     this.loadAppConfig().catch(() => {});
     await this.handleSharedWant();
-    await this.refreshLibrary();
+    await this.refreshLibrary(this.recordings.length === 0);
     await this.handleDeepLink();
     this.runReferralOnLaunch().catch(() => {});
+    this.startAgentSessions();
+    this.recoverPendingLink().catch(() => {});
+    if (appPreferences.shouldCheckUpdate(this.appVersion)) this.checkForUpdate(false).catch(() => {});
+    this.initialized = true;
+  }
+
+  private startAgentSessions(): void {
     this.statusSession = new StatusSession((message: string | ArrayBuffer) => {
-      if (typeof message === 'string') this.handleStatusMessage(message); else this.refreshLibrary();
+      if (typeof message === 'string') this.handleStatusMessage(message);
     });
     this.statusSession.connect().catch(() => {});
-    this.recoverPendingLink().catch(() => {});
     this.commandSession = new LibraryCommandSession((message: string | ArrayBuffer) => {
       if (typeof message === 'string') this.handleCommandMessage(message);
     }, () => {});
     this.commandSession.setRefs(this.currentCommandRefs());
     this.commandSession.connect().catch(() => {});
-    if (appPreferences.shouldCheckUpdate(this.appVersion)) this.checkForUpdate(false).catch(() => {});
-    this.initialized = true;
+  }
+
+  private reconnectAgentSessions(): void {
+    this.statusSession?.close();
+    this.editSession?.close();
+    this.commandSession?.close();
+    this.statusSession = undefined;
+    this.editSession = undefined;
+    this.commandSession = undefined;
+    this.applyCommandFeedback(new LibraryCommandFeedback());
+    this.startAgentSessions();
+  }
+
+  private async applyAccountIdentityChange(clearPendingQueues: boolean): Promise<void> {
+    if (clearPendingQueues) {
+      await appPreferences.clearAccountQueues(this.recordings.map((recording: Recording) => recording.name));
+    }
+    this.recordings = [];
+    this.posts = []; this.communityRecommended = []; this.communityLatest = [];
+    libraryStore.clearArticleSnapshots();
+    this.reconnectAgentSessions();
+    this.navigateHome();
+    await this.refreshLibrary();
   }
 
   private onForegroundSequence(): void {
-    if (!this.initialized || this.page !== 'home') return;
-    this.refreshLibrary().catch(() => {});
+    if (!this.initialized || this.pathStack.size() > 0) return;
+    this.refreshLibrary(this.recordings.length === 0).catch(() => {});
     if (this.tab === 1) this.refreshCommunity().catch(() => {});
   }
 
@@ -338,9 +409,11 @@ struct Index {
     if (!result.ok) {
       promptAction.showToast({ message: `微信登录失败：${result.detail || result.error}` }); return;
     }
+    const previousBearer: string = authStore.bearer();
     const anonId: string = await DeviceLinkCrypto.accountId(authStore.anonymousBearer());
+    const switchingAccount: boolean = result.scope !== `users/${anonId}/`;
     let switched: boolean = false;
-    if (result.scope !== `users/${anonId}/`) {
+    if (switchingAccount) {
       const confirmation = await promptAction.showDialog({ title: '该微信已关联另一个云端空间',
         message: '是否切换到微信已绑定的云端空间？当前匿名空间会保存在本机，退出微信登录后自动恢复。',
         buttons: [{ text: '保留当前空间', color: '#666666' }, { text: '切换到微信空间', color: '#D92D20' }] });
@@ -348,6 +421,9 @@ struct Index {
       switched = await authStore.switchToWechatAccount(result.session);
     } else switched = await authStore.storeSession(result.session);
     if (!switched) { promptAction.showToast({ message: '微信登录失败：无效会话' }); return; }
+    if (ClientReliability.accountIdentityChanged(previousBearer, authStore.bearer())) {
+      await this.applyAccountIdentityChange(switchingAccount);
+    }
     this.wechatLoggedIn = true; this.navigateHome();
     promptAction.showToast({ message: result.scope === `users/${anonId}/` ? '已登录微信' : '已切换到微信空间' });
     await this.refreshLibrary();
@@ -363,8 +439,42 @@ struct Index {
       if (message.type === 'link_release' && message.pairingId) {
         await this.releaseLink(message.pairingId); return;
       }
-      if (message.type === 'status_update') await this.refreshLibrary();
+      if (message.type === 'status_update' && message.stem && message.status) {
+        await this.updateRecordingStatus(message.stem, message.status);
+      }
     } catch (_) {}
+  }
+
+  private async updateRecordingStatus(stem: string, status: string): Promise<void> {
+    const target: Recording | undefined = this.recordings.find(
+      (recording: Recording) => recording.stem() === stem);
+    if (!target) return;
+    this.recordings = RecordingListUi.applyStatus(this.recordings, stem, status);
+    this.commandSession?.setRefs(this.currentCommandRefs());
+    libraryStore.storeRecordingsSnapshot(this.recordings);
+    if (status === 'ready') {
+      await this.loadReadyRecordingMetadata(stem);
+      this.publishReadyReplies();
+    }
+  }
+
+  private async loadReadyRecordingMetadata(stem: string): Promise<void> {
+    const retryDelays: number[] = [0, 400, 1200, 2400];
+    for (const delay of retryDelays) {
+      if (delay > 0) await new Promise<void>((resolve: () => void) => setTimeout(resolve, delay));
+      const current: Recording | undefined = this.recordings.find(
+        (recording: Recording) => recording.stem() === stem);
+      if (!current || !current.hasArticles) return;
+      const doc: ArticleDoc | undefined = await libraryStore.fetchArticle(current);
+      const title: string = doc?.articles?.[0]?.title?.trim() ?? '';
+      if (doc && title.length > 0) {
+        this.recordings = RecordingListUi.applyArticleMetadata(this.recordings, stem, title, doc.tags ?? []);
+        libraryStore.storeRecordingsSnapshot(this.recordings);
+        this.commandSession?.setRefs(this.currentCommandRefs());
+        return;
+      }
+    }
+    await this.refreshLibrary(false, false);
   }
 
   private async presentLinkRequest(pending: DeviceLinkPending): Promise<void> {
@@ -710,7 +820,7 @@ struct Index {
     } catch (_) {}
   }
 
-  private async refreshLibrary(showLoading: boolean = true): Promise<void> {
+  private async refreshLibrary(showLoading: boolean = true, showFailure: boolean = showLoading): Promise<void> {
     if (showLoading) this.loading = true;
     this.errorText = '';
     try {
@@ -718,15 +828,20 @@ struct Index {
       const staleDeleted: Recording[] = remote.filter((recording: Recording) =>
         this.deletedRecordingNames.includes(recording.name));
       this.recordings = RecordingListUi.afterRefresh(
-        uploader.pendingRecordings(), remote, this.deletedRecordingNames);
+        uploader.pendingRecordings(), remote, this.deletedRecordingNames,
+        this.recordings.filter((recording: Recording) => recording.saving), this.recordings);
+      this.commandSession?.setRefs(this.currentCommandRefs());
       staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
       libraryStore.enrichMissingMetadata(remote).then((changed: boolean) => {
-        if (changed) this.recordings = this.recordings.slice();
+        if (changed) {
+          this.recordings = this.recordings.slice();
+          libraryStore.storeRecordingsSnapshot(this.recordings);
+        }
       }).catch(() => {});
       this.publishReadyReplies();
       this.drainPendingCommunityShare().catch(() => {});
     } catch (error) {
-      this.errorText = `暂时无法加载录音：${String(error)}`;
+      this.errorText = ClientReliability.libraryErrorText(error as Object, this.recordings.length > 0, showFailure);
     } finally {
       if (showLoading) this.loading = false;
     }
@@ -737,18 +852,32 @@ struct Index {
     try {
       const blocked: string[] = appPreferences.blockedAuthors();
       const feed: CommunityFeed = await communityStore.feed();
-      this.communityRecommended = feed.recommended.filter((post: CommunityPost) => !blocked.includes(post.author));
-      this.communityLatest = feed.latest.filter((post: CommunityPost) => !blocked.includes(post.author));
-      this.updateCommunityFilter();
+      this.applyCommunityFeed(feed, blocked);
     }
     catch (error) { this.errorText = `暂时无法加载社区：${String(error)}`; }
     finally { if (showLoading) this.loading = false; }
   }
 
+  /** Show last successful account-scoped home data before the network refresh completes. */
+  private restoreCachedHomeSnapshots(): void {
+    const cachedRecordings: Recording[] = libraryStore.cachedRecordings();
+    this.recordings = RecordingListUi.afterRefresh(
+      uploader.pendingRecordings(), cachedRecordings, this.deletedRecordingNames);
+
+    const blocked: string[] = appPreferences.blockedAuthors();
+    const cachedFeed: CommunityFeed = communityStore.cachedFeed();
+    this.applyCommunityFeed(cachedFeed, blocked);
+    if (this.recordings.length > 0 || this.communityLatest.length > 0) this.loading = false;
+  }
+
   private async pullRefreshLibrary(): Promise<void> {
     if (this.libraryRefreshing) return;
     this.libraryRefreshing = true;
-    try { await this.refreshLibrary(false); }
+    try {
+      await photoService.retryPending();
+      if (photoService.pendingCount() === 0) await uploader.drainPending();
+      await this.refreshLibrary(false, true);
+    }
     finally { this.libraryRefreshing = false; }
   }
 
@@ -765,6 +894,45 @@ struct Index {
     else this.posts = this.communityRecommended.slice();
   }
 
+  /**
+   * Keep stable card instances while replacing a disk snapshot with its fresh network copy.
+   * Image aspect ratios are runtime presentation state, so carry them across an unchanged cover.
+   */
+  private applyCommunityFeed(feed: CommunityFeed, blocked: string[]): void {
+    const recommended: CommunityPost[] = this.mergeCommunityPresentation(
+      feed.recommended.filter((post: CommunityPost) => !blocked.includes(post.author)), this.communityRecommended);
+    const latest: CommunityPost[] = this.mergeCommunityPresentation(
+      feed.latest.filter((post: CommunityPost) => !blocked.includes(post.author)), this.communityLatest);
+    const visible: CommunityPost[] = this.communityFilter === 'latest' ? latest.slice() :
+      (this.communityFilter === 'replies' ? recommended.filter((post: CommunityPost) => (post.replyTo ?? '').length > 0) : recommended.slice());
+    if (!this.sameCommunityCards(this.communityRecommended, recommended)) this.communityRecommended = recommended;
+    if (!this.sameCommunityCards(this.communityLatest, latest)) this.communityLatest = latest;
+    if (!this.sameCommunityCards(this.posts, visible)) this.posts = visible;
+  }
+
+  private mergeCommunityPresentation(next: CommunityPost[], previous: CommunityPost[]): CommunityPost[] {
+    const byId: Map<string, CommunityPost> = new Map<string, CommunityPost>();
+    previous.forEach((post: CommunityPost) => byId.set(post.shareId, post));
+    next.forEach((post: CommunityPost) => {
+      const cached: CommunityPost | undefined = byId.get(post.shareId);
+      if (cached && cached.coverPhotoKey === post.coverPhotoKey && post.coverAspectRatio === undefined) {
+        post.coverAspectRatio = cached.coverAspectRatio;
+      }
+    });
+    return next;
+  }
+
+  private sameCommunityCards(left: CommunityPost[], right: CommunityPost[]): boolean {
+    if (left.length !== right.length) return false;
+    return left.every((post: CommunityPost, index: number) => {
+      const candidate: CommunityPost = right[index];
+      return post.shareId === candidate.shareId && post.title === candidate.title && post.excerpt === candidate.excerpt &&
+        post.author === candidate.author && post.likes === candidate.likes && post.replies === candidate.replies &&
+        post.liked === candidate.liked && post.replyTo === candidate.replyTo && post.kind === candidate.kind &&
+        post.coverPhotoKey === candidate.coverPhotoKey && post.updatedAt === candidate.updatedAt;
+    });
+  }
+
   private selectCommunityFilter(value: string): void {
     this.communityFilter = value; this.updateCommunityFilter();
   }
@@ -775,18 +943,44 @@ struct Index {
   }
 
   private async openRecording(recording: Recording): Promise<void> {
+    if (this.recording || this.recordingTransitioning || Date.now() < this.recordingDetailOpenBlockedUntil) return;
+    if (recording.saving) {
+      promptAction.showToast({ message: '录音正在保存，请稍候' });
+      return;
+    }
     this.selected = recording;
-    this.article = undefined;
+    this.generatedPhotoKeys = [];
+    this.processingPhotoKeys = [];
+    this.pendingPhotoRefreshKeys = [];
+    const detailLoadSequence: number = ++this.detailLoadSequence;
+    this.detailLoading = true;
+    this.detailLoadError = '';
+    this.showDetailMenu = false;
+    this.article = recording.hasArticles ? libraryStore.cachedArticle(recording) : undefined;
+    this.warmArticlePhotos(this.article);
     this.navigateTo('detail');
     this.selectedArticle = 0;
-    if (recording.hasArticles) {
-      this.article = await libraryStore.fetchArticle(recording);
-      this.history = await libraryStore.versionHistory(recording);
-      this.communityShareId = await communityStore.sharedShareId(recording.articleKey());
-    } else {
-      this.history = new ArticleHistory();
-      this.communityShareId = '';
+    try {
+      if (recording.hasArticles) {
+        const fresh: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
+        if (fresh && this.selected?.stem() === recording.stem()) {
+          this.article = fresh;
+          this.warmArticlePhotos(fresh);
+        }
+        this.history = await libraryStore.versionHistory(recording);
+        this.communityShareId = await communityStore.sharedShareId(recording.articleKey());
+      } else {
+        this.history = new ArticleHistory();
+        this.communityShareId = '';
+      }
+    } catch (_) {
+      if (!this.article && this.selected?.stem() === recording.stem()) {
+        this.detailLoadError = '文章加载失败，请检查网络后重试';
+      }
+    } finally {
+      if (detailLoadSequence === this.detailLoadSequence) this.detailLoading = false;
     }
+    if (detailLoadSequence !== this.detailLoadSequence) return;
     this.editSession?.close();
     this.editSession = new ArticleEditSession(recording.stem(), (message: string | ArrayBuffer) => {
       if (typeof message === 'string') this.handleArticleEditMessage(message, recording);
@@ -799,7 +993,21 @@ struct Index {
       const message: EditSocketMessage = JSON.parse(raw) as EditSocketMessage;
       const updated: ArticleDoc | undefined = message.article ?? message.doc;
       if ((message.type === 'updated' || message.type === 'snapshot') && updated) {
-        updated.owner = updated.owner ?? this.article?.owner; this.article = updated;
+        updated.owner = updated.owner ?? this.article?.owner;
+        const introduced: string[] = PhotoLoadPolicy.introducedKeys(
+          photoService.articlePhotoKeys(this.article), photoService.articlePhotoKeys(updated));
+        this.generatedPhotoKeys = Array.from(new Set<string>(this.generatedPhotoKeys.concat(introduced)));
+        const refreshKeys: string[] = message.type === 'updated' ? this.pendingPhotoRefreshKeys.slice() : [];
+        if (message.type === 'updated') this.pendingPhotoRefreshKeys = [];
+        this.processingPhotoKeys = PhotoLoadPolicy.processingKeys(this.processingPhotoKeys, refreshKeys);
+        libraryStore.cacheArticle(recording, updated, refreshKeys).catch(() => {});
+        this.article = updated;
+        this.warmArticlePhotos(updated, refreshKeys);
+      }
+      const snapshotResolved: boolean = (message.queue ?? []).some((item: EditQueueState) =>
+        item.status === 'done' || item.status === 'error');
+      if (ClientReliability.isEditTerminal(message.type ?? '', snapshotResolved)) {
+        this.refreshResolvedArticle(recording).catch(() => {});
       }
       if (message.type === 'preview-reset') {
         this.restyleTitles.clear(); this.restyleBodies.clear(); this.restylePreviewText = '正在重新整理新稿…'; return;
@@ -814,6 +1022,16 @@ struct Index {
       }
       if (message.type === 'preview-done') this.finishRestyle(recording, message.ok ?? true);
     } catch (_) {}
+  }
+
+  private async refreshResolvedArticle(recording: Recording): Promise<void> {
+    const fresh: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
+    if (!fresh || this.selected?.stem() !== recording.stem()) return;
+    fresh.owner = fresh.owner ?? this.article?.owner;
+    this.article = fresh;
+    this.warmArticlePhotos(fresh);
+    this.selectedArticle = Math.min(this.selectedArticle, Math.max(0, fresh.articles.length - 1));
+    this.history = await libraryStore.versionHistory(recording);
   }
 
   private renderRestylePreview(): void {
@@ -852,71 +1070,158 @@ struct Index {
     this.restylePreviewActive = false; this.restyleTitles.clear(); this.restyleBodies.clear();
     if (!ok) { promptAction.showToast({ message: '换文风请求失败' }); return; }
     const updated: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
-    if (updated) { this.article = updated; this.selectedArticle = 0; this.history = await libraryStore.versionHistory(recording); }
+    if (updated) {
+      this.article = updated; this.warmArticlePhotos(updated);
+      this.selectedArticle = 0; this.history = await libraryStore.versionHistory(recording);
+    }
     else promptAction.showToast({ message: '新文风文章暂不可读' });
+  }
+
+  private updateRecordingMeter(): void {
+    if (!this.recording || this.recordingMeterSampling) return;
+    this.recordingSeconds = voiceRecorder.elapsedSeconds();
+    this.recordingMeterSampling = true;
+    voiceRecorder.sampleAmplitude()
+      .then((amplitude: number) => {
+        if (this.recording) this.recordingLevel = normalizeAmplitude(amplitude);
+      })
+      .catch(() => {})
+      .finally(() => this.recordingMeterSampling = false);
   }
 
   private async toggleRecording(): Promise<void> {
     if (!this.context || this.recordingTransitioning) return;
-    const wasRecording: boolean = this.recording;
+    if (this.recording) {
+      this.beginRecordingStop();
+      return;
+    }
     this.recordingTransitioning = true;
     try {
-      if (!wasRecording) {
       const manager = abilityAccessCtrl.createAtManager();
-      const result = await manager.requestPermissionsFromUser(this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
+      const result = await manager.requestPermissionsFromUser(
+        this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
       if (result.authResults[0] !== 0) {
         promptAction.showToast({ message: '需要麦克风权限才能录音' });
         return;
       }
+      this.navigateHome(false);
       if (this.defaultRecordTag.length === 0 && this.selectedTag.length > 0) this.defaultRecordTag = this.selectedTag;
       await voiceRecorder.start();
-      this.interviewer = new RealtimeInterviewer((active: boolean, status: string) => {
-        this.interviewActive = active; this.interviewStatus = status;
-      });
+      this.interviewer = undefined;
+      this.interviewActive = false;
+      this.interviewStatus = '';
       this.capturedPhotos = [];
-      this.recording = true;
       this.recordingSeconds = 0;
-      this.timer = setInterval(() => {
-        this.recordingSeconds++; voiceRecorder.sampleAmplitude().catch(() => {});
-      }, 1000);
-      } else {
-        if (this.timer >= 0) clearInterval(this.timer);
-        this.timer = -1;
-        await this.interviewer?.stop(); this.interviewer = undefined;
-        this.interviewActive = false; this.interviewStatus = '';
-        const path: string = await voiceRecorder.stop();
-        this.recording = false;
-        const audioName: string = path.substring(path.lastIndexOf('/') + 1);
-        const photos: CapturedPhoto[] = this.capturedPhotos.slice(); this.capturedPhotos = [];
-        if (voiceRecorder.looksSilent()) {
-          const result = await promptAction.showDialog({ title: '没有检测到明显声音',
-            message: '这段录音峰值很低。继续上传大概率会被标记为“无语音”。',
-            buttons: [{ text: '丢弃录音', color: '#666666' }, { text: '仍然上传', color: '#D92D20' }] });
-          if (result.index !== 1) {
-            try { fs.unlinkSync(path); } catch (_) {}
-            await photoService.discardCaptured(photos);
-            this.pendingReplyTarget = '';
-            this.defaultRecordTag = '';
-            promptAction.showToast({ message: '已丢弃静音录音' }); return;
-          }
-        }
-        if (this.pendingReplyTarget.length > 0) {
-          await appPreferences.savePendingReply(audioName, this.pendingReplyTarget);
-          this.pendingReplyTarget = '';
-        }
-        promptAction.showToast({ message: '录音完成，正在上传' });
-        await photoService.uploadCaptured(photos);
-        const tags: string[] = this.defaultRecordTag.length > 0 ? [this.defaultRecordTag] : [];
-        this.defaultRecordTag = '';
-        const uploaded: boolean = await uploader.upload(path, tags);
-        promptAction.showToast({ message: uploaded ? '上传成功，正在生成文章' : '上传失败，录音已保留' });
-        await this.refreshLibrary();
-      }
+      this.recordingLevel = 0;
+      this.recording = true;
+      this.updateRecordingMeter();
+      this.timer = setInterval(() => this.updateRecordingMeter(), 500);
     } catch (error) {
-      if (wasRecording) this.recording = false;
-      promptAction.showToast({ message: `${wasRecording ? '录音保存' : '录音启动'}失败：${String(error)}` });
+      promptAction.showToast({ message: `录音启动失败：${String(error)}` });
     } finally {
       this.recordingTransitioning = false;
+    }
+  }
+
+  private beginRecordingStop(): void {
+    this.recordingTransitioning = true;
+    this.recordingDetailOpenBlockedUntil = Date.now() + 1200;
+    if (this.timer >= 0) clearInterval(this.timer);
+    this.timer = -1;
+
+    const savingName: string = voiceRecorder.pendingRecordingName();
+    const elapsedSeconds: number = voiceRecorder.elapsedSeconds();
+    const photos: CapturedPhoto[] = this.capturedPhotos.slice();
+    const replyTarget: string = this.pendingReplyTarget;
+    const tag: string = this.defaultRecordTag;
+    const interviewer: RealtimeInterviewer | undefined = this.interviewer;
+
+    this.recordingLevel = 0;
+    this.recordingMeterSampling = false;
+    this.interviewer = undefined;
+    this.interviewActive = false;
+    this.interviewStatus = '';
+    this.capturedPhotos = [];
+    this.pendingReplyTarget = '';
+    this.defaultRecordTag = '';
+
+    if (!isRecordingTooShort(elapsedSeconds) && savingName.length > 0) {
+      const saving: Recording = new Recording({ name: savingName });
+      saving.saving = true;
+      saving.tags = tag.length > 0 ? [tag] : [];
+      this.recordings = RecordingListUi.beginSaving(this.recordings, saving);
+    }
+    this.finishRecordingStop(interviewer, savingName, photos, replyTarget, tag).catch(() => {});
+  }
+
+  private async finishRecordingStop(
+    interviewer: RealtimeInterviewer | undefined,
+    savingName: string,
+    photos: CapturedPhoto[],
+    replyTarget: string,
+    tag: string
+  ): Promise<void> {
+    try {
+      await interviewer?.stop();
+      const path: string = await voiceRecorder.stop();
+      if (isRecordingTooShort(voiceRecorder.durationSeconds())) {
+        try { fs.unlinkSync(path); } catch (_) {}
+        await photoService.discardCaptured(photos);
+        this.recordings = RecordingListUi.cancelSaving(this.recordings, savingName);
+        if (replyTarget.length > 0) {
+          promptAction.showToast({ message: '时间太短，不足以产生文章' });
+        } else {
+          await promptAction.showDialog({
+            title: '录音太短',
+            message: '时间太短，不足以产生文章，这条录音不会上传。',
+            buttons: [{ text: '知道了', color: '#D92D20' }]
+          });
+        }
+        return;
+      }
+
+      const audioName: string = path.substring(path.lastIndexOf('/') + 1);
+      if (replyTarget.length > 0) await appPreferences.savePendingReply(audioName, replyTarget);
+      const tags: string[] = tag.length > 0 ? [tag] : [];
+      uploader.prepare(path, tags);
+      const pending: Recording = uploader.pendingRecordings().find(
+        (recording: Recording) => recording.name === audioName) ?? new Recording({ name: audioName });
+      pending.uploading = true;
+      pending.tags = tags;
+      this.recordings = RecordingListUi.finishSaving(this.recordings, savingName, pending);
+      this.commandSession?.setRefs(this.currentCommandRefs());
+      this.continueRecordingUpload(path, audioName, photos);
+    } catch (error) {
+      this.recordings = RecordingListUi.cancelSaving(this.recordings, savingName);
+      await photoService.discardCaptured(photos);
+      promptAction.showToast({ message: `录音保存失败：${String(error)}` });
+    } finally {
+      this.navigateHome(false);
+      this.recordingDetailOpenBlockedUntil = Date.now() + 600;
+      setTimeout(() => {
+        this.recording = false;
+        this.recordingTransitioning = false;
+      }, 180);
+    }
+  }
+
+  private async continueRecordingUpload(path: string, audioName: string, photos: CapturedPhoto[]): Promise<void> {
+    try {
+      const uploadedPhotoCount: number = await photoService.uploadCaptured(photos);
+      if (uploadedPhotoCount !== photos.length) {
+        promptAction.showToast({ message: '照片上传失败，录音已保留，稍后自动续传' });
+        return;
+      }
+      const uploaded: boolean = await uploader.upload(path);
+      if (!uploaded) promptAction.showToast({ message: '上传失败，录音已保留' });
+      if (uploaded) {
+        this.recordings = RecordingListUi.applyStatus(this.recordings,
+          audioName.endsWith('.m4a') ? audioName.substring(0, audioName.length - 4) : audioName, 'asr');
+        this.commandSession?.setRefs(this.currentCommandRefs());
+        libraryStore.storeRecordingsSnapshot(this.recordings);
+      }
+    } catch (error) {
+      promptAction.showToast({ message: `上传失败，录音已保留：${String(error)}` });
     }
   }
 
@@ -992,11 +1297,7 @@ struct Index {
   @Builder
   private topBar(title: string, back: boolean = false) {
     if (back) {
-      PageHeader({ title: title, onBack: () => {
-        this.editSession?.close();
-        audioPlayback.stop().catch(() => {});
-        this.navigateBack();
-      } })
+      PageHeader({ title: title, onBack: () => this.navigateBack() })
     } else {
       Row() {
         Image($rawfile('voicedrop-brand-waveform.svg'))
@@ -1028,7 +1329,7 @@ struct Index {
       .backgroundColor(Theme.ACCENT_STRONG)
       .borderRadius(18)
       .margin({ left: 10 })
-      .enabled(this.deletingRecordingName.length === 0)
+      .enabled(this.deletingRecordingName.length === 0 && !recording.saving)
       .onClick(() => {
         this.closeOpenRecordingSwipe();
         this.deleteRecordingWithConfirmation(recording, false);
@@ -1055,15 +1356,37 @@ struct Index {
   }
 
   @Builder
+  private recordingRowIcon(recording: Recording) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Row({ space: 4 }) {
+        Column().width(3).height(11).borderRadius(1.5)
+          .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
+        Column().width(3).height(19).borderRadius(1.5)
+          .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
+        Column().width(3).height(14).borderRadius(1.5)
+          .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
+      }.width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        .backgroundColor(recording.isEmpty ? '#F4F0EB' : '#FBEAE7').borderRadius(14)
+      if (this.commandTalking && this.commandRefNumber(recording) > 0) {
+        Text(`${this.commandRefNumber(recording)}`)
+          .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)
+          .width(24).height(24).textAlign(TextAlign.Center)
+          .backgroundColor(Theme.ACCENT_STRONG).borderRadius(12)
+      }
+    }.width(44).height(44).margin({ right: 14 })
+  }
+
+  @Builder
   private libraryPage() {
-    Column() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
       this.topBar('VoiceDrop 口述')
       Row() {
         Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
           .padding({ left: 0, right: 14, top: 6, bottom: 6 })
         Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
           .padding({ left: 14, right: 14, top: 6, bottom: 6 }).onClick(() => {
-            this.tab = 1; if (this.posts.length === 0) this.refreshCommunity();
+            this.tab = 1; this.refreshCommunity(false).catch(() => {});
           })
         Blank()
       }.width('100%').padding({ left: 18, right: 18 })
@@ -1106,16 +1429,11 @@ struct Index {
             ForEach(this.visibleRecordings(), (item: Recording) => {
               ListItem() {
                 Row() {
-                  if (this.commandTalking && this.commandRefNumber(item) > 0) {
-                    Text(`${this.commandRefNumber(item)}`)
-                      .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)
-                      .width(24).height(24).textAlign(TextAlign.Center)
-                      .backgroundColor(Theme.ACCENT_STRONG).borderRadius(12).margin({ right: 10 })
-                  }
+                  this.recordingRowIcon(item)
                   Column({ space: 7 }) {
                     Text(item.rowTitle()).fontSize(16).fontWeight(FontWeight.Bold)
                       .fontColor(item.isEmpty ? '#6F6A63' : Theme.INK)
-                      .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                     Row({ space: 10 }) {
                       Text(item.durationLabel()).fontSize(13).fontColor(item.isEmpty ? '#B9B2A8' : Theme.FAINT)
                       Text('•').fontSize(13).fontColor(this.recordingStatusColor(item))
@@ -1143,7 +1461,7 @@ struct Index {
                   edgeEffect: SwipeEdgeEffect.Spring
                 })
                 .onClick(() => this.openRecording(item))
-            }, (item: Recording) => `${item.name}-${this.recordingSwipeRevision}`)
+            }, (item: Recording) => `${RecordingListUi.rowRenderKey(item)}-${this.recordingSwipeRevision}`)
           }.width('100%').height('100%').padding({ left: 16, right: 16, bottom: 8 })
             .onScrollStart(() => this.closeOpenRecordingSwipe())
         }.layoutWeight(1).width('100%')
@@ -1170,67 +1488,37 @@ struct Index {
             .borderRadius(14).layoutWeight(1)
         }.width('100%').padding({ left: 16, right: 16, bottom: 10 })
       }
-      if (this.recording && this.capturedPhotos.length > 0) {
-        Scroll() {
-          Row({ space: 10 }) {
-            ForEach(this.capturedPhotos, (photo: CapturedPhoto) => {
-              Stack({ alignContent: Alignment.TopEnd }) {
-                Image(`file://${photo.localPath}`).width(72).height(72).objectFit(ImageFit.Cover).borderRadius(10)
-                Button() { RemixIcon({ glyph: RI.CLOSE, iconSize: 15, color: Theme.WHITE }) }
-                  .width(26).height(26).padding(0).borderRadius(13).backgroundColor('#CC111111')
-                  .onClick(() => this.removeRecordingPhoto(photo))
-              }
-            }, (photo: CapturedPhoto) => photo.key)
-          }.padding({ left: 16, right: 16 })
-        }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).height(80).width('100%')
+      }.width('100%').height('100%').backgroundColor(Theme.BG)
+      if (!this.recording) {
+        Column() {
+          this.recordingFab()
+        }.width('100%').margin({ bottom: this.safeAreaBottom() + 20 }).hitTestBehavior(HitTestMode.Transparent)
       }
-      if (this.recording && this.interviewStatus.length > 0) {
-        Text(this.interviewStatus).fontSize(12).fontColor(this.interviewActive ? '#B54708' : '#888888')
-          .width('100%').textAlign(TextAlign.Center).margin({ top: 5 })
-      }
-      Row({ space: 12 }) {
-        if (this.recording) Button(this.interviewActive ? '采访中' : '采访').fontSize(13).width(64).height(58).borderRadius(29)
-          .backgroundColor(this.interviewActive ? '#FFF0D9' : '#EFEFED')
-          .fontColor(this.interviewActive ? '#B54708' : '#111111').enabled(!this.recordingTransitioning)
-          .onClick(() => this.toggleInterview())
-        if (this.recording) Button() { RemixIcon({ glyph: RI.IMAGE, iconSize: 22, color: Theme.INK }) }
-          .width(58).height(58).borderRadius(29).backgroundColor(Theme.CARD)
-          .enabled(!this.recordingTransitioning).onClick(() => this.addRecordingPhotos())
-        if (this.recording) {
-          Stack({ alignContent: Alignment.Center }) {
-            Row() {
-              if (this.recordingTransitioning) {
-                LoadingProgress().width(24).height(24).color(Theme.WHITE)
-              } else {
-                Blank().width(22).height(22).backgroundColor(Theme.WHITE).borderRadius(6)
-              }
-            }
-            .width(60).height(60)
-            .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-            .backgroundColor(Theme.ACCENT_STRONG).borderRadius(30)
-            .shadow({ radius: 12, color: '#28000000', offsetY: 4 })
-          }
-          .width(82).height(82)
-          .enabled(!this.recordingTransitioning).onClick(() => this.toggleRecording())
-        } else {
-          Stack({ alignContent: Alignment.Center }) {
-            Row() { this.microphoneIcon(27, Theme.WHITE) }
-              .width(60).height(60)
-              .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-              .backgroundColor(Theme.ACCENT_STRONG).borderRadius(30)
-              .shadow({ radius: 12, color: '#28000000', offsetY: 4 })
-          }
-          .width(82).height(82)
-          .enabled(!this.recordingTransitioning).onTouch((event: TouchEvent) => this.handleRecordFabTouch(event))
-        }
-      }.justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center).width('100%').margin({ top: 4 })
-      Text(this.recording
-        ? (this.recordingTransitioning ? '正在保存…' :
-          `点击停止 · ${Math.floor(this.recordingSeconds / 60)}:${(this.recordingSeconds % 60).toString().padStart(2, '0')}`)
-        : LibraryCommandUi.recordButtonLabel(this.commandTalking, this.commandCanceled))
-        .fontSize(12).fontColor(this.commandTalking ? Theme.ACCENT_STRONG : Theme.SECONDARY)
-        .letterSpacing(1).margin({ top: -3, bottom: 22 })
     }.width('100%').height('100%').backgroundColor(Theme.BG)
+  }
+
+  @Builder
+  private recordingFab() {
+    Column({ space: -3 }) {
+      Row() {
+        Stack({ alignContent: Alignment.Center }) {
+          Column()
+            .width(66).height(66)
+            .backgroundColor(Theme.CARD)
+            .borderRadius(33)
+            .shadow({ radius: 8, color: '#33000000', offsetX: 0, offsetY: 0 })
+          Row() { this.microphoneIcon(27, Theme.WHITE) }
+            .width(60).height(60).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+            .backgroundColor(Theme.ACCENT_STRONG).borderRadius(30)
+        }
+          .width(82).height(82)
+          .enabled(!this.recordingTransitioning)
+          .onTouch((event: TouchEvent) => this.handleRecordFabTouch(event))
+      }.justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
+      Text(LibraryCommandUi.recordButtonLabel(this.commandTalking, this.commandCanceled))
+        .fontSize(12).fontColor(this.commandTalking ? Theme.ACCENT_STRONG : Theme.SECONDARY).letterSpacing(1)
+        .hitTestBehavior(HitTestMode.Transparent)
+    }.alignItems(HorizontalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
   }
 
   private homeTags(): string[] {
@@ -1248,7 +1536,7 @@ struct Index {
 
   private currentCommandRefs(): CommandRef[] {
     const targets: LibraryCommandTarget[] = this.visibleRecordings().map((recording: Recording) =>
-      new LibraryCommandTarget(recording.stem(), recording.rowTitle(), recording.uploading));
+      new LibraryCommandTarget(recording.stem(), recording.rowTitle(), recording.uploading || recording.saving));
     return LibraryCommandUi.commandRefs(targets).map((ref) => new CommandRef(ref.number, ref.stem, ref.title));
   }
 
@@ -1471,7 +1759,7 @@ struct Index {
       const event: LibraryCommandEvent = new LibraryCommandEvent(message.type, message.state, message.text, message.message);
       const feedback: LibraryCommandFeedback = LibraryCommandUi.feedbackForEvent(event);
       this.applyCommandFeedback(feedback);
-      if (message.type === 'updated') this.refreshLibrary();
+      if (ClientReliability.commandMessageRequiresRefresh(message.type ?? '')) this.refreshLibrary();
       if (feedback.visible() && (message.type === 'reply' || message.type === 'error')) {
         promptAction.showToast({ message: feedback.text });
       }
@@ -1505,6 +1793,7 @@ struct Index {
           .onComplete((event) => {
             if (event) this.updateCommunityPhotoRatio(post, event.width, event.height);
           })
+          .onError(() => this.fallbackCommunityPhoto(post.coverPhotoKey ?? ''))
       }
       Column({ space: 8 }) {
         if (post.kind === 'prompt') Text('提示词').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5529')
@@ -1563,30 +1852,21 @@ struct Index {
           .onClick(() => this.selectCommunityFilter('replies'))
         Blank()
       }.height(38).padding({ left: 14, right: 14 }).width('100%')
-      if (this.posts.length === 0 && !this.loading) {
-        Refresh({ refreshing: this.communityRefreshing }) {
-          List() {
-            ListItem() {
-              Column({ space: 12 }) {
-                Text('发现大家用声音写下的文章').fontSize(18)
-                Button('加载社区').onClick(() => this.refreshCommunity())
-              }.height(360).justifyContent(FlexAlign.Center)
-            }
-          }.width('100%').height('100%')
-        }.layoutWeight(1).width('100%').onRefreshing(() => this.pullRefreshCommunity())
-      } else if (this.loading) {
-        LoadingProgress().width(34).height(34).margin({ top: 80 })
+      if (this.posts.length === 0) {
+        Column() {
+          LoadingProgress().width(34).height(34)
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       } else {
         Refresh({ refreshing: this.communityRefreshing }) {
           Scroll() {
             Row({ space: 8 }) {
               Column({ space: 8 }) {
                 ForEach(this.communityColumnPosts(0), (post: CommunityPost) => this.communityCard(post),
-                  (post: CommunityPost) => `${post.shareId}-${(post.coverAspectRatio ?? 1).toFixed(2)}`)
+                  (post: CommunityPost) => post.shareId)
               }.layoutWeight(1)
               Column({ space: 8 }) {
                 ForEach(this.communityColumnPosts(1), (post: CommunityPost) => this.communityCard(post),
-                  (post: CommunityPost) => `${post.shareId}-${(post.coverAspectRatio ?? 1).toFixed(2)}`)
+                  (post: CommunityPost) => post.shareId)
               }.layoutWeight(1)
             }.alignItems(VerticalAlign.Top).padding({ left: 16, right: 16, bottom: 24 }).width('100%')
           }.width('100%').height('100%').scrollBar(BarState.Off)
@@ -1596,36 +1876,68 @@ struct Index {
   }
 
   private async openCommunityPost(post: CommunityPost): Promise<void> {
+    const shareId: string = post.shareId;
+    this.showCommunityMenu = false;
     this.selectedPost = post;
     this.selectedReplyParent = undefined;
     this.communityReplies = [];
+    this.communityDetailLoading = true;
+    this.communityDetailError = '';
+    this.postLiked = appPreferences.likedCommunityPost(shareId);
     this.postFed = false; this.postFeedCount = 0; this.postFeeding = false;
     this.navigateTo('communityDetail');
-    communityStore.engage(post.shareId, 'view').catch(() => {});
-    communityStore.feedState(post.shareId).then((state: CommunityFeedState) => {
-      if (this.selectedPost?.shareId === post.shareId) { this.postFed = state.fed; this.postFeedCount = state.count; }
+    communityStore.engage(shareId, 'view').catch(() => {});
+    communityStore.feedState(shareId).then((state: CommunityFeedState) => {
+      if (this.selectedPost?.shareId === shareId) { this.postFed = state.fed; this.postFeedCount = state.count; }
     }).catch(() => {});
-    const full: CommunityPost | undefined = await communityStore.get(post.shareId);
-    if (full) this.selectedPost = full;
-    this.communityReplies = this.selectedPost?.kind === 'prompt' ? [] : await communityStore.replies(post.shareId);
-    const parentId: string = this.selectedPost?.replyTo ?? '';
-    if (parentId.length > 0) {
-      const parent: CommunityPost | undefined = await communityStore.get(parentId);
-      if (this.selectedPost?.shareId === post.shareId) this.selectedReplyParent = parent;
+    try {
+      const full: CommunityPost | undefined = await communityStore.get(shareId);
+      if (this.selectedPost?.shareId !== shareId) return;
+      if (!full) {
+        this.communityDetailError = '文章加载失败，请稍后重试';
+        return;
+      }
+      this.selectedPost = full;
+      const replies: CommunityPost[] =
+        full.kind === 'prompt' ? [] : await communityStore.replies(shareId);
+      const parentId: string = full.replyTo ?? '';
+      const parent: CommunityPost | undefined =
+        parentId.length > 0 ? await communityStore.get(parentId) : undefined;
+      if (this.selectedPost?.shareId !== shareId) return;
+      this.communityReplies = replies;
+      this.selectedReplyParent = parent;
+    } catch (_) {
+      if (this.selectedPost?.shareId === shareId) {
+        this.communityDetailError = '文章加载失败，请检查网络后重试';
+      }
+    } finally {
+      if (this.selectedPost?.shareId === shareId) this.communityDetailLoading = false;
     }
+  }
+
+  private retryCommunityDetail(): void {
+    if (this.selectedPost) this.openCommunityPost(this.selectedPost).catch(() => {});
   }
 
   private communityPhotoUrl(key: string): string {
     if (key.length === 0) return '';
-    const encoded: string = key.split('/').map((part: string) => encodeURIComponent(part)).join('/');
-    return `https://${Api.HOST}/cdn-cgi/image/width=512,quality=60/files/api/photo/${encoded}`;
+    return this.thumbnailFallbackKeys.includes(key) ? ArticleBody.photoUrl(key) : ArticleBody.photoThumbnailUrl(key);
   }
 
+  private fallbackCommunityPhoto(key: string): void {
+    if (key.length === 0 || this.thumbnailFallbackKeys.includes(key)) return;
+    this.thumbnailFallbackKeys = this.thumbnailFallbackKeys.concat(key);
+    // Rebuild the cards so this image immediately retries on the original URL.
+    this.posts = this.posts.slice();
+  }
+
+  /** Mirrors Android CommunityFeedView: square placeholder, then the decoded thumbnail's true aspect ratio. */
   private updateCommunityPhotoRatio(post: CommunityPost, width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
     const ratio: number = Math.max(0.55, Math.min(2.1, width / height));
     if (Math.abs((post.coverAspectRatio ?? 1) - ratio) < 0.01) return;
     post.coverAspectRatio = ratio;
+    // Keys stay shareId-only, so this updates geometry without recreating the card or image.
     this.posts = this.posts.slice();
   }
 
@@ -1654,14 +1966,41 @@ struct Index {
     promptAction.showToast({ message: error.length > 0 ? error : '已加入你的提示词' });
   }
 
+  private communityAuthor(post?: CommunityPost): string {
+    const author: string = post?.author?.trim() ?? '';
+    return author.length > 0 ? author : '匿名作者';
+  }
+
+  private communityDate(post?: CommunityPost): string {
+    if (!post) return '';
+    let timestamp: number = post.firstSharedAt ?? post.sharedAt ?? post.updatedAt ?? 0;
+    if (timestamp > 0 && timestamp < 100000000000) timestamp *= 1000;
+    const createdAt: string = post.createdAt ?? '';
+    if (timestamp <= 0 && createdAt.length > 0) {
+      timestamp = new Date(createdAt).getTime();
+    }
+    if (timestamp <= 0 || Number.isNaN(timestamp)) return '';
+    const date: Date = new Date(timestamp);
+    const now: Date = new Date();
+    if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+
   @Builder
   private articleBlock(block: ArticleBlock, editable: boolean = false, blockIndex: number = -1) {
     if (block.kind === 'photo') {
       if (editable) {
-        Image(this.blockPhotoUrl(block.value)).width('100%').objectFit(ImageFit.Contain).borderRadius(12).margin({ top: 10, bottom: 10 })
+        ArticlePhotoView({
+          url: this.blockPhotoUrl(block.value),
+          intent: this.isGeneratedPhoto(block.value) ? 'generated' : 'original',
+          onLoaded: () => this.cacheArticlePhotoToken(block.value)
+        })
           .gesture(LongPressGesture().onAction(() => this.openPromptMenu(block, blockIndex)))
       } else {
-        Image(this.blockPhotoUrl(block.value)).width('100%').objectFit(ImageFit.Contain).borderRadius(12).margin({ top: 10, bottom: 10 })
+        ArticlePhotoView({
+          url: this.blockPhotoUrl(block.value), intent: 'original',
+          onLoaded: () => this.cacheArticlePhotoToken(block.value)
+        })
       }
     } else {
       if (editable) {
@@ -1676,12 +2015,41 @@ struct Index {
   }
 
   private blockPhotoUrl(token: string): string {
-    const doc: ArticleDoc | undefined = this.page === 'communityDetail' ? this.selectedPost?.doc : this.article;
+    const communityDetail: boolean = this.isCommunityDetailActive();
+    const doc: ArticleDoc | undefined = communityDetail ? this.selectedPost?.doc : this.article;
     if (!doc) return '';
     const key: string | undefined = ArticleBody.resolvePhotoKey(token, doc.photos);
     if (!key) return '';
     const owner: string = (doc.owner ?? '').replace(/\/+$/, '');
-    return ArticleBody.photoUrl(owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key);
+    const fullKey: string = owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key;
+    return communityDetail ? ArticleBody.photoUrl(fullKey) : photoService.articlePhotoSource(fullKey);
+  }
+
+  private isGeneratedPhoto(token: string): boolean {
+    if (!this.article) return false;
+    const key: string | undefined = ArticleBody.resolvePhotoKey(token, this.article.photos);
+    if (!key) return false;
+    const owner: string = (this.article.owner ?? '').replace(/\/+$/, '');
+    const fullKey: string = owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key;
+    return this.generatedPhotoKeys.includes(fullKey) || this.processingPhotoKeys.includes(fullKey);
+  }
+
+  private warmArticlePhotos(doc?: ArticleDoc, refreshKeys: string[] = []): void {
+    if (!doc) return;
+    photoService.cacheArticlePhotos(doc, refreshKeys).catch(() => {});
+  }
+
+  private cacheArticlePhotoToken(token: string): void {
+    const doc: ArticleDoc | undefined = this.isCommunityDetailActive() ? this.selectedPost?.doc : this.article;
+    if (!doc) return;
+    const key: string | undefined = ArticleBody.resolvePhotoKey(token, doc.photos);
+    if (!key) return;
+    const owner: string = (doc.owner ?? '').replace(/\/+$/, '');
+    const fullKey: string = owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key;
+    if (this.processingPhotoKeys.includes(fullKey)) {
+      this.processingPhotoKeys = this.processingPhotoKeys.filter((item: string) => item !== fullKey);
+    }
+    photoService.cacheArticlePhoto(fullKey).catch(() => {});
   }
 
   private articleLine(blockIndex: number): number {
@@ -1737,7 +2105,11 @@ struct Index {
     if (this.promptTargetKind === 'photo') {
       instruction = instruction.replace(/\{\{KEY\}\}/g, this.promptTargetValue);
       const articlePhotos: string[] = this.article.photos ?? [];
-      anchor = EditAnchor.forImage(ArticleBody.resolvePhotoKey(this.promptTargetValue, articlePhotos) ?? this.promptTargetValue);
+      const key: string = ArticleBody.resolvePhotoKey(this.promptTargetValue, articlePhotos) ?? this.promptTargetValue;
+      anchor = EditAnchor.forImage(key);
+      const owner: string = (this.article.owner ?? '').replace(/\/+$/, '');
+      const fullKey: string = owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key;
+      if (!this.pendingPhotoRefreshKeys.includes(fullKey)) this.pendingPhotoRefreshKeys.push(fullKey);
     } else {
       const blocks: ArticleBlock[] = ArticleBody.blocks(this.article.articles[this.selectedArticle].body);
       const line: number = ArticleBody.visibleLine(blocks, this.promptTargetIndex);
@@ -1770,81 +2142,235 @@ struct Index {
   }
 
   @Builder
+  private detailBackButton() {
+    Button({ type: ButtonType.Normal }) {
+      RemixIcon({ glyph: RI.ARROW_LEFT, iconSize: 25, color: Theme.INK })
+    }
+      .width(40).height(40).padding(0)
+      .backgroundColor(Theme.CARD)
+      .border({ width: 1, color: Theme.BORDER, radius: 11 })
+      .borderRadius(11).clip(true)
+      .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+      .onClick(() => {
+        this.showDetailMenu = false;
+        this.navigateBack();
+      })
+  }
+
+  @Builder
+  private detailLoadingHeader() {
+    Row() {
+      this.detailBackButton()
+      Blank()
+    }.height(64).padding({ left: 16, right: 12, top: 8, bottom: 8 }).width('100%')
+  }
+
+  @Builder
+  private detailToolbar() {
+    Row() {
+      this.detailBackButton()
+      Blank()
+      Button({ type: ButtonType.Normal }) {
+        if (this.playing) {
+          Text('■').fontSize(17).fontColor(Theme.WHITE)
+        } else {
+          RemixIcon({ glyph: RI.PLAY, iconSize: 25, color: Theme.WHITE })
+        }
+      }
+        .width(44).height(44).padding(0).borderRadius(22)
+        .backgroundColor(this.playing ? Theme.INK : Theme.ACCENT_STRONG)
+        .enabled(!this.playbackLoading)
+        .opacity(this.playbackLoading ? 0.55 : 1)
+        .shadow({ radius: 5, color: '#34291F2B', offsetX: 0, offsetY: 2 })
+        .onClick(() => this.togglePlayback())
+      Button({ type: ButtonType.Normal }) {
+        RemixIcon({ glyph: RI.IMAGE, iconSize: 25, color: Theme.INK })
+      }
+        .width(40).height(40).padding(0).margin({ left: 4 })
+        .backgroundColor(Theme.CARD)
+        .border({ width: 1, color: Theme.BORDER, radius: 11 })
+        .borderRadius(11).clip(true)
+        .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+        .onClick(() => this.insertPhotos())
+      Row() {
+        Button({ type: ButtonType.Normal }) {
+          RemixIcon({
+            glyph: RI.ARROW_GO_BACK,
+            iconSize: 25,
+            color: this.canUndo() ? Theme.INK : Theme.FAINT
+          })
+        }
+          .width(39).height(40).padding(0).backgroundColor(Color.Transparent)
+          .enabled(this.canUndo()).onClick(() => this.shiftHistory(-1))
+        Divider().vertical(true).height(24).color(Theme.BORDER)
+        Button({ type: ButtonType.Normal }) {
+          RemixIcon({
+            glyph: RI.ARROW_GO_FORWARD,
+            iconSize: 25,
+            color: this.canRedo() ? Theme.INK : Theme.FAINT
+          })
+        }
+          .width(39).height(40).padding(0).backgroundColor(Color.Transparent)
+          .enabled(this.canRedo()).onClick(() => this.shiftHistory(1))
+      }
+        .height(40).margin({ left: 4 })
+        .backgroundColor(Theme.CARD)
+        .border({ width: 1, color: Theme.BORDER, radius: 11 })
+        .borderRadius(11).clip(true)
+        .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+      Button({ type: ButtonType.Normal }) {
+        RemixIcon({ glyph: RI.MORE, iconSize: 24, color: Theme.SECONDARY })
+      }
+        .width(40).height(40).padding(0).margin({ left: 4 })
+        .backgroundColor(Theme.CARD)
+        .border({ width: 1, color: Theme.BORDER, radius: 11 })
+        .borderRadius(11).clip(true)
+        .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+        .onClick(() => this.showDetailMenu = !this.showDetailMenu)
+    }.height(64).padding({ left: 16, right: 12, top: 8, bottom: 8 }).width('100%')
+  }
+
+  private detailSubtitle(): string {
+    if (!this.selected) return '';
+    const parsed = RecordingName.parse(this.selected.name);
+    if (!parsed) return '';
+    return `${parsed.month}月${parsed.day}日${parsed.hhmm.length > 0 ? ` ${parsed.hhmm}` : ''}`;
+  }
+
+  private detailVoiceLabel(): string {
+    if (this.holdEditPressed) {
+      return this.holdEditCanceled ? '上滑取消 · 松开放弃' : '松开 发送 · 上滑取消';
+    }
+    if (this.dictating) return '正在识别…';
+    return this.pendingQuestion() ? '按住 说话 回答' : '按住 说话 修改';
+  }
+
+  @Builder
+  private detailVoiceButton() {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 9 }) {
+        RemixIcon({
+          glyph: RI.MIC,
+          iconSize: 23,
+          color: this.holdEditCanceled ? Theme.ACCENT_STRONG : Theme.INK
+        })
+        Text(this.detailVoiceLabel())
+          .fontSize(17).fontWeight(FontWeight.Bold)
+          .fontColor(this.holdEditCanceled ? Theme.ACCENT_STRONG : Theme.INK)
+      }.justifyContent(FlexAlign.Center).width('100%')
+    }
+      .height(58).width('100%').padding(0)
+      .backgroundColor(this.holdEditCanceled ? '#FFE5E5' : '#FFFBF7')
+      .border({ width: 1, color: '#E8DED0', radius: 16 })
+      .borderRadius(16).clip(true)
+      .shadow({ radius: 9, color: '#34291F22', offsetX: 0, offsetY: 3 })
+      .stateEffect(false)
+      .onTouch((event: TouchEvent) => this.handleEditHold(event))
+  }
+
+  @Builder
   private detailPage() {
     Column() {
-      this.topBar(this.selected?.rowTitle() ?? '录音详情', true)
-      if (!this.article || this.article.articles.length === 0) {
-        Column({ space: 16 }) {
-          LoadingProgress().width(36)
-          Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18)
-          Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor('#888888')
+      if (this.detailLoading) {
+        this.detailLoadingHeader()
+        Column({ space: 14 }) {
+          LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
+          Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
+        }.height(180).margin({ top: 50 }).width('100%').justifyContent(FlexAlign.Center)
+        Blank()
+      } else if (this.detailLoadError.length > 0 && !this.article) {
+        this.detailLoadingHeader()
+        Column({ space: 14 }) {
+          Text(this.detailLoadError).fontSize(16).fontColor(Theme.SECONDARY)
+          Button('重新加载').fontSize(14).height(38).backgroundColor(Theme.ACCENT_STRONG)
+            .onClick(() => {
+              if (this.selected) this.openRecording(this.selected);
+            })
+        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+      } else if (!this.article || this.article.articles.length === 0) {
+        this.detailLoadingHeader()
+        Column({ space: 14 }) {
+          LoadingProgress().width(36).height(36).color(Theme.ACCENT_STRONG)
+          Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18).fontColor(Theme.INK)
+          Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor(Theme.SECONDARY)
         }.layoutWeight(1).justifyContent(FlexAlign.Center)
       } else {
-        Scroll() {
-          Row({ space: 8 }) {
-            ForEach(this.article.articles, (article: MinedArticle, index: number) => {
-              Button(`${index + 1}`).width(38).height(34).fontColor(this.selectedArticle === index ? Theme.WHITE : Theme.SECONDARY)
-                .backgroundColor(this.selectedArticle === index ? Theme.ACCENT : Theme.CARD)
-                .border({ width: 1, color: this.selectedArticle === index ? Theme.ACCENT : Theme.BORDER })
-                .onClick(() => this.selectedArticle = index)
-            })
-            Button(this.playbackLoading ? '加载中…' : (this.playing ? '停止' : '播放')).fontSize(14).height(34)
-              .fontColor(Theme.INK).backgroundColor(Theme.CARD).enabled(!this.playbackLoading).onClick(() => this.togglePlayback())
-            Button('分享').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.shareRecording())
-            Button('插图').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.insertPhotos())
-            Button(this.showArticleLines ? '关行号' : '行号').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.showArticleLines = !this.showArticleLines)
-            Button('编辑').fontSize(14).height(34).fontColor(Theme.ACCENT).backgroundColor(Theme.ACCENT_SOFT).onClick(() => this.beginDirectEdit())
-            Button('公众号').fontSize(14).height(34).fontColor(Theme.INK).backgroundColor(Theme.CARD).onClick(() => this.publishWechat())
-          }.padding({ left: 16, right: 16, top: 6, bottom: 8 })
-        }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
+        this.detailToolbar()
         if (this.playing || this.playbackDuration > 0) {
           Row({ space: 10 }) {
-            Text(this.timeLabel(this.playbackProgress)).fontSize(12).fontColor('#777777')
+            Text(this.timeLabel(this.playbackProgress)).fontSize(12).fontColor(Theme.SECONDARY)
             Slider({ value: this.playbackProgress, min: 0, max: Math.max(1, this.playbackDuration) })
+              .selectedColor(Theme.ACCENT_STRONG).trackColor(Theme.BORDER)
               .layoutWeight(1).onChange((value: number, mode: SliderChangeMode) => {
                 if (mode === SliderChangeMode.End) audioPlayback.seek(value);
               })
-            Text(this.timeLabel(this.playbackDuration)).fontSize(12).fontColor('#777777')
-          }.padding({ left: 16, right: 16, bottom: 8 }).width('100%')
+            Text(this.timeLabel(this.playbackDuration)).fontSize(12).fontColor(Theme.SECONDARY)
+          }.padding({ left: 22, right: 22, bottom: 4 }).width('100%')
         }
         Scroll() {
           Column({ space: 12 }) {
-            Text(this.article.articles[this.selectedArticle].title).fontSize(28).fontWeight(FontWeight.Bold).fontColor(Theme.INK).width('100%')
+            Text(this.article.articles[this.selectedArticle].title)
+              .fontSize(28).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+              .lineHeight(39).width('100%')
+            Row({ space: 4 }) {
+              Text(this.detailSubtitle()).fontSize(14).fontColor(Theme.FAINT)
+              Button(`✎  ${this.article.articles[this.selectedArticle].style === undefined ?
+                '选风格' : `v${this.article.articles[this.selectedArticle].style} 风格`}  ›`)
+                .fontSize(13).fontColor(Theme.FAINT).height(28).padding({ left: 6, right: 6 })
+                .backgroundColor(Color.Transparent).onClick(() => this.openStyleRewrite())
+            }.width('100%').margin({ bottom: 6 })
+            if (this.article.articles.length > 1) {
+              Scroll() {
+                Row({ space: 8 }) {
+                  ForEach(this.article.articles, (article: MinedArticle, index: number) => {
+                    Button(article.title)
+                      .height(32).fontSize(13).fontWeight(FontWeight.Bold)
+                      .fontColor(this.selectedArticle === index ? Theme.WHITE : Theme.SECONDARY)
+                      .backgroundColor(this.selectedArticle === index ? Theme.ACCENT_STRONG : Color.Transparent)
+                      .borderRadius(16).padding({ left: 14, right: 14 })
+                      .onClick(() => this.selectedArticle = index)
+                  })
+                }
+              }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
+                .margin({ bottom: 8 })
+            }
             ForEach(ArticleBody.blocks(this.article.articles[this.selectedArticle].body),
               (block: ArticleBlock, index: number) => this.articleBlock(block, true, index))
             if ((this.article.transcript ?? '').length > 0) {
-              Text('原始转写').fontSize(18).fontWeight(FontWeight.Bold).margin({ top: 28 }).width('100%')
-              Text(this.article.transcript ?? '').fontSize(15).lineHeight(25).fontColor(Theme.SECONDARY).width('100%')
+              Text('原始转写')
+                .fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                .margin({ top: 24 }).width('100%')
+              Text(this.article.transcript ?? '')
+                .fontSize(15).lineHeight(25).fontColor(Theme.SECONDARY).width('100%')
             }
-          }.padding({ left: 16, right: 16, top: 8, bottom: 120 }).alignItems(HorizontalAlign.Start)
-        }.layoutWeight(1)
-        this.detailActions()
+          }
+            .padding({ left: 22, right: 22, top: 12, bottom: 28 })
+            .alignItems(HorizontalAlign.Start).width('100%')
+        }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
         if (this.pendingQuestion()) {
           Column({ space: 8 }) {
             Row() {
               Text('追问').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A85D00').layoutWeight(1)
-              Button('跳过').fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor('#666666')
+              Button('跳过').fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor(Theme.SECONDARY)
                 .onClick(() => this.skipQuestion())
             }.width('100%')
-            Text(this.pendingQuestion()?.text ?? '').fontSize(16).fontWeight(FontWeight.Medium).lineHeight(24).width('100%')
-            Text('在下方输入或语音回答，内容会被织入正文最合适的位置。').fontSize(12).fontColor('#777777').width('100%')
-          }.padding(12).margin({ left: 14, right: 14, top: 6 }).backgroundColor('#FFFBF7')
-            .border({ width: 1, color: '#FFD6AD' }).borderRadius(14).alignItems(HorizontalAlign.Start)
+            Text(this.pendingQuestion()?.text ?? '')
+              .fontSize(16).fontWeight(FontWeight.Medium).lineHeight(24).fontColor(Theme.INK).width('100%')
+            Text('在下方按住说话回答，内容会被织入正文最合适的位置。')
+              .fontSize(12).fontColor(Theme.SECONDARY).width('100%')
+          }
+            .padding(12).margin({ left: 20, right: 20, bottom: 8 })
+            .backgroundColor('#FFFBF7')
+            .border({ width: 1, color: '#FFD6AD', radius: 14 })
+            .borderRadius(14).alignItems(HorizontalAlign.Start)
         }
-        Row({ space: 8 }) {
-          Button('↶').width(44).height(44).enabled(this.canUndo()).onClick(() => this.shiftHistory(-1))
-          Button('↷').width(44).height(44).enabled(this.canRedo()).onClick(() => this.shiftHistory(1))
-          Button(`${this.history.head || '版本'}`).width(54).height(44).fontSize(12).onClick(() => this.showHistoryBrowser = true)
-          TextInput({ placeholder: '输入或长按说出修改要求', text: this.editText })
-            .onChange((value: string) => this.editText = value).layoutWeight(1).height(46).backgroundColor('#EFEFED').borderRadius(23)
-          Button(this.holdEditPressed ? (this.holdEditCanceled ? '松开取消' : '松开发送') : '按住说话')
-            .fontSize(12).width(this.holdEditPressed ? 76 : 68).height(46).borderRadius(23)
-            .backgroundColor(this.holdEditCanceled ? '#D92D20' : (this.holdEditPressed ? '#FFF0D9' : '#111111'))
-            .onTouch((event: TouchEvent) => this.handleEditHold(event))
-          Button('发送').height(46).borderRadius(23).enabled(this.editText.trim().length > 0).onClick(() => this.sendEdit())
-        }.padding({ left: 14, right: 14, top: 8, bottom: 12 }).backgroundColor('#FAFAF8')
+        Column() {
+          this.detailVoiceButton()
+        }
+          .padding({ left: 20, right: 20, top: 6, bottom: 12 + this.safeAreaBottom() })
+          .width('100%')
       }
-    }.width('100%').height('100%')
+    }.width('100%').height('100%').backgroundColor(Theme.BG)
   }
 
   private timeLabel(milliseconds: number): string {
@@ -1887,6 +2413,9 @@ struct Index {
       this.history.head = oldHead;
       this.history = this.history;
       promptAction.showToast({ message: '版本切换失败' });
+    } else {
+      await libraryStore.cacheArticle(this.selected, this.article);
+      this.warmArticlePhotos(this.article);
     }
   }
 
@@ -1904,6 +2433,7 @@ struct Index {
     this.article.articles[this.selectedArticle].title = this.directTitle.trim();
     this.article.articles[this.selectedArticle].body = this.directBody;
     if (await libraryStore.saveArticle(this.selected, this.article)) {
+      this.warmArticlePhotos(this.article);
       this.showDirectEditor = false;
       this.history = await libraryStore.versionHistory(this.selected);
       promptAction.showToast({ message: '文章已保存' });
@@ -1920,6 +2450,8 @@ struct Index {
     if (await libraryStore.patchHead(this.selected, version.v)) {
       this.article = libraryStore.articleFromVersion(this.article, version);
       this.history.head = version.v; this.history = this.history; this.showHistoryBrowser = false;
+      await libraryStore.cacheArticle(this.selected, this.article);
+      this.warmArticlePhotos(this.article);
     } else promptAction.showToast({ message: '版本切换失败' });
   }
 
@@ -1969,6 +2501,50 @@ struct Index {
     promptAction.showToast({ message: '点击开始录音，文章生成后会自动作为回复发布' });
   }
 
+  private async runCommunityMenuAction(action: string): Promise<void> {
+    this.showCommunityMenu = false;
+    if (action === 'reply') {
+      this.beginCommunityReply();
+    } else if (action === 'wechat') {
+      await this.shareSelectedCommunityPostToWechat();
+    } else if (action === 'share') {
+      await this.shareSelectedCommunityPost();
+    } else if (action === 'report') {
+      await this.reportSelectedCommunityPost();
+    } else if (action === 'block') {
+      await this.blockSelectedAuthor();
+    }
+  }
+
+  private async shareSelectedCommunityPostToWechat(): Promise<void> {
+    if (!this.selectedPost || !this.context) return;
+    try {
+      const message: string = await WechatCommunityShare.send(
+        this.context, this.selectedPost.shareId, this.selectedPost.title || 'VoiceDrop 文章');
+      promptAction.showToast({ message: message });
+    } catch (error) {
+      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+    }
+  }
+
+  private async reportSelectedCommunityPost(): Promise<void> {
+    if (!this.selectedPost) return;
+    const post: CommunityPost = this.selectedPost;
+    const result = await promptAction.showDialog({
+      title: '举报这篇分享？',
+      message: '举报后这篇会立即从社区下架，并在 24 小时内由人工审核处理。',
+      buttons: [{ text: '取消', color: '#666666' }, { text: '举报并下架', color: Theme.ACCENT_STRONG }]
+    });
+    if (result.index !== 1) return;
+    if (await communityStore.report(post.shareId)) {
+      promptAction.showToast({ message: '已举报，内容已下架待审核' });
+      this.navigateHome();
+      await this.refreshCommunity();
+    } else {
+      promptAction.showToast({ message: '举报失败，请稍后重试' });
+    }
+  }
+
   private async regenerateArticle(): Promise<void> {
     if (!this.selected) return;
     if (await libraryStore.remine(this.selected)) {
@@ -2000,6 +2576,7 @@ struct Index {
             this.deletedRecordingNames = this.deletedRecordingNames.concat(target.name);
           }
           this.recordings = RecordingListUi.afterSuccessfulDelete(this.recordings, target.name);
+          libraryStore.storeRecordingsSnapshot(this.recordings);
           if (returnHome) this.navigateHome();
         }
       } catch (_) {
@@ -2010,97 +2587,312 @@ struct Index {
     });
   }
 
+  private hasWechatDraft(): boolean {
+    return Boolean(this.article?.articles.some((article: MinedArticle) =>
+      (article.wechatMediaId ?? '').trim().length > 0));
+  }
+
+  private async shareRecordingToWechat(): Promise<void> {
+    if (!this.context || !this.article) return;
+    if (this.communityShareId.length === 0) {
+      promptAction.showToast({ message: '请先在更多菜单开启“VD 社区可见”，再分享到微信' });
+      return;
+    }
+    const title: string = this.article.articles[this.selectedArticle]?.title ?? this.selected?.rowTitle() ?? 'VoiceDrop 文章';
+    try {
+      const message: string = await WechatCommunityShare.send(this.context, this.communityShareId, title);
+      promptAction.showToast({ message: message });
+    } catch (error) {
+      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+    }
+  }
+
+  private async runDetailMenuAction(action: string): Promise<void> {
+    this.showDetailMenu = false;
+    if (action === 'publish') {
+      await this.publishWechat();
+    } else if (action === 'community') {
+      await this.toggleCommunityShare();
+    } else if (action === 'xhs') {
+      await this.shareToXhs();
+    } else if (action === 'wechat') {
+      await this.shareRecordingToWechat();
+    } else if (action === 'share') {
+      await this.shareRecording();
+    } else if (action === 'delete') {
+      this.deleteRecordingWithConfirmation(this.selected, true);
+    }
+  }
+
   @Builder
-  private detailActions() {
-    Row({ space: 10 }) {
-      Button(this.communityShareId.length > 0 ? '隐藏社区' : '分享到社区').fontSize(13)
-        .onClick(() => this.toggleCommunityShare())
-      Button(this.xhsPreparing ? '生成中…' : '小红书').fontSize(13).enabled(!this.xhsPreparing)
-        .onClick(() => this.shareToXhs())
-      Button('换文风').fontSize(13).onClick(() => this.openStyleRewrite())
-      Button('重新生成').fontSize(13).onClick(() => this.regenerateArticle())
-      Button('删除').fontSize(13).fontColor('#D92D20').backgroundColor('#FEE4E2')
-        .onClick(() => this.deleteRecordingWithConfirmation(this.selected, true))
-    }.padding({ left: 16, right: 16, bottom: 12 }).width('100%')
+  private detailMenuRow(label: string, glyph: string, action: string, danger: boolean = false) {
+    Row() {
+      Text(label)
+        .fontSize(17).fontWeight(FontWeight.Normal)
+        .fontColor(danger ? Theme.ACCENT_STRONG : Theme.INK)
+        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      RemixIcon({ glyph: glyph, iconSize: 25, color: Theme.ACCENT_STRONG })
+    }
+      .height(58).padding({ left: 18, right: 16 }).width('100%')
+      .onClick(() => this.runDetailMenuAction(action))
+  }
+
+  @Builder
+  private detailMoreMenu() {
+    Column() {
+      this.detailMenuRow(this.hasWechatDraft() ? '更新公众号草稿' : '发布公众号草稿',
+        RI.SEND_PLANE, 'publish')
+      Divider().color('#E0D8CC')
+      this.detailMenuRow(this.communityShareId.length > 0 ? '从 VD 社区隐藏' : 'VD 社区可见',
+        RI.TEAM, 'community')
+      Divider().color('#E0D8CC')
+      this.detailMenuRow(this.xhsPreparing ? '正在生成小红书…' : '分享到小红书',
+        RI.FILE_TEXT, 'xhs')
+      Divider().color('#E0D8CC')
+      this.detailMenuRow('分享到微信', RI.SHARE_FORWARD, 'wechat')
+      Divider().color('#E0D8CC')
+      this.detailMenuRow('分享', RI.SHARE_FORWARD, 'share')
+      Divider().height(8).color('#E9E5DC')
+      this.detailMenuRow('删除', RI.DELETE, 'delete', true)
+    }
+      .padding({ top: 3, bottom: 3 }).width(260)
+      .backgroundColor('#FCFFFFFF')
+      .border({ width: 1, color: '#ECE7DE', radius: 18 })
+      .borderRadius(18).clip(true)
+      .shadow({ radius: 18, color: '#2B2A2529', offsetX: 0, offsetY: 8 })
+  }
+
+  @Builder
+  private communityDetailHeader() {
+    Row() {
+      Button({ type: ButtonType.Normal }) {
+        RemixIcon({ glyph: RI.ARROW_LEFT, iconSize: 27, color: Theme.INK })
+      }
+        .width(44).height(44).padding(0).backgroundColor(Theme.CARD)
+        .border({ width: 1, color: Theme.BORDER, radius: 12 }).borderRadius(12)
+        .shadow({ radius: 7, color: '#19000000', offsetX: 0, offsetY: 2 })
+        .onClick(() => {
+          this.showCommunityMenu = false;
+          this.navigateBack();
+        })
+      Blank()
+      Button({ type: ButtonType.Normal }) {
+        RemixIcon({
+          glyph: this.postFed ? RI.FLASHLIGHT_FILL : RI.FLASHLIGHT,
+          iconSize: 24,
+          color: this.postFed ? Theme.AMBER : Theme.INK
+        })
+      }
+        .width(36).height(48).padding(0).backgroundColor(Color.Transparent)
+        .stateEffect(false)
+        .enabled(!this.communityDetailLoading && !this.postFed && !this.postFeeding)
+        .opacity(this.communityDetailLoading || this.postFeeding ? 0.45 : 1)
+        .onClick(() => this.feedSelectedPost())
+      Button({ type: ButtonType.Normal }) {
+        RemixIcon({
+          glyph: this.postLiked ? RI.HEART_FILL : RI.HEART,
+          iconSize: 24,
+          color: this.postLiked ? Theme.ACCENT_STRONG : Theme.INK
+        })
+      }
+        .width(36).height(48).padding(0).backgroundColor(Color.Transparent)
+        .stateEffect(false)
+        .enabled(!this.communityDetailLoading)
+        .opacity(this.communityDetailLoading ? 0.45 : 1)
+        .onClick(() => this.togglePostLike())
+      Stack({ alignContent: Alignment.Center }) {
+        Button({ type: ButtonType.Normal }) {
+          RemixIcon({ glyph: RI.MORE, iconSize: 24, color: Theme.SECONDARY })
+        }
+          .width(34).height(34).padding(0).backgroundColor(Theme.CARD)
+          .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11)
+          .shadow({ radius: 7, color: '#19000000', offsetX: 0, offsetY: 2 })
+          .enabled(!this.communityDetailLoading)
+          .opacity(this.communityDetailLoading ? 0.45 : 1)
+          .onClick(() => this.showCommunityMenu = !this.showCommunityMenu)
+      }
+        .width(56).height(48)
+    }
+      .height(64)
+      .width('100%')
+      .padding({ left: 16, right: 5, top: 8, bottom: 8 })
   }
 
   @Builder
   private communityDetailPage() {
     Column() {
-      this.topBar(this.selectedPost?.title ?? '社区文章', true)
-      Scroll() {
+      this.communityDetailHeader()
+      if (this.communityDetailLoading) {
         Column({ space: 12 }) {
-          Text(this.selectedPost?.author || 'VoiceDrop 用户').fontSize(14).fontColor('#777777').width('100%')
-          if (this.selectedReplyParent) {
-            Button(`回应 · ${this.selectedReplyParent!.title || '原文'}  ›`).fontSize(13).fontColor('#D92D20')
-              .backgroundColor('#FFF1ED').borderRadius(18).onClick(() => this.openCommunityPost(this.selectedReplyParent!))
-          }
-          if (this.selectedPost?.kind === 'prompt') Text('社区提示词').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#6F5529')
-            .padding({ left: 9, right: 9, top: 4, bottom: 4 }).backgroundColor('#F4DFAC').borderRadius(12)
-          Text(this.selectedPost?.title ?? '(无题)').fontSize(28).fontWeight(FontWeight.Bold).width('100%')
+          LoadingProgress()
+            .width(34)
+            .height(34)
+            .color(Theme.ACCENT)
+          Text('正在加载文章')
+            .fontSize(15)
+            .fontColor(Theme.SECONDARY)
+        }
+          .layoutWeight(1)
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+      } else if (this.communityDetailError.length > 0) {
+        Column({ space: 14 }) {
+          RemixIcon({ glyph: RI.INFORMATION, iconSize: 30, color: Theme.FAINT })
+          Text(this.communityDetailError)
+            .fontSize(15)
+            .fontColor(Theme.SECONDARY)
+          Button('重新加载')
+            .fontSize(14)
+            .fontColor(Theme.WHITE)
+            .height(38)
+            .backgroundColor(Theme.ACCENT)
+            .onClick(() => this.retryCommunityDetail())
+        }
+          .layoutWeight(1)
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+      } else {
+        Scroll() {
+          Column() {
           if (this.selectedPost?.kind === 'prompt') {
-            if ((this.selectedPost?.promptCode ?? '').length > 0) {
-              Text('一条 VoiceDrop 提示词 · 分享码').fontSize(13).fontColor('#888888').width('100%').textAlign(TextAlign.Center)
-              Text(this.selectedPost?.promptCode ?? '').fontSize(36).fontWeight(FontWeight.Bold).letterSpacing(5).width('100%').textAlign(TextAlign.Center)
-            }
-            Text(this.selectedPost?.doc?.articles?.[0]?.body || '这条提示词暂不可读，请稍后刷新。')
-              .fontSize(16).lineHeight(27).padding(15).backgroundColor('#F0ECE5').borderRadius(12).width('100%').copyOption(CopyOptions.LocalDevice)
-            Text('怎么用').fontSize(16).fontWeight(FontWeight.Bold).margin({ top: 10 }).width('100%')
-            Text(`收下后可在提示词设置中编辑，并用于${(this.selectedPost?.appliesTo ?? []).includes('image') ? '图片' : '文字'}处理。`)
-              .fontSize(14).lineHeight(22).fontColor('#777777').width('100%')
-            Button(PromptTree.containsImport(promptStore.items(), this.selectedPost?.promptCode ?? '') ? '已收下' :
-              (this.promptImporting ? '正在导入…' : '收下这条提示词'))
-              .enabled(!PromptTree.containsImport(promptStore.items(), this.selectedPost?.promptCode ?? '') && !this.promptImporting)
-              .width('100%').height(50).backgroundColor(Theme.ACCENT).onClick(() => this.importSelectedCommunityPrompt())
-          } else if (this.selectedPost?.doc && this.selectedPost!.doc!.articles.length > 0) {
-            ForEach(ArticleBody.blocks(this.selectedPost!.doc!.articles[0].body),
-              (block: ArticleBlock) => this.articleBlock(block))
-          } else {
-            Text(this.selectedPost?.excerpt ?? '').fontSize(17).lineHeight(29).width('100%')
+            Text('社区提示词').fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.PROMPT_TEXT)
+              .padding({ left: 9, right: 9, top: 4, bottom: 4 })
+              .backgroundColor(Theme.PROMPT_BG).borderRadius(12).margin({ bottom: 10 })
           }
-          Row({ space: 20 }) {
-            Button() {
-              Row({ space: 4 }) {
-                RemixIcon({ glyph: this.postFed ? RI.FLASHLIGHT_FILL : RI.FLASHLIGHT, iconSize: 16, color: this.postFed ? Theme.AMBER : Theme.INK })
-                Text(`${this.postFeedCount}`)
-              }
+          Text(this.selectedPost?.title ?? '(无题)')
+            .fontSize(27).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            .lineHeight(38).width('100%')
+          Row({ space: 8 }) {
+            Text(this.communityAuthor(this.selectedPost))
+              .fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+            if (this.communityDate(this.selectedPost).length > 0) {
+              Text(this.communityDate(this.selectedPost)).fontSize(14).fontColor(Theme.FAINT)
             }
-              .enabled(!this.postFed && !this.postFeeding)
-              .fontColor(this.postFed ? '#B7791F' : '#333333').backgroundColor(this.postFed ? '#FFF0D9' : '#EFEFED')
-              .onClick(() => this.feedSelectedPost())
-            Button() {
-              Row({ space: 4 }) {
-                RemixIcon({ glyph: this.selectedPost?.liked ? RI.HEART_FILL : RI.HEART, iconSize: 16, color: Theme.ACCENT })
-                Text(`${this.selectedPost?.likes ?? 0}`)
-              }
+          }.width('100%').margin({ top: 9, bottom: 14 })
+          if (this.selectedReplyParent) {
+            Row({ space: 5 }) {
+              RemixIcon({ glyph: RI.CHAT, iconSize: 15, color: Theme.ACCENT_STRONG })
+              Text('回应').fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+              Text(this.selectedReplyParent!.title || '原文')
+                .fontSize(13).fontColor(Theme.ACCENT_STRONG).maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+              RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 15, color: Theme.ACCENT_STRONG })
             }
-              .onClick(() => this.togglePostLike())
-            Button() { RemixIcon({ glyph: RI.SHARE_BOX, iconSize: 17, color: Theme.INK }) }.onClick(() => this.shareSelectedCommunityPost())
-            Button() { RemixIcon({ glyph: RI.FLAG, iconSize: 17, color: '#B42318' }) }
-              .fontColor('#B42318').backgroundColor('#FEE4E2').onClick(async () => {
-              if (this.selectedPost && await communityStore.report(this.selectedPost.shareId)) {
-                this.navigateHome();
-                await this.refreshCommunity();
+              .height(32).padding({ left: 10, right: 8 }).margin({ bottom: 14 })
+              .backgroundColor('#FFF1ED').borderRadius(18).constraintSize({ maxWidth: '100%' })
+              .onClick(() => this.openCommunityPost(this.selectedReplyParent!))
+          }
+          if (this.selectedPost?.kind === 'prompt') {
+            Column({ space: 12 }) {
+              if ((this.selectedPost?.promptCode ?? '').length > 0) {
+                Text('一条 VoiceDrop 提示词 · 分享码')
+                  .fontSize(13).fontColor(Theme.SECONDARY).width('100%').textAlign(TextAlign.Center)
+                Text(this.selectedPost?.promptCode ?? '')
+                  .fontSize(36).fontWeight(FontWeight.Bold).letterSpacing(5)
+                  .fontColor(Theme.INK).width('100%').textAlign(TextAlign.Center)
               }
-            })
-            Button('屏蔽作者').fontColor('#8A4B08').backgroundColor('#FFF4E5').onClick(() => this.blockSelectedAuthor())
-            if (this.selectedPost?.kind !== 'prompt') Button() { RemixIcon({ glyph: RI.MIC, iconSize: 17, color: Theme.INK }) }
-              .onClick(() => this.beginCommunityReply())
-          }.margin({ top: 16 })
+              Text(this.selectedPost?.doc?.articles?.[0]?.body || '这条提示词暂不可读，请稍后刷新。')
+                .fontSize(16).lineHeight(27).fontColor(Theme.INK).padding(15)
+                .backgroundColor('#F0ECE5').borderRadius(12).width('100%')
+                .copyOption(CopyOptions.LocalDevice)
+              Text('怎么用').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                .margin({ top: 10 }).width('100%')
+              Text(`收下后可在提示词设置中编辑，并用于${(this.selectedPost?.appliesTo ?? []).includes('image') ? '图片' : '文字'}处理。`)
+                .fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY).width('100%')
+              Button(PromptTree.containsImport(promptStore.items(), this.selectedPost?.promptCode ?? '') ? '已收下' :
+                (this.promptImporting ? '正在导入…' : '收下这条提示词'))
+                .enabled(!PromptTree.containsImport(promptStore.items(), this.selectedPost?.promptCode ?? '') && !this.promptImporting)
+                .width('100%').height(50).backgroundColor(Theme.ACCENT)
+                .onClick(() => this.importSelectedCommunityPrompt())
+            }.width('100%')
+          } else if (this.selectedPost?.doc && this.selectedPost!.doc!.articles.length > 0) {
+            Column({ space: 12 }) {
+              ForEach(ArticleBody.blocks(this.selectedPost!.doc!.articles[0].body),
+                (block: ArticleBlock) => this.articleBlock(block))
+            }.width('100%')
+          } else {
+            Text(this.selectedPost?.excerpt ?? '')
+              .fontSize(17).lineHeight(30).fontColor(Theme.INK).width('100%')
+          }
           if (this.communityReplies.length > 0) {
-            Text(`回复 ${this.communityReplies.length}`).fontSize(19).fontWeight(FontWeight.Bold)
-              .margin({ top: 24 }).width('100%')
+            Row({ space: 12 }) {
+              Divider().color('#DDD5C7').layoutWeight(1)
+              Text(`${this.communityReplies.length} 篇回应`)
+                .fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A79F93').letterSpacing(1)
+              Divider().color('#DDD5C7').layoutWeight(1)
+            }.width('100%').margin({ top: 30, bottom: 2 })
             ForEach(this.communityReplies, (reply: CommunityPost) => {
-              Column({ space: 5 }) {
-                Text(reply.author || 'VoiceDrop 用户').fontSize(13).fontColor('#888888').width('100%')
-                Text(reply.title || reply.excerpt).fontSize(16).width('100%')
-              }.padding(14).backgroundColor(Color.White).borderRadius(12)
+              Row() {
+                Column().width(3).height('100%').backgroundColor('#E8C7B8').borderRadius(2)
+                Column({ space: 8 }) {
+                  Row() {
+                    Text(this.communityAuthor(reply)).fontSize(13).fontWeight(FontWeight.Bold)
+                      .fontColor(Theme.ACCENT_STRONG)
+                    Text(`  续文${this.communityDate(reply).length > 0 ? ` · ${this.communityDate(reply)}` : ''}`)
+                      .fontSize(12).fontColor('#9A9387')
+                  }.width('100%')
+                  Text(reply.title || reply.excerpt)
+                    .fontSize(18).fontWeight(FontWeight.Bold).lineHeight(27).fontColor(Theme.INK).width('100%')
+                }.padding({ left: 16 }).layoutWeight(1).alignItems(HorizontalAlign.Start)
+              }
+                .padding({ top: 24 }).width('100%').alignItems(VerticalAlign.Top)
                 .onClick(() => this.openCommunityPost(reply))
             }, (reply: CommunityPost) => reply.shareId)
           }
-        }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).alignItems(HorizontalAlign.Start)
-      }.layoutWeight(1)
-    }.height('100%')
+          }
+            .padding({ left: 22, right: 22, top: 12, bottom: 40 })
+            .alignItems(HorizontalAlign.Start)
+            .width('100%')
+        }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }
+    }.width('100%').height('100%').backgroundColor(Theme.BG)
+  }
+
+  @Builder
+  private communityMenuRow(label: string, glyph: string, action: string, danger: boolean = false) {
+    Row() {
+      Text(label)
+        .fontSize(17)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(danger ? Theme.ACCENT_STRONG : Theme.INK)
+        .layoutWeight(1)
+      RemixIcon({
+        glyph: glyph,
+        iconSize: 25,
+        color: Theme.ACCENT_STRONG
+      })
+    }
+      .height(57)
+      .padding({ left: 20, right: 20 })
+      .width('100%')
+      .onClick(() => this.runCommunityMenuAction(action))
+  }
+
+  @Builder
+  private communityMoreMenu() {
+    Column() {
+      if (this.selectedPost?.kind !== 'prompt') {
+        this.communityMenuRow('写回应', RI.MIC, 'reply')
+        Divider().color('#E7E0D5')
+      }
+      this.communityMenuRow('分享到微信', RI.SHARE_BOX, 'wechat')
+      Divider().color('#E7E0D5')
+      this.communityMenuRow('分享', RI.SHARE_BOX, 'share')
+      Divider().color('#E7E0D5')
+      this.communityMenuRow('举报', RI.FLAG, 'report', true)
+      Divider().color('#E7E0D5')
+      this.communityMenuRow('屏蔽此用户', RI.HAND_HEART, 'block', true)
+    }
+      .padding({ top: 3, bottom: 3 })
+      .width(292)
+      .backgroundColor('#FCFFFFFF')
+      .border({ width: 1, color: '#ECE7DE', radius: 18 })
+      .borderRadius(18)
+      .clip(true)
+      .shadow({ radius: 18, color: '#2B2A2521', offsetX: 0, offsetY: 8 })
   }
 
   private async sendEdit(): Promise<void> {
@@ -2130,13 +2922,15 @@ struct Index {
     promptAction.showToast({ message: ok ? '已跳过追问' : '跳过状态同步失败' });
   }
 
-  private async togglePostLike(): Promise<void> {
+  private togglePostLike(): void {
     if (!this.selectedPost) return;
-    const next: boolean = !Boolean(this.selectedPost.liked);
+    const next: boolean = CommunityLikeState.toggled(this.postLiked);
+    this.postLiked = next;
     this.selectedPost.liked = next;
     this.selectedPost.likes = Math.max(0, this.selectedPost.likes + (next ? 1 : -1));
-    this.selectedPost = this.selectedPost;
-    await communityStore.engage(this.selectedPost.shareId, 'like', next);
+    const shareId: string = this.selectedPost.shareId;
+    appPreferences.setLikedCommunityPost(shareId, next).catch(() => {});
+    communityStore.engage(shareId, 'like', next).catch(() => {});
   }
 
   private async shareSelectedCommunityPost(): Promise<void> {
@@ -2172,10 +2966,16 @@ struct Index {
   private async blockSelectedAuthor(): Promise<void> {
     if (!this.selectedPost || this.selectedPost.author.trim().length === 0) return;
     const author: string = this.selectedPost.author;
-    const result = await promptAction.showDialog({ title: `屏蔽“${author}”？`, message: '以后社区列表将隐藏这位作者的内容，可在设置中解除。',
-      buttons: [{ text: '取消', color: '#666666' }, { text: '屏蔽', color: '#D92D20' }] });
+    const result = await promptAction.showDialog({
+      title: '屏蔽此用户？',
+      message: `屏蔽后，你将不再看到 ${author} 的任何社区内容。可在「设置」>「关于」>「已屏蔽用户」中取消屏蔽。`,
+      buttons: [{ text: '取消', color: '#666666' }, { text: '屏蔽', color: Theme.ACCENT_STRONG }]
+    });
     if (result.index !== 1) return;
-    await appPreferences.setAuthorBlocked(author, true); this.navigateHome(); await this.refreshCommunity();
+    await appPreferences.setAuthorBlocked(author, true);
+    promptAction.showToast({ message: '已屏蔽，TA 的内容将不再显示' });
+    this.navigateHome();
+    await this.refreshCommunity();
   }
 
   private async shareRecording(): Promise<void> {
@@ -2251,11 +3051,14 @@ struct Index {
       onBack: () => this.navigateBack(),
       onWechatLogin: () => this.startWechatLogin(),
       onWechatSignOut: async () => {
-        await authStore.signOutWechat(); this.wechatLoggedIn = false; this.navigateHome(); await this.refreshLibrary();
+        const previousScope: string = authStore.storageScope();
+        await authStore.signOutWechat();
+        this.wechatLoggedIn = false;
+        await this.applyAccountIdentityChange(previousScope !== authStore.storageScope());
         promptAction.showToast({ message: '已退出微信登录，已恢复原账号' });
       },
-      onAccountChanged: () => { this.navigateHome(); this.recordings = []; this.refreshLibrary(); },
-      onDeleted: () => { this.navigateHome(); this.recordings = []; this.refreshLibrary(); }
+      onAccountChanged: () => { this.applyAccountIdentityChange(false).catch(() => {}); },
+      onDeleted: () => { this.applyAccountIdentityChange(false).catch(() => {}); }
     })
   }
 
@@ -2268,10 +3071,8 @@ struct Index {
   }
 
   @Builder
-  private pageContent(page: AppPage) {
-    if (page === 'home' && this.tab === 0) this.libraryPage()
-    else if (page === 'home') this.communityPage()
-    else if (page === 'detail') this.detailPage()
+  private secondaryPageContent(page: string) {
+    if (page === 'detail') this.detailPage()
     else if (page === 'communityDetail') this.communityDetailPage()
     else if (page === 'shared') SharedArticlePage({
       article: this.sharedArticle,
@@ -2297,7 +3098,7 @@ struct Index {
     else if (page === 'blocked') BlockedAuthorsPage({ onBack: () => this.navigateBack() })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
     else if (page === 'usage') UsagePage({ onBack: () => this.navigateBack() })
-    else AboutPage({
+    else if (page === 'about') AboutPage({
       onBack: () => this.navigateBack(),
       onPrivacy: () => this.navigateTo('privacy'),
       onBlockedAuthors: () => this.navigateTo('blocked'),
@@ -2305,21 +3106,73 @@ struct Index {
       appVersion: this.appVersion,
       blockedAuthorCount: appPreferences.blockedAuthors().length
     })
+    else Column({ space: 8 }) {
+      Text('页面不存在').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+      Text(page).fontSize(13).fontColor(Theme.SECONDARY)
+    }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+  }
+
+  @Builder
+  private navigationDestination(routeName: string) {
+    NavDestination() {
+      Column() {
+        this.secondaryPageContent(routeName)
+      }
+        .width('100%')
+        .height('100%')
+        .padding({ top: this.safeAreaTop() })
+        .backgroundColor(Theme.BG)
+    }
+      .hideTitleBar(true)
+      // Keep NavDestination's default back handling so the system back gesture
+      // and the page header both pop the same native stack.
+      .onHidden(() => this.handleDestinationHidden(routeName))
+  }
+
+  @Builder
+  private homeRoot() {
+    if (this.tab === 0) this.libraryPage()
+    else this.communityPage()
   }
 
   build() {
     Stack() {
-      ForEach(this.pageStack, (page: AppPage, index: number) => {
+      Navigation(this.pathStack) {
         Column() {
-          this.pageContent(page)
+          this.homeRoot()
         }
           .width('100%')
           .height('100%')
           .padding({ top: this.safeAreaTop() })
-          .backgroundColor(page === 'home' && this.tab === 1 ? Theme.COMMUNITY_BG : Theme.BG)
-          .zIndex(index)
-          .transition(this.secondaryPageTransition(page))
-      }, (page: AppPage) => page)
+          .backgroundColor(this.tab === 1 ? Theme.COMMUNITY_BG : Theme.BG)
+      }
+        .width('100%')
+        .height('100%')
+        .mode(NavigationMode.Stack)
+        .hideTitleBar(true)
+        .recoverable(false)
+        .navDestination(this.navigationDestination)
+      if (this.recording) {
+        RecordingSession({
+          recordingSeconds: this.recordingSeconds,
+          activeLevel: this.recordingLevel,
+          interviewActive: this.interviewActive,
+          interviewStatus: this.interviewStatus,
+          capturedPhotos: this.capturedPhotos,
+          transitioning: this.recordingTransitioning,
+          showInterview: !appPreferences.classicRecorder(),
+          safeAreaTop: this.safeAreaTop(),
+          safeAreaBottom: this.safeAreaBottom(),
+          onStop: () => this.toggleRecording().catch(() => {}),
+          onAddPhoto: () => this.addRecordingPhotos().catch(() => {}),
+          onToggleInterview: () => this.toggleInterview().catch(() => {}),
+          onRemovePhoto: (photo: CapturedPhoto) => this.removeRecordingPhoto(photo).catch(() => {})
+        })
+          .zIndex(100)
+          // Recording is a full-screen session overlay, not a secondary page.
+          // Keep it out of Navigation's horizontal page transition.
+          .transition(TransitionEffect.IDENTITY)
+      }
       if (this.showPromptMenu) {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.showPromptMenu = false)
@@ -2350,6 +3203,38 @@ struct Index {
           }.padding({ bottom: 18 }).backgroundColor('#FCFCFB')
             .borderRadius({ topLeft: 14, topRight: 14 }).width('100%')
         }.width('100%').height('100%').backgroundColor('#55000000')
+      }
+      if (this.showDetailMenu) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .onClick(() => this.showDetailMenu = false)
+          Column() {
+            this.detailMoreMenu()
+          }
+            .margin({ top: this.safeAreaTop() + 68, right: 10 })
+            .zIndex(1)
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(120)
+      }
+      if (this.showCommunityMenu) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .onClick(() => this.showCommunityMenu = false)
+          Column() {
+            this.communityMoreMenu()
+          }
+            .margin({ top: this.safeAreaTop() + 64, right: 12 })
+            .zIndex(1)
+        }
+          .width('100%')
+          .height('100%')
+          .zIndex(120)
       }
       if (this.showDirectEditor) {
         Column({ space: 12 }) {

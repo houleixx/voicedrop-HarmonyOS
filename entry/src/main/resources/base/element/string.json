@@ -5,7 +5,6 @@
     { "name": "EntryAbility_desc", "value": "VoiceDrop 主入口" },
     { "name": "microphone_permission_reason", "value": "用于录制口述内容和语音修改文章" },
     { "name": "camera_permission_reason", "value": "用于拍摄并插入文章图片" },
-    { "name": "media_permission_reason", "value": "用于选择并插入文章图片" },
     { "name": "pasteboard_permission_reason", "value": "仅在首次使用时识别 VoiceDrop 邀请链接并领取奖励" },
     { "name": "shortcut_record", "value": "记一条" },
     { "name": "privacy_title", "value": "隐私保护说明" }

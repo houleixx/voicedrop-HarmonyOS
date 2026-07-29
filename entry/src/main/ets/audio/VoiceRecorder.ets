@@ -2,6 +2,8 @@ import { media } from '@kit.MediaKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';
 import { RecordingName } from '../core/RecordingName';
+import { isRecordingTooShort } from '../core/RecordingPolicy';
+import { RecordingStopPolicy } from '../core/RecordingStopPolicy';
 
 export class VoiceRecorder {
   private recorder?: media.AVRecorder;
@@ -9,17 +11,24 @@ export class VoiceRecorder {
   private context?: common.Context;
   private startedAt?: Date;
   private tempPath: string = '';
-  private peakAmplitude: number = 0;
+  private currentAmplitude: number = 0;
   private lastDurationSeconds: number = 0;
 
   initialize(context: common.Context): void { this.context = context; }
   isRecording(): boolean { return this.recorder !== undefined; }
   sessionTimestamp(): string { return this.startedAt ? RecordingName.timestamp(this.startedAt) : ''; }
+  elapsedSeconds(): number {
+    return this.startedAt ? Math.max(0, Math.floor((Date.now() - this.startedAt.getTime()) / 1000)) : 0;
+  }
+  durationSeconds(): number { return this.lastDurationSeconds; }
+  pendingRecordingName(place: string = ''): string {
+    return this.startedAt ? RecordingName.create(this.startedAt, this.elapsedSeconds(), place) : '';
+  }
 
   async start(): Promise<void> {
     if (!this.context || this.recorder) throw new Error('录音器尚未初始化或已经在录音');
     this.startedAt = new Date();
-    this.peakAmplitude = 0; this.lastDurationSeconds = 0;
+    this.currentAmplitude = 0; this.lastDurationSeconds = 0;
     this.tempPath = `${this.context.filesDir}/VoiceDrop-pending-${Date.now()}.m4a`;
     this.output = fs.openSync(this.tempPath, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
     this.recorder = await media.createAVRecorder();
@@ -40,35 +49,66 @@ export class VoiceRecorder {
   }
 
   async sampleAmplitude(): Promise<number> {
-    if (!this.recorder) return this.peakAmplitude;
+    if (!this.recorder) return 0;
     try {
       const current: number = await this.recorder.getAudioCapturerMaxAmplitude();
-      this.peakAmplitude = Math.max(this.peakAmplitude, current); return this.peakAmplitude;
-    } catch (_) { return this.peakAmplitude; }
-  }
-
-  looksSilent(): boolean {
-    return this.lastDurationSeconds >= 1 && this.peakAmplitude < 0.01;
+      this.currentAmplitude = Math.max(0, Math.min(1, current));
+      return this.currentAmplitude;
+    } catch (_) {
+      this.currentAmplitude = 0;
+      return 0;
+    }
   }
 
   async stop(place: string = ''): Promise<string> {
     if (!this.recorder || !this.startedAt || !this.context) throw new Error('当前没有录音');
-    const seconds: number = Math.max(1, Math.round((Date.now() - this.startedAt.getTime()) / 1000));
+    const seconds: number = Math.max(0, (Date.now() - this.startedAt.getTime()) / 1000);
     this.lastDurationSeconds = seconds;
+    const recorder: media.AVRecorder = this.recorder;
+    const startedAt: Date = this.startedAt;
+    const temporaryPath: string = this.tempPath;
     try {
       await this.sampleAmplitude();
-      await this.recorder.stop();
-      await this.recorder.release();
+      let stopSucceeded: boolean = false;
+      let stopError: string = '';
+      try {
+        await recorder.stop();
+        stopSucceeded = true;
+      } catch (firstError) {
+        stopError = String(firstError);
+        await this.delay(120);
+        try {
+          await recorder.stop();
+          stopSucceeded = true;
+          stopError = '';
+        } catch (secondError) {
+          stopError = String(secondError);
+        }
+      }
+      try { await recorder.release(); } catch (releaseError) {
+        if (stopError.length === 0) stopError = String(releaseError);
+      }
       if (this.output) fs.closeSync(this.output);
-      const name: string = RecordingName.create(this.startedAt, seconds, place);
+      this.output = undefined;
+      const complete: boolean = this.hasCompleteM4a(temporaryPath);
+      if (!RecordingStopPolicy.canFinalize(stopSucceeded, complete)) {
+        throw new Error(stopError.length > 0 ? stopError : '录音文件没有完整写入');
+      }
+      if (isRecordingTooShort(seconds)) {
+        // Keep it under the pending name until the page deletes it. Even if deletion
+        // fails, the upload queue will not mistake it for a VoiceDrop recording.
+        return temporaryPath;
+      }
+      const name: string = RecordingName.create(startedAt, seconds, place);
       const finalPath: string = `${this.context.filesDir}/${name}`;
-      fs.renameSync(this.tempPath, finalPath);
+      fs.renameSync(temporaryPath, finalPath);
       return finalPath;
     } finally {
       this.recorder = undefined;
       this.output = undefined;
       this.startedAt = undefined;
       this.tempPath = '';
+      this.currentAmplitude = 0;
     }
   }
 
@@ -85,8 +125,27 @@ export class VoiceRecorder {
       this.output = undefined;
       this.startedAt = undefined;
       this.tempPath = '';
-      this.peakAmplitude = 0; this.lastDurationSeconds = 0;
+      this.currentAmplitude = 0; this.lastDurationSeconds = 0;
     }
+  }
+
+  private hasCompleteM4a(path: string): boolean {
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const size: number = fs.statSync(file.fd).size;
+      const buffer: ArrayBuffer = new ArrayBuffer(size);
+      fs.readSync(file.fd, buffer);
+      return RecordingStopPolicy.hasCompleteM4a(new Uint8Array(buffer));
+    } catch (_) {
+      return false;
+    } finally {
+      if (file) try { fs.closeSync(file); } catch (_) {}
+    }
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    return new Promise<void>((resolve: () => void) => setTimeout(resolve, milliseconds));
   }
 }
 

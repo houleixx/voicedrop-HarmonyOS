@@ -3,8 +3,28 @@ import { util } from '@kit.ArkTS';
 import { ArticleDoc, ArticleHistory, ArticleVersion, Recording, RecordingRowPayload } from '../model/Models';
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
+import { common } from '@kit.AbilityKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { ClientReliability } from '../core/ClientReliability';
+import { photoService } from './PhotoService';
 
 interface RecordingsResponse { recordings?: RecordingRowPayload[]; }
+class CachedRecordingRow implements RecordingRowPayload {
+  name: string = '';
+  uploaded: string = '';
+  hasArticles: boolean = false;
+  isEmpty: boolean = false;
+  hasTags: boolean = false;
+  title: string = '';
+  tags: string[] = [];
+  phase: string = '';
+  blockReason: string = '';
+  constructor(recording: Recording) {
+    this.name = recording.name; this.uploaded = recording.uploaded; this.hasArticles = recording.hasArticles;
+    this.isEmpty = recording.isEmpty; this.hasTags = recording.hasTags; this.title = recording.title;
+    this.tags = recording.tags; this.phase = recording.phase; this.blockReason = recording.blockReason;
+  }
+}
 interface ShareResponse { url?: string; }
 interface WhoamiResponse { scope?: string; }
 interface XhsPackWire { title?: string; body?: string; tags?: string[]; photoKeys?: string[]; }
@@ -62,12 +82,41 @@ export class XhsPack {
 export class LibraryStore {
   private cachedScopeToken: string = '';
   private cachedScope: string = '';
+  private articleCacheRoot: string = '';
+
+  initialize(context: common.Context): void {
+    this.articleCacheRoot = `${context.cacheDir}/article-doc-cache-v1`;
+    try { fs.mkdirSync(this.articleCacheRoot); } catch (_) {}
+  }
   async load(): Promise<Recording[]> {
     const response: HttpResponse = await httpClient.get(`${Api.FILES}/recordings`, authStore.bearer());
     if (!response.ok()) throw new Error(`加载失败 HTTP ${response.code}`);
-    const rows: RecordingRowPayload[] = (JSON.parse(response.text) as RecordingsResponse).recordings ?? [];
+    const recordings: Recording[] = this.recordingsFromSnapshot(response.text);
+    this.storeRecordingsSnapshot(recordings);
+    return recordings;
+  }
+
+  cachedRecordings(): Recording[] {
+    try { return this.recordingsFromSnapshot(authStore.libraryListCache()); }
+    catch (_) { return []; }
+  }
+
+  storeRecordingsSnapshot(recordings: Recording[]): void {
+    const rows: RecordingRowPayload[] = recordings.filter((recording: Recording) => !recording.uploading)
+      .map((recording: Recording) => new CachedRecordingRow(recording));
+    authStore.storeLibraryListCache(JSON.stringify({ recordings: rows }));
+  }
+
+  private recordingsFromSnapshot(raw: string): Recording[] {
+    if (raw.length === 0) return [];
+    const rows: RecordingRowPayload[] = (JSON.parse(raw) as RecordingsResponse).recordings ?? [];
     return rows.filter((row: RecordingRowPayload) => row.name.endsWith('.m4a'))
-      .map((row: RecordingRowPayload) => new Recording(row))
+      .map((row: RecordingRowPayload) => {
+        const recording: Recording = new Recording(row);
+        recording.title = row.title ?? ''; recording.tags = row.tags ?? [];
+        recording.phase = row.phase ?? ''; recording.blockReason = row.blockReason ?? '';
+        return recording;
+      })
       .sort((left: Recording, right: Recording) => right.uploaded.localeCompare(left.uploaded) || right.name.localeCompare(left.name));
   }
 
@@ -100,8 +149,74 @@ export class LibraryStore {
     const response: HttpResponse = await httpClient.get(`${Api.FILES}/articles/${Api.path(recording.stem())}`, authStore.bearer());
     if (!response.ok()) return undefined;
     const doc: ArticleDoc = this.parseArticle(response.text);
-    if (!doc.owner) doc.owner = await this.ownerScope();
+    if (!doc.owner) doc.owner = authStore.storageScope();
+    const previous: ArticleDoc | undefined = this.cachedArticle(recording);
+    this.storeArticleSnapshot(recording, response.text);
+    photoService.reconcileArticlePhotos(previous, doc);
     return doc;
+  }
+
+  cachedArticle(recording: Recording): ArticleDoc | undefined {
+    try {
+      const raw: string = this.readArticleSnapshot(recording);
+      if (raw.length === 0) return undefined;
+      const doc: ArticleDoc = this.parseArticle(raw);
+      if (!doc.owner) doc.owner = authStore.storageScope();
+      return doc.articles.length > 0 ? doc : undefined;
+    } catch (_) { return undefined; }
+  }
+
+  async cacheArticle(recording: Recording, doc: ArticleDoc, refreshPhotoKeys: string[] = []): Promise<void> {
+    if (!doc.articles || doc.articles.length === 0) return;
+    const previous: ArticleDoc | undefined = this.cachedArticle(recording);
+    this.storeArticleSnapshot(recording, JSON.stringify(doc));
+    photoService.reconcileArticlePhotos(previous, doc, refreshPhotoKeys);
+  }
+
+  async invalidateArticle(recording: Recording): Promise<void> {
+    if (this.articleCacheRoot.length === 0) return;
+    photoService.removeArticlePhotos(this.cachedArticle(recording));
+    try { fs.unlinkSync(this.articleSnapshotPath(recording)); } catch (_) {}
+  }
+
+  clearArticleSnapshots(): void {
+    if (this.articleCacheRoot.length === 0) return;
+    photoService.clearArticlePhotoCache();
+    try {
+      for (const name of fs.listFileSync(this.articleCacheRoot)) {
+        try { fs.unlinkSync(`${this.articleCacheRoot}/${name}`); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  private articleSnapshotPath(recording: Recording): string {
+    return `${this.articleCacheRoot}/${ClientReliability.articleDocCacheKey(authStore.bearer(), recording.stem())}`;
+  }
+
+  private readArticleSnapshot(recording: Recording): string {
+    if (this.articleCacheRoot.length === 0) return '';
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(this.articleSnapshotPath(recording), fs.OpenMode.READ_ONLY);
+      const size: number = fs.statSync(file.fd).size;
+      const bytes: ArrayBuffer = new ArrayBuffer(size);
+      fs.readSync(file.fd, bytes);
+      return new util.TextDecoder('utf-8').decodeWithStream(new Uint8Array(bytes));
+    } catch (_) { return ''; }
+    finally { if (file) try { fs.closeSync(file); } catch (_) {} }
+  }
+
+  private storeArticleSnapshot(recording: Recording, raw: string): void {
+    if (this.articleCacheRoot.length === 0 || raw.length === 0) return;
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(this.articleSnapshotPath(recording), fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      const encoded: Uint8Array = new util.TextEncoder().encodeInto(raw);
+      const data: ArrayBuffer = new ArrayBuffer(encoded.byteLength);
+      new Uint8Array(data).set(encoded);
+      fs.writeSync(file.fd, data);
+    } catch (_) {}
+    finally { if (file) try { fs.closeSync(file); } catch (_) {} }
   }
 
   async ownerScope(): Promise<string> {
@@ -128,6 +243,7 @@ export class LibraryStore {
 
   async saveArticle(recording: Recording, doc: ArticleDoc): Promise<boolean> {
     const response: HttpResponse = await httpClient.putJson(`${Api.FILES}/articles/${Api.path(recording.stem())}`, authStore.bearer(), doc);
+    if (response.ok()) { await this.cacheArticle(recording, doc); authStore.clearLibraryListCache(); }
     return response.ok();
   }
 
@@ -139,6 +255,8 @@ export class LibraryStore {
       httpClient.delete(`${Api.FILES}/file/${Api.path(recording.emptyKey())}`, authStore.bearer()),
       httpClient.delete(`${Api.FILES}/file/${Api.path(recording.tagsKey())}`, authStore.bearer())
     ]);
+    if (response.ok()) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
+    if (response.ok()) authStore.clearLibraryListCache();
     return response.ok();
   }
 
@@ -154,12 +272,14 @@ export class LibraryStore {
       httpClient.delete(`${Api.FILES}/file/${Api.path(recording.emptyKey())}`, authStore.bearer()),
       httpClient.delete(`${Api.FILES}/file/${Api.path(recording.tagsKey())}`, authStore.bearer())
     ]);
+    if (response.ok() || response.code === 404) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
     return response.ok() || response.code === 404;
   }
 
   async remine(recording: Recording, styleVersion?: number): Promise<boolean> {
     const response: HttpResponse = await httpClient.postJson(`${Api.AGENT}/restyle`, authStore.bearer(),
       new StemRequest(recording.stem(), styleVersion), 300000);
+    if (response.ok()) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
     return response.ok();
   }
 
@@ -176,8 +296,10 @@ export class LibraryStore {
   }
 
   async patchHead(recording: Recording, head: number): Promise<boolean> {
-    return (await httpClient.patchJson(`${Api.FILES}/articles/${Api.path(recording.stem())}/head`,
+    const ok: boolean = (await httpClient.patchJson(`${Api.FILES}/articles/${Api.path(recording.stem())}/head`,
       authStore.bearer(), new HeadRequest(head))).ok();
+    if (ok) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
+    return ok;
   }
 
   async patchQuestion(recording: Recording, id: string, status: string): Promise<boolean> {
