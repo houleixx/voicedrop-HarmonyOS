@@ -18,12 +18,20 @@ export class AudioPlayback {
   async toggle(audioName: string): Promise<void> {
     if (this.player) { await this.stop(); return; }
     if (!this.context) throw new Error('播放器尚未初始化');
-    const data: ArrayBuffer | undefined = await libraryStore.download(audioName);
-    if (!data) throw new Error('无法下载录音');
     const path: string = `${this.context.cacheDir}/${audioName.substring(audioName.lastIndexOf('/') + 1)}`;
-    const output: fs.File = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-    fs.writeSync(output.fd, data);
-    fs.closeSync(output);
+    let cached: boolean = false;
+    try {
+      const existing: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      cached = fs.statSync(existing.fd).size > 0;
+      fs.closeSync(existing);
+    } catch (_) {}
+    if (!cached) {
+      const data: ArrayBuffer | undefined = await libraryStore.download(audioName);
+      if (!data) throw new Error('无法下载录音');
+      const output: fs.File = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      fs.writeSync(output.fd, data);
+      fs.closeSync(output);
+    }
     this.file = fs.openSync(path, fs.OpenMode.READ_ONLY);
     try {
       const player: media.AVPlayer = await media.createAVPlayer();

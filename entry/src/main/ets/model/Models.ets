@@ -6,6 +6,10 @@ export interface RecordingRowPayload {
   hasArticles?: boolean;
   isEmpty?: boolean;
   hasTags?: boolean;
+  title?: string;
+  tags?: string[];
+  phase?: string;
+  blockReason?: string;
 }
 
 export class Recording {
@@ -18,6 +22,7 @@ export class Recording {
   tags: string[] = [];
   phase: string = '';
   blockReason: string = '';
+  saving: boolean = false;
   uploading: boolean = false;
 
   constructor(payload?: RecordingRowPayload) {
@@ -27,6 +32,10 @@ export class Recording {
       this.hasArticles = payload.hasArticles ?? false;
       this.isEmpty = payload.isEmpty ?? false;
       this.hasTags = payload.hasTags ?? false;
+      this.title = payload.title ?? '';
+      this.tags = payload.tags ?? [];
+      this.phase = payload.phase ?? '';
+      this.blockReason = payload.blockReason ?? '';
     }
   }
 
@@ -38,6 +47,7 @@ export class Recording {
   rowTitle(): string { return this.title.length > 0 ? this.title : RecordingName.rowTitle(this.name); }
   durationLabel(): string { return RecordingName.parse(this.name)?.duration ?? ''; }
   statusLabel(): string {
+    if (this.saving) return '正在保存';
     if (this.uploading) return '正在上传';
     if (this.hasArticles) return '已成文';
     if (this.isEmpty) return '无语音';

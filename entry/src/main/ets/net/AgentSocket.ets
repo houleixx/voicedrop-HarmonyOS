@@ -2,6 +2,7 @@ import { webSocket } from '@kit.NetworkKit';
 import { Api } from '../core/Api';
 import { authStore } from '../data/AuthStore';
 import { appPreferences } from '../data/AppPreferences';
+import { ClientReliability } from '../core/ClientReliability';
 
 export type SocketMessageHandler = (message: string | ArrayBuffer) => void;
 export type SocketStateHandler = (connected: boolean, code?: number, reason?: string) => void;
@@ -36,12 +37,15 @@ class EditRequest {
 export class AgentSocket {
   private socket?: webSocket.WebSocket;
   private connected: boolean = false;
+  private connecting: boolean = false;
+  private generation: number = 0;
   private path: string;
   private onMessage: SocketMessageHandler;
   private onState: SocketStateHandler;
   private autoReconnect: boolean;
   private reconnectAllowed: boolean = false;
   private baseReconnectTimer: number = -1;
+  private heartbeatTimer: number = -1;
 
   constructor(path: string, onMessage: SocketMessageHandler, onState: SocketStateHandler = () => {}, autoReconnect: boolean = false) {
     this.path = path;
@@ -52,27 +56,30 @@ export class AgentSocket {
 
   async connect(): Promise<void> {
     this.reconnectAllowed = this.autoReconnect;
-    const previous: webSocket.WebSocket | undefined = this.socket;
-    this.socket = undefined;
-    if (previous) previous.close({ code: 1000, reason: 'replaced' });
+    if (!ClientReliability.shouldStartConnection(this.connected, this.connecting)) return;
+    if (this.baseReconnectTimer >= 0) clearTimeout(this.baseReconnectTimer);
+    this.baseReconnectTimer = -1;
+    this.connecting = true;
+    const connectionGeneration: number = ++this.generation;
     const socket: webSocket.WebSocket = webSocket.createWebSocket();
     this.socket = socket;
     socket.on('open', () => {
-      if (this.socket !== socket) return;
-      this.connected = true; this.onState(true);
+      if (!this.isCurrent(socket, connectionGeneration)) return;
+      this.connecting = false; this.connected = true; this.onState(true);
+      if (ClientReliability.isLongLivedSocketPath(this.path)) this.startHeartbeat(socket);
     });
     socket.on('message', (_, value: string | ArrayBuffer) => {
-      if (this.socket === socket) this.onMessage(value);
+      if (this.isCurrent(socket, connectionGeneration)) this.onMessage(value);
     });
     socket.on('close', (_, result: webSocket.CloseResult) =>
-      this.handleDisconnect(socket, result.code, result.reason));
-    socket.on('error', () => this.handleDisconnect(socket));
+      this.handleDisconnect(socket, connectionGeneration, result.code, result.reason));
+    socket.on('error', () => this.handleDisconnect(socket, connectionGeneration));
     try {
       await socket.connect(`${Api.AGENT_WS}${this.path}`, {
         header: { 'Authorization': `Bearer ${authStore.bearer()}`, 'X-VD-Platform': 'harmonyos' }
       });
     } catch (error) {
-      this.handleDisconnect(socket);
+      this.handleDisconnect(socket, connectionGeneration);
       throw new Error(String(error));
     }
   }
@@ -88,7 +95,10 @@ export class AgentSocket {
   close(): void {
     this.reconnectAllowed = false;
     if (this.baseReconnectTimer >= 0) clearTimeout(this.baseReconnectTimer);
+    this.stopHeartbeat();
     this.baseReconnectTimer = -1;
+    this.generation++;
+    this.connecting = false;
     const socket: webSocket.WebSocket | undefined = this.socket;
     this.socket = undefined;
     this.connected = false;
@@ -97,14 +107,39 @@ export class AgentSocket {
 
   isConnected(): boolean { return this.connected; }
 
-  private handleDisconnect(socket: webSocket.WebSocket, code?: number, reason?: string): void {
-    if (this.socket !== socket) return;
-    this.socket = undefined; this.connected = false; this.onState(false, code, reason);
+  private isCurrent(socket: webSocket.WebSocket, callbackGeneration: number): boolean {
+    return this.socket === socket &&
+      ClientReliability.isCurrentGeneration(this.generation, callbackGeneration);
+  }
+
+  private handleDisconnect(socket: webSocket.WebSocket, callbackGeneration: number,
+    code?: number, reason?: string): void {
+    if (!this.isCurrent(socket, callbackGeneration)) return;
+    this.stopHeartbeat();
+    this.socket = undefined; this.connecting = false; this.connected = false; this.onState(false, code, reason);
     if (!this.reconnectAllowed || this.baseReconnectTimer >= 0) return;
     this.baseReconnectTimer = setTimeout(() => {
       this.baseReconnectTimer = -1;
-      if (this.reconnectAllowed && !this.connected) this.connect().catch(() => {});
+      if (this.reconnectAllowed &&
+        ClientReliability.shouldStartConnection(this.connected, this.connecting)) this.connect().catch(() => {});
     }, 1500);
+  }
+
+  private startHeartbeat(socket: webSocket.WebSocket): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.socket !== socket || !this.connected) return;
+      socket.send(JSON.stringify({ type: 'ping' })).then((ok: boolean) => {
+        if (!ok && this.socket === socket) this.handleDisconnect(socket, this.generation);
+      }).catch(() => {
+        if (this.socket === socket) this.handleDisconnect(socket, this.generation);
+      });
+    }, ClientReliability.HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer >= 0) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = -1;
   }
 }
 
@@ -182,9 +217,13 @@ export class LibraryCommandSession extends AgentSocket {
   }
 
   async connect(): Promise<void> {
-    this.allowReconnect = false;
-    await super.connect();
     this.allowReconnect = true;
+    try {
+      await super.connect();
+    } catch (error) {
+      this.scheduleReconnect();
+      throw new Error(String(error));
+    }
   }
 
   close(): void {

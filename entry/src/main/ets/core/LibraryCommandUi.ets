@@ -106,6 +106,18 @@ export class LibraryCommandUi {
     return new LibraryCommandFeedback(text.length > 0 ? text : '在听…', LibraryCommandTone.Active);
   }
 
+  /** Feedback shown after the user releases and we are waiting for the final ASR result. */
+  static recognizingFeedback(): LibraryCommandFeedback {
+    return new LibraryCommandFeedback('正在识别…', LibraryCommandTone.Active);
+  }
+
+  /** Feedback for the last queued command text (shown when not actively talking). */
+  static queuedCommandFeedback(text: string): LibraryCommandFeedback {
+    const trimmed: string = text.trim();
+    if (trimmed.length === 0) return new LibraryCommandFeedback();
+    return new LibraryCommandFeedback(trimmed, LibraryCommandTone.Error);
+  }
+
   static gestureAction(longPressed: boolean, canceled: boolean, interrupted: boolean): LibraryCommandGestureAction {
     if (longPressed) return canceled || interrupted ? LibraryCommandGestureAction.Cancel : LibraryCommandGestureAction.Send;
     return interrupted ? LibraryCommandGestureAction.None : LibraryCommandGestureAction.Record;

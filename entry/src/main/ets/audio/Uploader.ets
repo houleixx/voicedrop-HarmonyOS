@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
 import { Api } from '../core/Api';
 import { RecordingName } from '../core/RecordingName';
+import { RecordingUploadPolicy } from '../core/RecordingUploadPolicy';
 import { Recording } from '../model/Models';
 import { authStore } from '../data/AuthStore';
 import { appPreferences } from '../data/AppPreferences';
@@ -11,33 +12,74 @@ import { httpClient, HttpResponse } from '../net/HttpClient';
 export class Uploader {
   private context?: common.Context;
   private discardedNames: Set<string> = new Set<string>();
+  private activeUploads: Map<string, Promise<boolean>> = new Map<string, Promise<boolean>>();
+  private generation: number = 0;
 
   initialize(context: common.Context): void { this.context = context; }
 
+  prepare(path: string, tags: string[] = []): void {
+    if (tags.length > 0) this.writeTags(path, tags);
+  }
+
   async upload(path: string, tags: string[] = []): Promise<boolean> {
+    const active: Promise<boolean> | undefined = this.activeUploads.get(path);
+    if (active) return active;
+    const task: Promise<boolean> = this.performUpload(path, tags);
+    this.activeUploads.set(path, task);
+    try {
+      return await task;
+    } finally {
+      if (this.activeUploads.get(path) === task) this.activeUploads.delete(path);
+    }
+  }
+
+  private async performUpload(path: string, tags: string[]): Promise<boolean> {
     if (!this.isUploadable(path)) return false;
+    const generation: number = this.generation;
+    const bearer: string = authStore.bearer();
     const name: string = path.substring(path.lastIndexOf('/') + 1);
     if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
-    if (tags.length > 0) this.writeTags(path, tags);
+    this.prepare(path, tags);
     const storedTags: string[] = this.readTags(path);
-    await this.uploadTags(path, storedTags);
+    try { await this.uploadTags(path, storedTags, bearer); } catch (_) {}
+    if (generation !== this.generation) return false;
     if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
     for (let attempt: number = 1; attempt <= 3; attempt++) {
+      if (generation !== this.generation) return false;
       if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
       try {
         const bytes: ArrayBuffer = this.readFile(path);
         const response: HttpResponse = await httpClient.putBytes(
-          `${Api.FILES}/upload/${Api.path(name)}`, authStore.bearer(), bytes, 'audio/mp4');
+          `${Api.FILES}/upload/${Api.path(name)}`, bearer, bytes, 'audio/mp4');
+        if (generation !== this.generation) return false;
         if (response.ok()) {
           if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
-          await httpClient.postJson(`${Api.FILES}/mine`, authStore.bearer());
-          this.finishLocal(path); return true;
+          let mineTriggered: boolean = false;
+          try {
+            const mineResponse: HttpResponse = await httpClient.postJson(`${Api.FILES}/mine`, bearer);
+            mineTriggered = mineResponse.ok();
+          } catch (_) {}
+          if (generation !== this.generation) return false;
+          if (RecordingUploadPolicy.uploadCompleted(true, mineTriggered)) {
+            this.finishLocal(path);
+            return true;
+          }
         }
         if (response.code >= 400 && response.code < 500) return false;
-      } catch (_) {}
+      } catch (error) {
+        // The pending file remains available for the next retry or app launch.
+      }
       if (attempt < 3) await this.delay(attempt * 1500);
     }
     return false;
+  }
+
+  clearLocalAccountFiles(): void {
+    this.generation++;
+    this.activeUploads.clear();
+    this.discardedNames.clear();
+    if (!this.context) return;
+    this.removeChildren(this.context.filesDir);
   }
 
   async drainPending(): Promise<number> {
@@ -113,14 +155,30 @@ export class Uploader {
     } catch (_) { return []; }
   }
 
-  private async uploadTags(path: string, tags: string[]): Promise<void> {
+  private async uploadTags(path: string, tags: string[], bearer: string): Promise<void> {
     if (tags.length === 0) return;
     const name: string = path.substring(path.lastIndexOf('/') + 1);
     const stem: string = name.endsWith('.m4a') ? name.substring(0, name.length - 4) : name;
     const bytes: Uint8Array = new util.TextEncoder().encodeInto(JSON.stringify(tags));
     const buffer: ArrayBuffer = new ArrayBuffer(bytes.byteLength); new Uint8Array(buffer).set(bytes);
     await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(`articles/${stem}.tags`)}`,
-      authStore.bearer(), buffer, 'application/json');
+      bearer, buffer, 'application/json');
+  }
+
+  private removeChildren(directory: string): void {
+    let names: string[] = [];
+    try { names = fs.listFileSync(directory); } catch (_) { return; }
+    for (const name of names) {
+      const path: string = `${directory}/${name}`;
+      try {
+        if (fs.statSync(path).isDirectory()) {
+          this.removeChildren(path);
+          fs.rmdirSync(path);
+        } else {
+          fs.unlinkSync(path);
+        }
+      } catch (_) {}
+    }
   }
 
   private finishLocal(path: string): void {

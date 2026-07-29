@@ -47,7 +47,7 @@ export struct UsagePage {
     try {
       const page: UsageLedgerPage = await usageStore.ledger(this.nextCursor);
       this.entries = this.entries.concat(page.entries); this.nextCursor = page.nextCursor;
-    } catch (error) { promptAction.showToast({ message: `加载更多失败：${String(error)}` }); }
+    } catch (error) { promptAction.showToast({ message: `加载更多失败：${String(error)}`}); }
     finally { this.loadingMore = false; }
   }
 

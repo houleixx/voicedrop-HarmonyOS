@@ -4,6 +4,7 @@ import { Api } from '../core/Api';
 import { PromptNode, PromptTree, PromptMutation, defaultPrompts } from '../core/PromptTree';
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
+import { ClientReliability } from '../core/ClientReliability';
 
 class CodeBody { code: string; constructor(code: string) { this.code = code; } }
 class IdBody { id: string; constructor(id: string) { this.id = id; } }
@@ -13,6 +14,9 @@ export class PromptPreview {
 }
 export class PromptShareState {
   code: string = ''; sharing: boolean = false; error: string = '';
+  /// 溯源转发（2026-07-22）：true = 未修改的导入件在转发【原作者的】码——不是
+  /// 自有码，关闭只是停止转发，码本身不会失效。老服务端响应无此字段 → false。
+  borrowed: boolean = false;
 }
 interface PromptMarketExampleWire { input?: string; output?: string; imageKey?: string; }
 interface PromptMarketItemWire {
@@ -33,7 +37,7 @@ export class PromptMarketItem {
   exampleImageKey: string = '';
 }
 interface ImportedWire { item?: Object; }
-interface ShareWire { code?: string; sharing?: boolean; }
+interface ShareWire { code?: string; sharing?: boolean; borrowed?: boolean; }
 interface ShareStatesWire { byItem?: Record<string, ShareWire>; }
 interface ErrorWire { error?: string; }
 
@@ -41,23 +45,33 @@ export class PromptStore {
   private prefs?: preferences.Preferences;
   private promptItems: PromptNode[] = defaultPrompts();
   private mutating: boolean = false;
+  private cacheIdentity: string = '';
 
   async initialize(context: common.Context): Promise<void> {
     this.prefs = await preferences.getPreferences(context, { name: 'voicedrop.prompts' });
-    const cached: string = String(this.prefs.getSync('promptsCache.v1', '') ?? '');
+    this.cacheIdentity = authStore.bearer();
+    const cached: string = String(this.prefs.getSync(ClientReliability.promptCacheKey(this.cacheIdentity), '') ?? '');
     if (cached.length > 0) try { this.promptItems = PromptTree.decode(cached); } catch (_) {}
   }
 
-  items(): PromptNode[] { return PromptTree.copy(this.promptItems); }
-  textActions(): PromptNode[] { return PromptTree.actions(this.promptItems, 'text'); }
-  imageActions(): PromptNode[] { return PromptTree.actions(this.promptItems, 'image'); }
+  items(): PromptNode[] { this.ensureAccount(); return PromptTree.copy(this.promptItems); }
+  textActions(): PromptNode[] { this.ensureAccount(); return PromptTree.actions(this.promptItems, 'text'); }
+  imageActions(): PromptNode[] { this.ensureAccount(); return PromptTree.actions(this.promptItems, 'image'); }
 
   async refresh(): Promise<string> {
+    this.ensureAccount();
     try {
       const response: HttpResponse = await httpClient.get(`${Api.AGENT}/prompts`, authStore.bearer());
       if (!response.ok()) return '刷新失败，正在显示上次内容';
       this.promptItems = PromptTree.decode(response.text); await this.cache(response.text); return '';
     } catch (_) { return '刷新失败，正在显示上次内容'; }
+  }
+
+  async clearLocalCache(): Promise<void> {
+    this.prefs?.clearSync();
+    await this.prefs?.flush();
+    this.cacheIdentity = '';
+    this.promptItems = defaultPrompts();
   }
 
   async saveDraft(draft: PromptNode[]): Promise<string> {
@@ -100,6 +114,7 @@ export class PromptStore {
   }
 
   async importCode(input: string): Promise<string> {
+    this.ensureAccount();
     const code: string = PromptTree.extractShareCode(input);
     if (!code) return '请输入有效的 7 位分享码';
     if (PromptTree.containsImport(this.promptItems, code)) return '这个提示词已经导入过了';
@@ -143,7 +158,7 @@ export class PromptStore {
         state.error = remote || '提示词分享操作失败'; return state;
       }
       const wire: ShareWire = JSON.parse(response.text) as ShareWire;
-      state.code = wire.code ?? ''; state.sharing = wire.sharing ?? sharing; return state;
+      state.code = wire.code ?? ''; state.sharing = wire.sharing ?? sharing; state.borrowed = wire.borrowed ?? false; return state;
     } catch (_) { state.error = '提示词分享操作失败'; return state; }
   }
 
@@ -155,7 +170,7 @@ export class PromptStore {
       const values: Record<string, ShareWire> = (JSON.parse(response.text) as ShareStatesWire).byItem ?? {};
       Object.keys(values).forEach((id: string) => {
         const wire: ShareWire = values[id]; const state: PromptShareState = new PromptShareState();
-        state.code = wire.code ?? ''; state.sharing = wire.sharing ?? false; states.set(id, state);
+        state.code = wire.code ?? ''; state.sharing = wire.sharing ?? false; state.borrowed = wire.borrowed ?? false; states.set(id, state);
       });
     } catch (_) {}
     return states;
@@ -179,7 +194,20 @@ export class PromptStore {
     finally { this.mutating = false; }
   }
 
-  private async cache(raw: string): Promise<void> { this.prefs?.putSync('promptsCache.v1', raw); await this.prefs?.flush(); }
+  private ensureAccount(): void {
+    const next: string = authStore.bearer();
+    if (next === this.cacheIdentity) return;
+    this.cacheIdentity = next;
+    this.promptItems = defaultPrompts();
+    const cached: string = String(this.prefs?.getSync(ClientReliability.promptCacheKey(next), '') ?? '');
+    if (cached.length > 0) try { this.promptItems = PromptTree.decode(cached); } catch (_) {}
+  }
+
+  private async cache(raw: string): Promise<void> {
+    this.ensureAccount();
+    this.prefs?.putSync(ClientReliability.promptCacheKey(this.cacheIdentity), raw);
+    await this.prefs?.flush();
+  }
 }
 
 export const promptStore: PromptStore = new PromptStore();

@@ -32,7 +32,7 @@ export class RemixIconGlyph {
   static readonly PLAY: string = '\uF00A';
   static readonly QUILL_PEN: string = '\uF04A';
   static readonly REFRESH: string = '\uF064';
-  static readonly SEND_PLANE: string = '\uF0D8';
+  static readonly SEND_PLANE: string = '\uF0D9';
   static readonly SETTINGS: string = '\uF0E8';
   static readonly SHARE_BOX: string = '\uF0F4';
   static readonly SHARE_FORWARD: string = '\uF0FD';

@@ -17,6 +17,7 @@
 - 相册多选与系统相机入口、图片上传、通过编辑会话插入文章。
 - 匿名 Token 持久化与导入、微信 session 保存/退出基础能力，以及服务端永久删除账户成功后清理本机身份/待发送队列并创建全新匿名空间。
 - 写作文风、姓名、文风历史切换、2–3 个多文风选择和公众号配置。
+- 写作风格设置页对齐 Android 的版本选择条、展开式版本面板、多风格对比开关、版本摘要与大文本编辑区；提示词设置页对齐折叠分组列表、来源/适用范围徽标、长按整理、新建动作/分组面板、社区市场和魔法数字导入面板。
 - 完整算力页：实际 `suanli/spent_suanli` 余额协议、约可成文篇数、累计获赠/已用、来源/花费汇总和可分页加载的明细流水。
 - VD 社区 feed/list 降级、社区正文详情、回复列表、点赞、举报、社区发布/隐藏和首次发布公约门禁。
 - 社区点赞状态即时同步、按作者本地屏蔽及设置页解除屏蔽管理。
@@ -77,7 +78,7 @@
 - 文章编辑消息补齐 `type: instruct`、结构化文本/图片 `anchor` 和提示词 `itemId`，快捷操作既保留自然语言模板也提供精确服务端定位。
 - 状态与文章编辑 WebSocket 增加断线重连和旧实例回调隔离；图库指令继续使用其持久队列重连，听写/采访由专用会话管理。
 - 图库危险操作的待确认卡、确认/取消控制均本地持久化；重连时恢复提示并重发控制，收到 reply/error/updated 或 snapshot 终态后对账清理。
-- `/whoami` owner scope 按账号缓存；本人文章、社区文章和公开分享统一以 owner scope 拼接相对图片键，并兼容 `[[photo:1]]` 旧数字标记；公共源对齐 `https://voicedrop.cn/photo/{fullKey}`，避免跨账号图片 404。
+- `/whoami` owner scope 按账号缓存；本人文章、社区文章和公开分享统一以 owner scope 拼接相对图片键，并兼容 `[[photo:1]]` 旧数字标记；公共源对齐 `https://voicedrop.cn/files/api/photo/{fullKey}`，避免跨账号图片 404。HTTP API 与图片走 `voicedrop.cn`，WebSocket 保留已验证的 `wss://jianshuo.dev`。
 
 ## 下一阶段必须补齐（目标仍是全部复刻）
 
@@ -90,3 +91,5 @@
 ## 构建证据
 
 2026-07-22 使用 DevEco Studio 6.0.2 内置 HarmonyOS API 22 SDK 执行 `assembleHap`，同步 Android 最新提示词菜单、市场详情和采访永久错误处理后结果为 `BUILD SUCCESSFUL`，生成 `entry-default-unsigned.hap`。
+
+2026-07-26 使用 DevEco Studio 6.0.2 内置 HarmonyOS API 22 SDK 执行无签名 `assembleHap`，写作风格与提示词设置界面对齐 Android 后结果为 `BUILD SUCCESSFUL`，生成 `entry-default-unsigned.hap`。恢复本机既有签名选择后，签名阶段仍因本机 keystore 解析失败，需在 DevEco Studio 中重新生成或选择可用调试签名后进行设备安装验证。

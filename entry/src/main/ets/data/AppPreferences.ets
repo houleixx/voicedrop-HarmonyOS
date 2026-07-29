@@ -1,5 +1,6 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
+import { CommunityLikeState } from '../core/CommunityLikeState';
 
 interface PendingCommunityTimestamp { createdAt?: number; }
 
@@ -25,6 +26,17 @@ export class AppPreferences {
   classicRecorder(): boolean { return Boolean(this.store?.getSync('classicRecorder', false) ?? false); }
   autoShareCommunity(): boolean { return Boolean(this.store?.getSync('autoShareCommunity', false) ?? false); }
   communityTermsAccepted(): boolean { return Boolean(this.store?.getSync('communityTermsAccepted', false) ?? false); }
+
+  likedCommunityPost(shareId: string): boolean {
+    const raw: string = String(this.store?.getSync('likedCommunityPosts', '[]') ?? '[]');
+    return CommunityLikeState.contains(raw, shareId);
+  }
+
+  async setLikedCommunityPost(shareId: string, liked: boolean): Promise<void> {
+    const raw: string = String(this.store?.getSync('likedCommunityPosts', '[]') ?? '[]');
+    this.store?.putSync('likedCommunityPosts', CommunityLikeState.update(raw, shareId, liked));
+    await this.store?.flush();
+  }
 
   async setBoolean(key: string, value: boolean): Promise<void> {
     this.store?.putSync(key, value);
@@ -128,6 +140,11 @@ export class AppPreferences {
     this.store?.deleteSync('pendingLibraryCommandControls');
     this.store?.deleteSync('pendingLibraryCommandConfirmations');
     for (const name of recordingNames) this.store?.deleteSync(`pendingReply.${name}`);
+    await this.store?.flush();
+  }
+
+  async clearDeletedAccountState(): Promise<void> {
+    this.store?.clearSync();
     await this.store?.flush();
   }
 
