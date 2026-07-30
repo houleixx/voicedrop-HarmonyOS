@@ -235,6 +235,11 @@ export struct WechatSettingsPage {
           .width('100%')
           .alignItems(HorizontalAlign.Start)
       }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-    }.height('100%').backgroundColor(Theme.BG)
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
+      .backgroundColor(Theme.BG)
   }
 }

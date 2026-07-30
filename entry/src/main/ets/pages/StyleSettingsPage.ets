@@ -279,6 +279,11 @@ export struct StyleSettingsPage {
       }
         .padding({ left: 18, right: 18, bottom: 16 })
         .width('100%')
-    }.height('100%').backgroundColor(Theme.BG)
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
+      .backgroundColor(Theme.BG)
   }
 }

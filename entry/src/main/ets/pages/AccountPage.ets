@@ -377,7 +377,10 @@ export struct AccountPage {
       }.layoutWeight(1).width('100%').scrollBar(BarState.Auto)
         .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }
+      .width('100%')
       .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
       .backgroundColor(Theme.BG)
   }
 }

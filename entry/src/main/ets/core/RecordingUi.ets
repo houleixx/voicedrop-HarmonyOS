@@ -12,6 +12,7 @@ const BAR_MIN: number = 6;
 const RECORD_RED: string = '#E5392E';
 const WARM_PINK: string = '#EBA89F';
 const LIGHT_PINK: string = '#E5C8C3';
+const MAX_AMPLITUDE: number = 32767;
 const NOISE_FLOOR: number = 0.015;
 const RESPONSE_EXPONENT: number = 0.35;
 
@@ -23,11 +24,11 @@ export function formatRecordingTime(seconds: number): string {
 }
 
 /**
- * HarmonyOS AVRecorder reports amplitude in the 0...1 range. Remove the
- * microphone noise floor and apply the same visual response curve as Android.
+ * Convert the AVRecorder PCM peak to 0...1, remove the microphone noise floor,
+ * and apply the same visual response curve as Android.
  */
 export function normalizeAmplitude(amplitude: number): number {
-  const normalized: number = Math.max(0, Math.min(1, amplitude));
+  const normalized: number = Math.max(0, Math.min(1, amplitude / MAX_AMPLITUDE));
   if (normalized <= NOISE_FLOOR) return 0;
   const audible: number = (normalized - NOISE_FLOOR) / (1 - NOISE_FLOOR);
   return Math.pow(audible, RESPONSE_EXPONENT);

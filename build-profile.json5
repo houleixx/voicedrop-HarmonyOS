@@ -1,17 +1,64 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/holly/.ohos/config/default_voicedrop-HarmonyOS_n6wa_hkbfC6Ln5VccJfX-UoPVOZKTlgZT-XUb1tFca4=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BAFEF826A8BA2BEFE5652FCD3005B724B41F1B43AB280C03D2F436B8EC0DA3C17E4857FD7665B40",
+          "profile": "/Users/holly/.ohos/config/default_voicedrop-HarmonyOS_n6wa_hkbfC6Ln5VccJfX-UoPVOZKTlgZT-XUb1tFca4=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/holly/.ohos/config/default_voicedrop-HarmonyOS_n6wa_hkbfC6Ln5VccJfX-UoPVOZKTlgZT-XUb1tFca4=.p12",
+          "storePassword": "0000001B427AEE0410656BA11FBAE057E48180A70EE9CFB3217B994B46074092991A80A6D2A8695F730A60"
+        }
+      },
+      {
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "signing/baixing-release/baixing_release.cer",
+          "keyAlias": "baixing",
+          "keyPassword": "0000001B5B80B475DA21C73598FC9B57F4F6ABC47DF31B9325EFE61C29C52E200260E78242ABEDF0DB2C87",
+          "profile": "signing/baixing-release/VoiceDrop_profileRelease.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "signing/baixing-release/key_p12.p12",
+          "storePassword": "0000001B4063AE6AE5878512021A1416E7E9013EF0BB53B67BA0F2A67B8AA7DC875AA7AB53CBED9ED46613"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
         "compatibleSdkVersion": "6.0.2(22)",
         "targetSdkVersion": "6.0.2(22)",
-        "runtimeOS": "HarmonyOS"
+        "runtimeOS": "HarmonyOS",
+        "signingConfig": "default"
       }
     ],
     "buildModeSet": [
-      { "name": "debug" },
-      { "name": "release" }
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ],
+    "capabilities": [
+      {
+        "bundleName": "com.baixingai.voicedrop.hm",
+        "config": [
+          {
+            "name": "Intents Kit",
+            "capability": "intentsKit"
+          },
+          {
+            "name": "Device status detection",
+            "capability": "com.huawei.service.device_security.device_verify"
+          }
+        ]
+      }
     ]
   },
   "modules": [
@@ -19,7 +66,12 @@
       "name": "entry",
       "srcPath": "./entry",
       "targets": [
-        { "name": "default", "applyToProducts": ["default"] }
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
       ]
     }
   ]

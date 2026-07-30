@@ -194,12 +194,17 @@ export struct SettingsPage {
   }
 
   @Builder
-  private divider() { Divider().strokeWidth(1).color(Theme.BORDER).margin({ left: 66 }) }
+  private divider() {
+    Divider()
+      .strokeWidth(1)
+      .color(Theme.BORDER)
+      .margin({ left: 66, right: 16 })
+  }
 
   @Builder
   private section(label: string) {
     Text(label).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-      .width('100%').padding({ left: 4, bottom: 8 }).margin({ top: 10 })
+      .width('100%').padding({ left: 4 }).margin({ top: 10 })
   }
 
   build() {
@@ -263,6 +268,11 @@ export struct SettingsPage {
           }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
         }.padding({ left: 16, right: 16, top: 6, bottom: 28 }).width('100%')
       }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-    }.height('100%').backgroundColor(Theme.BG)
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
+      .backgroundColor(Theme.BG)
   }
 }

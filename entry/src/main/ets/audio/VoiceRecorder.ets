@@ -52,7 +52,9 @@ export class VoiceRecorder {
     if (!this.recorder) return 0;
     try {
       const current: number = await this.recorder.getAudioCapturerMaxAmplitude();
-      this.currentAmplitude = Math.max(0, Math.min(1, current));
+      // Keep the recorder's raw PCM peak. RecordingUi is responsible for
+      // normalizing it before the value reaches the waveform.
+      this.currentAmplitude = Math.max(0, current);
       return this.currentAmplitude;
     } catch (_) {
       this.currentAmplitude = 0;

@@ -6,6 +6,12 @@ export struct PromptSettingsPage {
   initialCode: string = '';
 
   build() {
-    PromptSettingsView({ onBack: this.onBack, initialCode: this.initialCode })
+    Column() {
+      PromptSettingsView({ onBack: this.onBack, initialCode: this.initialCode })
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
   }
 }

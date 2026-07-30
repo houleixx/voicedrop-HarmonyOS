@@ -1,6 +1,6 @@
 import { Api } from '../core/Api';
 import { util } from '@kit.ArkTS';
-import { ArticleDoc, ArticleHistory, ArticleVersion, Recording, RecordingRowPayload } from '../model/Models';
+import { ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, Recording, RecordingRowPayload } from '../model/Models';
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
 import { common } from '@kit.AbilityKit';
@@ -86,6 +86,8 @@ export class LibraryStore {
   private cachedScopeToken: string = '';
   private cachedScope: string = '';
   private articleCacheRoot: string = '';
+  private articleCacheEpoch: number = 0;
+  private articleCacheGenerations: Map<string, number> = new Map<string, number>();
 
   initialize(context: common.Context): void {
     this.articleCacheRoot = `${context.cacheDir}/article-doc-cache-v1`;
@@ -153,19 +155,33 @@ export class LibraryStore {
   }
 
   async fetchArticle(recording: Recording): Promise<ArticleDoc | undefined> {
-    const response: HttpResponse = await httpClient.get(`${Api.FILES}/articles/${Api.path(recording.stem())}`, authStore.bearer());
-    if (!response.ok()) return undefined;
+    const identity: string = authStore.bearer();
+    const cacheKey: string = ClientReliability.articleDocCacheKey(identity, recording.stem());
+    const generation: number = (this.articleCacheGenerations.get(cacheKey) ?? 0) + 1;
+    const epoch: number = this.articleCacheEpoch;
+    this.articleCacheGenerations.set(cacheKey, generation);
+    const response: HttpResponse = await httpClient.get(`${Api.FILES}/articles/${Api.path(recording.stem())}`, identity);
+    if (!response.ok()) {
+      if ((response.code === 404 || response.code === 410) &&
+        ClientReliability.shouldApplyCacheResponse(identity, authStore.bearer(), epoch, this.articleCacheEpoch,
+          generation, this.articleCacheGenerations.get(cacheKey) ?? 0)) {
+        this.invalidateArticleForIdentity(recording, identity);
+      }
+      return undefined;
+    }
+    if (!ClientReliability.shouldApplyCacheResponse(identity, authStore.bearer(), epoch, this.articleCacheEpoch,
+      generation, this.articleCacheGenerations.get(cacheKey) ?? 0)) return undefined;
     const doc: ArticleDoc = this.parseArticle(response.text);
     if (!doc.owner) doc.owner = authStore.storageScope();
-    const previous: ArticleDoc | undefined = this.cachedArticle(recording);
-    this.storeArticleSnapshot(recording, response.text);
+    const previous: ArticleDoc | undefined = this.cachedArticle(recording, identity);
+    this.storeArticleSnapshot(recording, response.text, identity);
     photoService.reconcileArticlePhotos(previous, doc);
     return doc;
   }
 
-  cachedArticle(recording: Recording): ArticleDoc | undefined {
+  cachedArticle(recording: Recording, identity: string = authStore.bearer()): ArticleDoc | undefined {
     try {
-      const raw: string = this.readArticleSnapshot(recording);
+      const raw: string = this.readArticleSnapshot(recording, identity);
       if (raw.length === 0) return undefined;
       const doc: ArticleDoc = this.parseArticle(raw);
       if (!doc.owner) doc.owner = authStore.storageScope();
@@ -175,18 +191,29 @@ export class LibraryStore {
 
   async cacheArticle(recording: Recording, doc: ArticleDoc, refreshPhotoKeys: string[] = []): Promise<void> {
     if (!doc.articles || doc.articles.length === 0) return;
-    const previous: ArticleDoc | undefined = this.cachedArticle(recording);
-    this.storeArticleSnapshot(recording, JSON.stringify(doc));
+    const identity: string = authStore.bearer();
+    const cacheKey: string = ClientReliability.articleDocCacheKey(identity, recording.stem());
+    this.articleCacheGenerations.set(cacheKey, (this.articleCacheGenerations.get(cacheKey) ?? 0) + 1);
+    const previous: ArticleDoc | undefined = this.cachedArticle(recording, identity);
+    this.storeArticleSnapshot(recording, JSON.stringify(doc), identity);
     photoService.reconcileArticlePhotos(previous, doc, refreshPhotoKeys);
   }
 
   async invalidateArticle(recording: Recording): Promise<void> {
+    this.invalidateArticleForIdentity(recording, authStore.bearer());
+  }
+
+  private invalidateArticleForIdentity(recording: Recording, identity: string): void {
+    const cacheKey: string = ClientReliability.articleDocCacheKey(identity, recording.stem());
+    this.articleCacheGenerations.set(cacheKey, (this.articleCacheGenerations.get(cacheKey) ?? 0) + 1);
     if (this.articleCacheRoot.length === 0) return;
-    photoService.removeArticlePhotos(this.cachedArticle(recording));
-    try { fs.unlinkSync(this.articleSnapshotPath(recording)); } catch (_) {}
+    photoService.removeArticlePhotos(this.cachedArticle(recording, identity));
+    try { fs.unlinkSync(this.articleSnapshotPath(recording, identity)); } catch (_) {}
   }
 
   clearArticleSnapshots(): void {
+    this.articleCacheEpoch++;
+    this.articleCacheGenerations.clear();
     if (this.articleCacheRoot.length === 0) return;
     photoService.clearArticlePhotoCache();
     try {
@@ -196,15 +223,15 @@ export class LibraryStore {
     } catch (_) {}
   }
 
-  private articleSnapshotPath(recording: Recording): string {
-    return `${this.articleCacheRoot}/${ClientReliability.articleDocCacheKey(authStore.bearer(), recording.stem())}`;
+  private articleSnapshotPath(recording: Recording, identity: string = authStore.bearer()): string {
+    return `${this.articleCacheRoot}/${ClientReliability.articleDocCacheKey(identity, recording.stem())}`;
   }
 
-  private readArticleSnapshot(recording: Recording): string {
+  private readArticleSnapshot(recording: Recording, identity: string = authStore.bearer()): string {
     if (this.articleCacheRoot.length === 0) return '';
     let file: fs.File | undefined;
     try {
-      file = fs.openSync(this.articleSnapshotPath(recording), fs.OpenMode.READ_ONLY);
+      file = fs.openSync(this.articleSnapshotPath(recording, identity), fs.OpenMode.READ_ONLY);
       const size: number = fs.statSync(file.fd).size;
       const bytes: ArrayBuffer = new ArrayBuffer(size);
       fs.readSync(file.fd, bytes);
@@ -213,11 +240,12 @@ export class LibraryStore {
     finally { if (file) try { fs.closeSync(file); } catch (_) {} }
   }
 
-  private storeArticleSnapshot(recording: Recording, raw: string): void {
+  private storeArticleSnapshot(recording: Recording, raw: string, identity: string = authStore.bearer()): void {
     if (this.articleCacheRoot.length === 0 || raw.length === 0) return;
     let file: fs.File | undefined;
     try {
-      file = fs.openSync(this.articleSnapshotPath(recording), fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      file = fs.openSync(this.articleSnapshotPath(recording, identity),
+        fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
       const encoded: Uint8Array = new util.TextEncoder().encodeInto(raw);
       const data: ArrayBuffer = new ArrayBuffer(encoded.byteLength);
       new Uint8Array(data).set(encoded);
@@ -319,8 +347,18 @@ export class LibraryStore {
   }
 
   async patchQuestion(recording: Recording, id: string, status: string): Promise<boolean> {
-    return (await httpClient.patchJson(`${Api.FILES}/articles/${Api.path(recording.stem())}/question`,
-      authStore.bearer(), new QuestionRequest(id, status))).ok();
+    const identity: string = authStore.bearer();
+    const ok: boolean = (await httpClient.patchJson(`${Api.FILES}/articles/${Api.path(recording.stem())}/question`,
+      identity, new QuestionRequest(id, status))).ok();
+    if (!ok || identity !== authStore.bearer()) return ok;
+    const cached: ArticleDoc | undefined = this.cachedArticle(recording, identity);
+    const question: FollowupQuestion | undefined = cached?.questions?.find(
+      (item: FollowupQuestion): boolean => item.id === id);
+    if (cached && question) {
+      question.status = status;
+      await this.cacheArticle(recording, cached);
+    }
+    return ok;
   }
 
   articleFromVersion(current: ArticleDoc, version: ArticleVersion): ArticleDoc {

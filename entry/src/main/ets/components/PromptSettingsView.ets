@@ -979,7 +979,7 @@ export struct PromptSettingsView {
   }
 
   build() {
-    Stack() {
+    Stack({ alignContent: Alignment.TopStart }) {
       Column() {
         Stack({ alignContent: Alignment.End }) {
           if (this.sorting) {
@@ -1068,14 +1068,24 @@ export struct PromptSettingsView {
               Button('恢复默认提示词').fontSize(14).fontColor(Theme.ACCENT).height(52)
                 .backgroundColor(Color.Transparent).width('100%').onClick(() => this.restoreDefaults())
             }
-          }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).width('100%')
+          }
+            .padding({ left: 16, right: 16, top: 6, bottom: 40 })
+            .width('100%')
+            .constraintSize({ minHeight: '100%' })
+            .justifyContent(FlexAlign.Start)
+            .alignItems(HorizontalAlign.Start)
         }
           .layoutWeight(1)
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
           .onScroll((_xOffset: number, yOffset: number) => {
             if (Math.abs(yOffset) > 0.5) this.closePromptSwipe();
           })
-      }.height('100%').backgroundColor(Theme.BG)
+      }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Start)
+        .alignItems(HorizontalAlign.Start)
+        .backgroundColor(Theme.BG)
       if (this.showEditor) {
         this.editorPage()
       }
@@ -1311,5 +1321,8 @@ export struct PromptSettingsView {
         }.width('100%').height('100%')
       }
     }
+      .width('100%')
+      .height('100%')
+      .align(Alignment.TopStart)
   }
 }

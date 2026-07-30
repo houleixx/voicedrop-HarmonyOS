@@ -37,6 +37,10 @@ export struct PrivacyPolicyPage {
           .padding({ left: 16, right: 16, top: 6, bottom: 16 }).width('100%')
       }
         .layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-    }.height('100%')
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
   }
 }

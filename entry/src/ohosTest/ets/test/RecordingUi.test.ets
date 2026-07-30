@@ -49,21 +49,21 @@ export default function recordingUiTest() {
         expect(normalizeAmplitude(0)).assertEqual(0);
       });
 
-      it('clampsTo1ForHighPeak', 0, () => {
-        expect(normalizeAmplitude(2)).assertEqual(1);
+      it('clampsTo1ForPeakAbovePcmRange', 0, () => {
+        expect(normalizeAmplitude(65535)).assertEqual(1);
       });
 
       it('removesMicrophoneNoiseFloor', 0, () => {
-        expect(normalizeAmplitude(0.015)).assertEqual(0);
+        expect(normalizeAmplitude(491)).assertEqual(0);
       });
 
       it('normalizesMidRangeWithResponsiveCurve', 0, () => {
-        const result: number = normalizeAmplitude(0.5);
+        const result: number = normalizeAmplitude(16384);
         expect(result > 0 && result < 1).assertEqual(true);
       });
 
       it('growsWithAmplitude', 0, () => {
-        expect(normalizeAmplitude(0.5) > normalizeAmplitude(0.1)).assertEqual(true);
+        expect(normalizeAmplitude(16384) > normalizeAmplitude(3277)).assertEqual(true);
       });
     });
 

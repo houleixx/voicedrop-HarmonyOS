@@ -58,11 +58,27 @@ export default function clientReliabilityTest() {
         ClientReliability.articleDocCacheKey('anon-second', 'VoiceDrop-a')).assertTrue();
       expect(ClientReliability.articleDocCacheKey('anon-first', 'VoiceDrop-a') !==
         ClientReliability.articleDocCacheKey('anon-first', 'VoiceDrop-b')).assertTrue();
+      expect(ClientReliability.communityPostCacheKey('anon-first', 'share-a') !==
+        ClientReliability.communityPostCacheKey('anon-second', 'share-a')).assertTrue();
+      expect(ClientReliability.communityPostCacheKey('anon-first', 'share-a') !==
+        ClientReliability.communityPostCacheKey('anon-first', 'share-b')).assertTrue();
       expect(ClientReliability.photoCacheKey('users/a/photos/one.jpg') !==
         ClientReliability.photoCacheKey('users/a/photos/two.jpg')).assertTrue();
       expect(ClientReliability.photoCacheInvalidations(
         ['keep.jpg', 'deleted.jpg'], ['keep.jpg', 'added.jpg'], ['processed.jpg']).sort().join(','))
         .assertEqual('deleted.jpg,processed.jpg');
+    });
+
+    it('blocksDetailLoadingOnlyWhenNoCachedContentCanRender', 0, () => {
+      expect(ClientReliability.shouldBlockDetailLoading(false)).assertTrue();
+      expect(ClientReliability.shouldBlockDetailLoading(true)).assertFalse();
+    });
+
+    it('rejectsCacheResponsesFromOldAccountsClearsAndRequests', 0, () => {
+      expect(ClientReliability.shouldApplyCacheResponse('account-a', 'account-a', 3, 3, 7, 7)).assertTrue();
+      expect(ClientReliability.shouldApplyCacheResponse('account-a', 'account-b', 3, 3, 7, 7)).assertFalse();
+      expect(ClientReliability.shouldApplyCacheResponse('account-a', 'account-a', 2, 3, 7, 7)).assertFalse();
+      expect(ClientReliability.shouldApplyCacheResponse('account-a', 'account-a', 3, 3, 6, 7)).assertFalse();
     });
 
     it('formatsHarmonyBusinessErrorsAndHidesBackgroundRefreshFailuresWithCachedRows', 0, () => {

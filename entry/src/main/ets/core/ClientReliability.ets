@@ -69,6 +69,20 @@ export class ClientReliability {
     return `articleDocCache.v1.${ClientReliability.cacheHash(identity)}.${ClientReliability.cacheHash(stem)}`;
   }
 
+  static communityPostCacheKey(identity: string, shareId: string): string {
+    return `communityPostCache.v1.${ClientReliability.cacheHash(identity)}.${ClientReliability.cacheHash(shareId)}`;
+  }
+
+  static shouldBlockDetailLoading(hasCachedContent: boolean): boolean {
+    return !hasCachedContent;
+  }
+
+  static shouldApplyCacheResponse(requestIdentity: string, currentIdentity: string,
+    requestEpoch: number, currentEpoch: number, requestGeneration: number, currentGeneration: number): boolean {
+    return requestIdentity === currentIdentity && requestEpoch === currentEpoch &&
+      requestGeneration === currentGeneration;
+  }
+
   static photoCacheKey(fullKey: string): string {
     return `photoCache.v1.${ClientReliability.cacheHash(fullKey)}.jpg`;
   }
