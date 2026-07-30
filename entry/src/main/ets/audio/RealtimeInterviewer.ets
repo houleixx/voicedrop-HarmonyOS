@@ -198,10 +198,14 @@ export class RealtimeInterviewer {
       const options: audio.AudioRendererOptions = {
         streamInfo: { samplingRate: audio.AudioSamplingRate.SAMPLE_RATE_24000, channels: audio.AudioChannel.CHANNEL_1,
           sampleFormat: audio.AudioSampleFormat.SAMPLE_FORMAT_S16LE, encodingType: audio.AudioEncodingType.ENCODING_TYPE_RAW },
-        rendererInfo: { content: audio.ContentType.CONTENT_TYPE_SPEECH, usage: audio.StreamUsage.STREAM_USAGE_VOICE_ASSISTANT,
+        // Match Android's media playback route. The voice-assistant route can
+        // suppress its own playback from the concurrent microphone recording.
+        rendererInfo: { content: audio.ContentType.CONTENT_TYPE_SPEECH, usage: audio.StreamUsage.STREAM_USAGE_MUSIC,
           rendererFlags: 0 }
       };
-      this.renderer = await audio.createAudioRenderer(options); await this.renderer.start();
+      this.renderer = await audio.createAudioRenderer(options);
+      await this.renderer.start();
+      try { await this.renderer.setVolume(1); } catch (_) {}
     }
     const buffer: ArrayBuffer = new ArrayBuffer(bytes.byteLength); new Uint8Array(buffer).set(bytes);
     await this.renderer.write(buffer);

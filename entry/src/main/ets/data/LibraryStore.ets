@@ -126,10 +126,12 @@ export class LibraryStore {
       .sort((left: Recording, right: Recording) => right.uploaded.localeCompare(left.uploaded) || right.name.localeCompare(left.name));
   }
 
-  async enrichMissingMetadata(recordings: Recording[]): Promise<boolean> {
+  async enrichMissingMetadata(recordings: Recording[], targetStems?: string[]): Promise<boolean> {
     let changed: boolean = false;
-    for (let start: number = 0; start < recordings.length; start += 5) {
-      const batch: Recording[] = recordings.slice(start, start + 5);
+    const targets: Recording[] = targetStems === undefined ? recordings :
+      recordings.filter((recording: Recording): boolean => targetStems.includes(recording.stem()));
+    for (let start: number = 0; start < targets.length; start += 5) {
+      const batch: Recording[] = targets.slice(start, start + 5);
       await Promise.all(batch.map(async (recording: Recording) => {
         try {
           if (recording.hasArticles) {
@@ -201,6 +203,24 @@ export class LibraryStore {
 
   async invalidateArticle(recording: Recording): Promise<void> {
     this.invalidateArticleForIdentity(recording, authStore.bearer());
+  }
+
+  invalidateArticleStems(stems: string[], identity: string = authStore.bearer()): void {
+    const unique: Set<string> = new Set<string>(stems);
+    unique.forEach((stem: string) => {
+      if (stem.length > 0) this.invalidateArticleForIdentity(new Recording({ name: `${stem}.m4a` }), identity);
+    });
+    if (unique.size === 0 || identity !== authStore.bearer()) return;
+    const cachedRows: Recording[] = this.cachedRecordings();
+    let metadataChanged: boolean = false;
+    cachedRows.forEach((recording: Recording) => {
+      if (!unique.has(recording.stem())) return;
+      recording.title = '';
+      recording.tags = [];
+      recording.coverPhotoKey = '';
+      metadataChanged = true;
+    });
+    if (metadataChanged) this.storeRecordingsSnapshot(cachedRows);
   }
 
   private invalidateArticleForIdentity(recording: Recording, identity: string): void {

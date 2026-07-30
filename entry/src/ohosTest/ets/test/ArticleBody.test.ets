@@ -42,5 +42,26 @@ export default function articleBodyTest() {
       expect(ArticleBody.materializePhotoMarker('[[photo:2]]', '2', ['photos/session/only.jpg']))
         .assertEqual('[[photo:2]]');
     });
+
+    it('replacesOnlyTheSelectedVisibleParagraph', 0, () => {
+      const body: string =
+        '<!-- style: 风格 v3 -->\n  第一段  \n\n[[photo:photos/s/1-a.jpg]]\n\n第三段';
+      expect(ArticleBody.replacingLine(3, '第三段（已修改）', body))
+        .assertEqual('<!-- style: 风格 v3 -->\n  第一段  \n\n[[photo:photos/s/1-a.jpg]]\n\n第三段（已修改）');
+    });
+
+    it('doesNotReplacePhotoRowsOrRowsOutsideTheArticle', 0, () => {
+      const body: string = '第一段\n[[photo:photos/s/1-a.jpg]]\n第三段';
+      expect(ArticleBody.replacingLine(2, '不能替换图片', body)).assertEqual(body);
+      expect(ArticleBody.replacingLine(9, '越界', body)).assertEqual(body);
+    });
+
+    it('mapsAVisibleParagraphBackIntoTheStoredArticle', 0, () => {
+      const original: string =
+        '<!-- style: 风格 v2 -->\n标题\n\n第一段\n[[photo:photos/s/1-a.jpg]]\n第二段';
+      const rendered: string = '第一段\n[[photo:photos/s/1-a.jpg]]\n第二段';
+      expect(ArticleBody.replacingRenderedLine(1, '第一段（已修改）', rendered, original))
+        .assertEqual('<!-- style: 风格 v2 -->\n标题\n\n第一段（已修改）\n[[photo:photos/s/1-a.jpg]]\n第二段');
+    });
   });
 }

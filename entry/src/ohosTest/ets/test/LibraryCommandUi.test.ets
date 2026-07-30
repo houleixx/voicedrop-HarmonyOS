@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   LibraryCommandEvent,
+  LibraryCommandFeedback,
   LibraryCommandGestureAction,
   LibraryCommandTarget,
   LibraryCommandTone,
@@ -52,6 +53,16 @@ export default function libraryCommandUiTest() {
       const canceled = LibraryCommandUi.dictationFeedback('删除第二条', true);
       expect(canceled.text).assertEqual('松手取消图库指令');
       expect(canceled.tone).assertEqual(LibraryCommandTone.Error);
+    });
+
+    it('keepsFinalTranscriptBeforeSwitchingToWorkingStatus', 0, () => {
+      const working = new LibraryCommandFeedback('正在执行图库指令…', LibraryCommandTone.Active);
+      const held = LibraryCommandUi.displayedFeedback(working, '删除第二条录音', true);
+      const released = LibraryCommandUi.displayedFeedback(working, '删除第二条录音', false);
+      expect(held.text).assertEqual('删除第二条录音');
+      expect(held.tone).assertEqual(LibraryCommandTone.Active);
+      expect(released.text).assertEqual('正在执行图库指令…');
+      expect(LibraryCommandUi.transcriptConfirmationMs() >= 1500).assertTrue();
     });
 
     it('separatesTapSendAndCancelGestures', 0, () => {

@@ -106,6 +106,27 @@ export class LibraryCommandUi {
     return new LibraryCommandFeedback(text.length > 0 ? text : '在听…', LibraryCommandTone.Active);
   }
 
+  /**
+   * Keeps the user's recognized words visible while command execution feedback
+   * continues updating behind it. Once the confirmation window closes, the
+   * newest command feedback becomes visible without delaying the command itself.
+   */
+  static displayedFeedback(
+    feedback: LibraryCommandFeedback,
+    transcript: string,
+    keepTranscript: boolean
+  ): LibraryCommandFeedback {
+    const text: string = transcript.trim();
+    if (keepTranscript && text.length > 0) {
+      return new LibraryCommandFeedback(text, LibraryCommandTone.Active);
+    }
+    return feedback;
+  }
+
+  static transcriptConfirmationMs(): number {
+    return 2000;
+  }
+
   /** Feedback shown after the user releases and we are waiting for the final ASR result. */
   static recognizingFeedback(): LibraryCommandFeedback {
     return new LibraryCommandFeedback('正在识别…', LibraryCommandTone.Active);

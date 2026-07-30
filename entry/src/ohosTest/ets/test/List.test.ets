@@ -19,6 +19,9 @@ import articleVersionNavigationTest from './ArticleVersionNavigation.test';
 import styleRewriteUiTest from './StyleRewriteUi.test';
 import photoJpegTest from './PhotoJpeg.test';
 import restyleRequestTest from './RestyleRequest.test';
+import pendingAudioFramesTest from './PendingAudioFrames.test';
+import holdToTalkTest from './HoldToTalk.test';
+import asrResponseGateTest from './AsrResponseGate.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -42,4 +45,7 @@ export default function testsuite() {
   styleRewriteUiTest();
   photoJpegTest();
   restyleRequestTest();
+  pendingAudioFramesTest();
+  holdToTalkTest();
+  asrResponseGateTest();
 }
