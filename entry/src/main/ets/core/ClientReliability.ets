@@ -1,7 +1,8 @@
 export class ClientReliability {
   static readonly HEARTBEAT_MS: number = 25000;
 
-  static isEditTerminal(type: string, snapshotResolved: boolean): boolean {
+  static shouldRefreshResolvedArticle(type: string, snapshotResolved: boolean, hasArticle: boolean): boolean {
+    if (hasArticle && (type === 'updated' || type === 'snapshot')) return false;
     return type === 'updated' || type === 'error' || (type === 'snapshot' && snapshotResolved);
   }
 

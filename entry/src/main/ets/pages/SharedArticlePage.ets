@@ -50,7 +50,10 @@ export struct SharedArticlePage {
             ForEach(ArticleBody.blocks(this.article!.articles[this.selectedIndex].body),
               (block: ArticleBlock) => this.articleBlock(block))
           }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).alignItems(HorizontalAlign.Start).width('100%')
-        }.layoutWeight(1).width('100%')
+        }
+          .layoutWeight(1)
+          .width('100%')
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
     }.height('100%')
   }

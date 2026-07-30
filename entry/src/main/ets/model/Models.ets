@@ -8,6 +8,7 @@ export interface RecordingRowPayload {
   hasTags?: boolean;
   title?: string;
   tags?: string[];
+  coverPhotoKey?: string;
   phase?: string;
   blockReason?: string;
 }
@@ -20,6 +21,8 @@ export class Recording {
   hasTags: boolean = false;
   title: string = '';
   tags: string[] = [];
+  /** First article photo, relative to the recording owner's storage scope. */
+  coverPhotoKey: string = '';
   phase: string = '';
   blockReason: string = '';
   saving: boolean = false;
@@ -34,6 +37,7 @@ export class Recording {
       this.hasTags = payload.hasTags ?? false;
       this.title = payload.title ?? '';
       this.tags = payload.tags ?? [];
+      this.coverPhotoKey = payload.coverPhotoKey ?? '';
       this.phase = payload.phase ?? '';
       this.blockReason = payload.blockReason ?? '';
     }
@@ -45,6 +49,7 @@ export class Recording {
   emptyKey(): string { return `articles/${this.stem()}.empty`; }
   tagsKey(): string { return `articles/${this.stem()}.tags`; }
   rowTitle(): string { return this.title.length > 0 ? this.title : RecordingName.rowTitle(this.name); }
+  dateTimeLabel(): string { return RecordingName.dateTimeLabel(this.name); }
   durationLabel(): string { return RecordingName.parse(this.name)?.duration ?? ''; }
   statusLabel(): string {
     if (this.saving) return '正在保存';

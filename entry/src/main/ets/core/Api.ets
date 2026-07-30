@@ -18,6 +18,10 @@ export class Api {
     return `${Api.DIRECT_API_ORIGIN}${url.substring(domesticOrigin.length)}`;
   }
 
+  static restyleUrl(): string {
+    return `${Api.DIRECT_API_ORIGIN}/agent/restyle`;
+  }
+
   static sharePage(id: string): string {
     return `https://voicedrop.cn/${Api.path(id)}`;
   }

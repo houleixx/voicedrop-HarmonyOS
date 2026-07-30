@@ -5,7 +5,6 @@ import { httpClient, HttpResponse } from '../net/HttpClient';
 export class StyleSettings {
   style?: string;
   name?: string;
-  styles?: number[];
 }
 export class WechatSettings {
   appid?: string;
@@ -18,8 +17,9 @@ export class AppConfig {
 export class StyleVersion {
   v: number = 0;
   style: string = '';
-  savedAt?: string;
-  createdAt?: string;
+  source?: string;
+  savedAt?: string | number;
+  createdAt?: string | number;
 }
 export class StyleHistory {
   head: number = 0;
@@ -36,10 +36,6 @@ class NameBody {
 class StyleHeadBody {
   head: number;
   constructor(head: number) { this.head = head; }
-}
-class StyleSelectionBody {
-  styles: number[];
-  constructor(styles: number[]) { this.styles = styles; }
 }
 class AppConfigBody {
   autoShareCommunity: boolean;
@@ -68,15 +64,14 @@ export class SettingsStore {
 
   async loadStyleHistory(): Promise<StyleHistory> {
     const response: HttpResponse = await httpClient.get(`${Api.FILES}/style/history`, authStore.bearer());
-    return response.ok() ? JSON.parse(response.text) as StyleHistory : new StyleHistory();
+    if (!response.ok()) return new StyleHistory();
+    const history: StyleHistory = JSON.parse(response.text) as StyleHistory;
+    history.versions = Array.isArray(history.versions) ? history.versions : [];
+    return history;
   }
 
   async saveStyleHead(head: number): Promise<boolean> {
     return (await httpClient.patchJson(`${Api.FILES}/style/head`, authStore.bearer(), new StyleHeadBody(head))).ok();
-  }
-
-  async saveStyleSelection(styles: number[]): Promise<boolean> {
-    return (await httpClient.putJson(`${Api.FILES}/style`, authStore.bearer(), new StyleSelectionBody(styles))).ok();
   }
 
   async loadWechat(): Promise<WechatSettings> {

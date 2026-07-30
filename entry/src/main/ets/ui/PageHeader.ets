@@ -27,6 +27,7 @@ export struct PageHeader {
           .border({ width: 1, color: Theme.BORDER, radius: 11 })
           .borderRadius(11)
           .clip(true)
+          .stateEffect(false)
           .onClick(this.onBack)
         Blank()
       }

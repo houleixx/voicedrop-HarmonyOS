@@ -43,9 +43,9 @@ export class RemixIconGlyph {
 
 @Component
 export struct RemixIcon {
-  glyph: string = '';
-  iconSize: number = 24;
-  color: ResourceColor = '#2A2521';
+  @Prop glyph: string = '';
+  @Prop iconSize: number = 24;
+  @Prop color: ResourceColor = '#2A2521';
 
   build() {
     Text(this.glyph)

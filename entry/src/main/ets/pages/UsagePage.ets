@@ -1,7 +1,6 @@
 import { promptAction } from '@kit.ArkUI';
 import { usageStore, UsageBalance, UsageEntry, UsageLedgerPage, UsageSummary, UsageSummaryRow } from '../data/UsageStore';
 import { PageHeader } from '../ui/PageHeader';
-import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 
 @Component
@@ -64,7 +63,7 @@ export struct UsagePage {
       PageHeader({ title: '算力', onBack: this.onBack })
       if (this.loading) {
         Column() {
-          LoadingProgress().width(48).height(48).color(Theme.ACCENT)
+          LoadingProgress().width(48).height(48).color(Theme.ACCENT_STRONG)
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
       }
       else if (this.errorText.length > 0) {
@@ -85,16 +84,6 @@ export struct UsagePage {
               Text(`累计获赠 ${Math.round(this.balance.suanli + this.balance.spentSuanli)} · 已用 ${Math.round(this.balance.spentSuanli)}`)
                 .fontSize(13).fontColor('#C9BFAE').margin({ top: 4 }).width('100%')
             }.padding(22).width('100%').backgroundColor('#211D19').borderRadius(16).alignItems(HorizontalAlign.Start)
-            Column({ space: 10 }) {
-              Row() {
-                RemixIcon({ glyph: RI.FLASHLIGHT, iconSize: 22, color: Theme.AMBER })
-                Column() { Text('包月算力').fontSize(15).fontWeight(FontWeight.Bold); Text('每月 200 算力 · 月底清零').fontSize(12).fontColor('#777777') }
-                  .alignItems(HorizontalAlign.Start).layoutWeight(1)
-                Text('即将上线').fontSize(13).fontColor('#C98A2E')
-              }
-              Text('包月算力还在开发中；当前算力来自注册与活动赠送。').fontSize(12).fontColor('#888888').width('100%')
-            }.padding(16).width('100%').backgroundColor(Color.White).borderRadius(14)
-              .border({ width: 1, color: '#EFE4D4' })
             if (this.summary.granted.length > 0) {
               Text('算力来源').fontSize(13).fontWeight(FontWeight.Bold).fontColor('#777777').width('100%').margin({ top: 6 })
               Column() {

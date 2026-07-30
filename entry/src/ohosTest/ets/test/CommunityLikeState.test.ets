@@ -19,5 +19,17 @@ export default function communityLikeStateTest() {
       expect(CommunityLikeState.contains('invalid', 'share-a')).assertFalse();
       expect(CommunityLikeState.update('invalid', 'share-a', true)).assertEqual('["share-a"]');
     });
+
+    it('updatesTheVisibleCountWhenLikeStateChanges', 0, () => {
+      expect(CommunityLikeState.countAfterToggle(3, false, true)).assertEqual(4);
+      expect(CommunityLikeState.countAfterToggle(4, true, false)).assertEqual(3);
+      expect(CommunityLikeState.countAfterToggle(4, true, true)).assertEqual(4);
+    });
+
+    it('keepsALocalLikeAcrossAStaleFeedRefresh', 0, () => {
+      expect(CommunityLikeState.reconciledLiked(false, true)).assertTrue();
+      expect(CommunityLikeState.reconciledCount(3, false, true)).assertEqual(4);
+      expect(CommunityLikeState.reconciledCount(4, true, true)).assertEqual(4);
+    });
   });
 }

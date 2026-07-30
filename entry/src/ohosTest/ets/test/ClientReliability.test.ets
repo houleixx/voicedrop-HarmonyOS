@@ -19,12 +19,14 @@ export default function clientReliabilityTest() {
         .assertEqual('https://jianshuo.dev/cdn-cgi/image/width=512,quality=60/files/api/photo/users/a/photos/a%20b.jpg');
     });
 
-    it('recognizesEveryEditTerminalThatRequiresAnAuthoritativeRefresh', 0, () => {
-      expect(ClientReliability.isEditTerminal('updated', false)).assertTrue();
-      expect(ClientReliability.isEditTerminal('error', false)).assertTrue();
-      expect(ClientReliability.isEditTerminal('snapshot', true)).assertTrue();
-      expect(ClientReliability.isEditTerminal('snapshot', false)).assertFalse();
-      expect(ClientReliability.isEditTerminal('reply', false)).assertFalse();
+    it('doesNotOverwriteAnAuthoritativeSocketArticleWithASecondRefresh', 0, () => {
+      expect(ClientReliability.shouldRefreshResolvedArticle('updated', false, true)).assertFalse();
+      expect(ClientReliability.shouldRefreshResolvedArticle('snapshot', true, true)).assertFalse();
+      expect(ClientReliability.shouldRefreshResolvedArticle('updated', false, false)).assertTrue();
+      expect(ClientReliability.shouldRefreshResolvedArticle('error', false, false)).assertTrue();
+      expect(ClientReliability.shouldRefreshResolvedArticle('snapshot', true, false)).assertTrue();
+      expect(ClientReliability.shouldRefreshResolvedArticle('snapshot', false, false)).assertFalse();
+      expect(ClientReliability.shouldRefreshResolvedArticle('reply', false, false)).assertFalse();
     });
 
     it('refreshesTheLibraryForUpdatedAndSnapshotCommandMessages', 0, () => {

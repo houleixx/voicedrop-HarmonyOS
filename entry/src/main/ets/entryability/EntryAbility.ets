@@ -84,6 +84,7 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
       AppStorage.setOrCreate<number>('safeAreaTopPx', systemArea.topRect.height);
       AppStorage.setOrCreate<number>('safeAreaBottomPx', navigationArea.bottomRect.height);
       AppStorage.setOrCreate<number>('windowWidthPx', mainWindow.getWindowProperties().windowRect.width);
+      AppStorage.setOrCreate<number>('windowHeightPx', mainWindow.getWindowProperties().windowRect.height);
     } catch (error) {
       AppStorage.setOrCreate<number>('safeAreaTopPx', 0);
       AppStorage.setOrCreate<number>('safeAreaBottomPx', 0);
