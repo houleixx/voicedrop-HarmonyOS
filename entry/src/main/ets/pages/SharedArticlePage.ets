@@ -55,6 +55,10 @@ export struct SharedArticlePage {
           .width('100%')
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-    }.height('100%')
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
   }
 }

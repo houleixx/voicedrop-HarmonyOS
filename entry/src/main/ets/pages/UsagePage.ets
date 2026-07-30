@@ -62,9 +62,16 @@ export struct UsagePage {
     Column() {
       PageHeader({ title: '算力', onBack: this.onBack })
       if (this.loading) {
-        Column() {
-          LoadingProgress().width(48).height(48).color(Theme.ACCENT_STRONG)
-        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
+        Column({ space: 14 }) {
+          LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
+          Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
+        }
+          .height(180)
+          .margin({ top: 50 })
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+        Blank()
       }
       else if (this.errorText.length > 0) {
         Column({ space: 12 }) {
@@ -118,9 +125,18 @@ export struct UsagePage {
                 .width('100%').backgroundColor(Color.Transparent).fontColor('#777777').onClick(() => this.loadMore())
             }.width('100%').backgroundColor(Color.White).borderRadius(14)
               .border({ width: 1, color: '#EFE4D4' })
-          }.padding({ left: 16, right: 16, top: 6, bottom: 30 }).width('100%')
+          }
+            .padding({ left: 16, right: 16, top: 6, bottom: 30 })
+            .width('100%')
+            .constraintSize({ minHeight: '100%' })
+            .justifyContent(FlexAlign.Start)
+            .alignItems(HorizontalAlign.Start)
         }.layoutWeight(1).width('100%').edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-    }.height('100%')
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
   }
 }

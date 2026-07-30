@@ -1,4 +1,8 @@
 import { Api } from '../core/Api';
+import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { ClientReliability } from '../core/ClientReliability';
 import { CommunityPost } from '../model/Models';
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
@@ -63,6 +67,15 @@ export class CommunityShareResult {
 }
 
 export class CommunityStore {
+  private postCacheRoot: string = '';
+  private postCacheEpoch: number = 0;
+  private postCacheGenerations: Map<string, number> = new Map<string, number>();
+
+  initialize(context: common.Context): void {
+    this.postCacheRoot = `${context.cacheDir}/community-post-cache-v1`;
+    try { fs.mkdirSync(this.postCacheRoot); } catch (_) {}
+  }
+
   async feed(): Promise<CommunityFeed> {
     const response: HttpResponse = await httpClient.get(`${Api.RECO}/feed`, authStore.anonymousBearer());
     if (!response.ok()) throw new Error(`社区加载失败 HTTP ${response.code}`);
@@ -91,15 +104,21 @@ export class CommunityStore {
 
   invalidateFeed(): void { authStore.clearCommunityFeedCache(); }
 
-  async engage(shareId: string, action: string, on?: boolean): Promise<void> {
+  async engage(shareId: string, action: string, on?: boolean): Promise<boolean> {
     const body: EngageBody = new EngageBody(action, on);
     const response: HttpResponse = await httpClient.postJson(`${Api.RECO}/engage/${Api.path(shareId)}`, authStore.anonymousBearer(), body);
     if (response.ok()) this.invalidateFeed();
+    return response.ok();
   }
 
   async report(shareId: string): Promise<boolean> {
-    const ok: boolean = (await httpClient.postJson(`${Api.FILES}/community/report/${Api.path(shareId)}`, authStore.bearer())).ok();
-    if (ok) this.invalidateFeed();
+    const identity: string = authStore.bearer();
+    const ok: boolean = (await httpClient.postJson(
+      `${Api.FILES}/community/report/${Api.path(shareId)}`, identity)).ok();
+    if (ok) {
+      this.invalidatePost(shareId, identity);
+      this.invalidateFeed();
+    }
     return ok;
   }
 
@@ -134,13 +153,18 @@ export class CommunityStore {
 
   async shareResult(articleKey: string, replyTo: string = ''): Promise<CommunityShareResult> {
     const body: Object | string = replyTo.length > 0 ? new ReplyBody(replyTo) : '';
+    const identity: string = authStore.bearer();
     const response: HttpResponse = await httpClient.postJson(`${Api.FILES}/community/share/${Api.path(articleKey)}`,
-      authStore.bearer(), body);
+      identity, body);
     try {
       if (response.ok()) {
         const id: string = (JSON.parse(response.text) as CommunityIdResponse).shareId ?? '';
         const result: CommunityShareResult = new CommunityShareResult(id.length > 0, id, response.code, '');
-        if (result.ok) this.invalidateFeed();
+        if (result.ok) {
+          this.invalidatePost(id, identity);
+          if (replyTo.length > 0) this.invalidatePost(replyTo, identity);
+          this.invalidateFeed();
+        }
         return result;
       }
       return new CommunityShareResult(false, '', response.code,
@@ -149,8 +173,13 @@ export class CommunityStore {
   }
 
   async unshare(shareId: string): Promise<boolean> {
-    const ok: boolean = (await httpClient.postJson(`${Api.FILES}/community/unshare/${Api.path(shareId)}`, authStore.bearer())).ok();
-    if (ok) this.invalidateFeed();
+    const identity: string = authStore.bearer();
+    const ok: boolean = (await httpClient.postJson(
+      `${Api.FILES}/community/unshare/${Api.path(shareId)}`, identity)).ok();
+    if (ok) {
+      this.invalidatePost(shareId, identity);
+      this.invalidateFeed();
+    }
     return ok;
   }
 
@@ -163,11 +192,96 @@ export class CommunityStore {
   }
 
   async get(shareId: string): Promise<CommunityPost | undefined> {
-    const response: HttpResponse = await httpClient.get(`${Api.FILES}/community/get/${Api.path(shareId)}`, authStore.bearer());
-    if (!response.ok()) return undefined;
-    const parsed: CommunityPostResponse = JSON.parse(response.text) as CommunityPostResponse;
-    const post: CommunityPost = parsed.post ?? JSON.parse(response.text) as CommunityPost;
-    this.normalize(post); return post;
+    const identity: string = authStore.bearer();
+    const cacheKey: string = ClientReliability.communityPostCacheKey(identity, shareId);
+    const generation: number = (this.postCacheGenerations.get(cacheKey) ?? 0) + 1;
+    const epoch: number = this.postCacheEpoch;
+    this.postCacheGenerations.set(cacheKey, generation);
+    const response: HttpResponse = await httpClient.get(
+      `${Api.FILES}/community/get/${Api.path(shareId)}`, identity);
+    if (!response.ok()) {
+      if ((response.code === 404 || response.code === 410) &&
+        ClientReliability.shouldApplyCacheResponse(identity, authStore.bearer(), epoch, this.postCacheEpoch,
+          generation, this.postCacheGenerations.get(cacheKey) ?? 0)) {
+        this.invalidatePost(shareId, identity);
+      }
+      return undefined;
+    }
+    const post: CommunityPost = this.postFromSnapshot(response.text);
+    if (!ClientReliability.shouldApplyCacheResponse(identity, authStore.bearer(), epoch, this.postCacheEpoch,
+      generation, this.postCacheGenerations.get(cacheKey) ?? 0)) return undefined;
+    this.storePostSnapshot(shareId, response.text, identity);
+    return post;
+  }
+
+  cachedPost(shareId: string, identity: string = authStore.bearer()): CommunityPost | undefined {
+    try {
+      const raw: string = this.readPostSnapshot(shareId, identity);
+      return raw.length > 0 ? this.postFromSnapshot(raw) : undefined;
+    } catch (_) { return undefined; }
+  }
+
+  cachePost(post: CommunityPost, identity: string = authStore.bearer()): void {
+    if (!post.shareId) return;
+    const cacheKey: string = ClientReliability.communityPostCacheKey(identity, post.shareId);
+    this.postCacheGenerations.set(cacheKey, (this.postCacheGenerations.get(cacheKey) ?? 0) + 1);
+    this.storePostSnapshot(post.shareId, JSON.stringify(post), identity);
+  }
+
+  invalidatePost(shareId: string, identity: string = authStore.bearer()): void {
+    const cacheKey: string = ClientReliability.communityPostCacheKey(identity, shareId);
+    this.postCacheGenerations.set(cacheKey, (this.postCacheGenerations.get(cacheKey) ?? 0) + 1);
+    if (this.postCacheRoot.length === 0) return;
+    try { fs.unlinkSync(this.postSnapshotPath(shareId, identity)); } catch (_) {}
+  }
+
+  clearPostSnapshots(): void {
+    this.postCacheEpoch++;
+    this.postCacheGenerations.clear();
+    if (this.postCacheRoot.length === 0) return;
+    try {
+      for (const name of fs.listFileSync(this.postCacheRoot)) {
+        try { fs.unlinkSync(`${this.postCacheRoot}/${name}`); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  private postFromSnapshot(raw: string): CommunityPost {
+    const parsed: CommunityPostResponse = JSON.parse(raw) as CommunityPostResponse;
+    const post: CommunityPost = parsed.post ?? JSON.parse(raw) as CommunityPost;
+    this.normalize(post);
+    return post;
+  }
+
+  private postSnapshotPath(shareId: string, identity: string = authStore.bearer()): string {
+    return `${this.postCacheRoot}/${ClientReliability.communityPostCacheKey(identity, shareId)}`;
+  }
+
+  private readPostSnapshot(shareId: string, identity: string = authStore.bearer()): string {
+    if (this.postCacheRoot.length === 0) return '';
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(this.postSnapshotPath(shareId, identity), fs.OpenMode.READ_ONLY);
+      const size: number = fs.statSync(file.fd).size;
+      const bytes: ArrayBuffer = new ArrayBuffer(size);
+      fs.readSync(file.fd, bytes);
+      return new util.TextDecoder('utf-8').decodeWithStream(new Uint8Array(bytes));
+    } catch (_) { return ''; }
+    finally { if (file) try { fs.closeSync(file); } catch (_) {} }
+  }
+
+  private storePostSnapshot(shareId: string, raw: string, identity: string = authStore.bearer()): void {
+    if (this.postCacheRoot.length === 0 || raw.length === 0) return;
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(this.postSnapshotPath(shareId, identity),
+        fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      const encoded: Uint8Array = new util.TextEncoder().encodeInto(raw);
+      const data: ArrayBuffer = new ArrayBuffer(encoded.byteLength);
+      new Uint8Array(data).set(encoded);
+      fs.writeSync(file.fd, data);
+    } catch (_) {}
+    finally { if (file) try { fs.closeSync(file); } catch (_) {} }
   }
 
   private normalize(post: CommunityPost): void {

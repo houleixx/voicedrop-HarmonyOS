@@ -166,7 +166,7 @@ export struct RecordingSession {
         }
         .width('100%')
         .justifyContent(FlexAlign.Center)
-        .alignItems(VerticalAlign.Top)
+        .alignItems(VerticalAlign.Bottom)
         .height(126)
       }
       .width('100%')

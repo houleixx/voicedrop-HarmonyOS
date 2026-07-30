@@ -31,6 +31,10 @@ export struct BlockedAuthorsPage {
         }
       }.layoutWeight(1).padding({ left: 16, right: 16, top: 6, bottom: 16 })
         .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-    }.height('100%')
+    }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Start)
+      .alignItems(HorizontalAlign.Start)
   }
 }
