@@ -83,6 +83,8 @@ export struct RecordingSession {
                 .width(74).height(74)
               }, (photo: CapturedPhoto) => photo.key)
             }
+            .constraintSize({ minWidth: '100%' })
+            .justifyContent(FlexAlign.Start)
             .padding({ left: 22, right: 22 })
           }
           .scrollable(ScrollDirection.Horizontal)

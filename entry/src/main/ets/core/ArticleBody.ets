@@ -10,6 +10,12 @@ export interface ArticleText {
   body: string;
 }
 
+interface ArticleTextLineMatch {
+  rangeStart: number;
+  rangeEnd: number;
+  lineCount: number;
+}
+
 export class ArticleBody {
   static blocks(body: string): ArticleBlock[] {
     const stripped: string = ArticleBody.stripComments(body);
@@ -102,6 +108,48 @@ export class ArticleBody {
     return body.replace(markerPattern, `[[photo:${key.trim()}]]`);
   }
 
+  /**
+   * Replaces one visible detail row without changing surrounding whitespace,
+   * metadata comments, or photo markers. Non-blank text lines and photos share
+   * the same one-based row sequence.
+   */
+  static replacingLine(targetLine: number, newText: string, body: string): string {
+    if (targetLine < 1) return body;
+    const photos: RegExp = /\[\[photo:([^\]]+)\]\]/g;
+    let cursor: number = 0;
+    let line: number = 0;
+    let photo: RegExpExecArray | null = photos.exec(body);
+    while (photo) {
+      const textMatch: ArticleTextLineMatch =
+        ArticleBody.findTextLine(body, cursor, photo.index, targetLine, line);
+      if (textMatch.rangeStart >= 0) {
+        return body.substring(0, textMatch.rangeStart) + newText + body.substring(textMatch.rangeEnd);
+      }
+      line = textMatch.lineCount + 1;
+      if (line === targetLine) return body;
+      cursor = photo.index + photo[0].length;
+      photo = photos.exec(body);
+    }
+    const tail: ArticleTextLineMatch =
+      ArticleBody.findTextLine(body, cursor, body.length, targetLine, line);
+    if (tail.rangeStart < 0) return body;
+    return body.substring(0, tail.rangeStart) + newText + body.substring(tail.rangeEnd);
+  }
+
+  /**
+   * Maps a row rendered from a trimmed or duplicate-title-free body back into
+   * the stored body before replacing it.
+   */
+  static replacingRenderedLine(targetLine: number, newText: string,
+    renderedBody: string, originalBody: string): string {
+    const replaced: string = ArticleBody.replacingLine(targetLine, newText, renderedBody);
+    if (replaced === renderedBody) return originalBody;
+    const start: number = originalBody.indexOf(renderedBody);
+    if (start < 0) return originalBody;
+    return originalBody.substring(0, start) + replaced +
+      originalBody.substring(start + renderedBody.length);
+  }
+
   static stripMarkers(body: string): string {
     return ArticleBody.stripComments(body).replace(/\[\[photo:[^\]]+\]\]/g, '')
       .replace(/\n{3,}/g, '\n\n').trim();
@@ -151,5 +199,35 @@ export class ArticleBody {
       const title: string = multiple ? `【${article.title}】` : article.title;
       return `${title}\n\n${ArticleBody.stripMarkers(article.body)}`;
     }).join('\n\n---\n\n');
+  }
+
+  private static findTextLine(body: string, start: number, end: number,
+    targetLine: number, initialLine: number): ArticleTextLineMatch {
+    let line: number = initialLine;
+    let lineStart: number = start;
+    while (lineStart <= end) {
+      const newline: number = body.indexOf('\n', lineStart);
+      const lineEnd: number = newline >= 0 && newline < end ? newline : end;
+      const raw: string = body.substring(lineStart, lineEnd);
+      const visible: string = raw.replace(/<!--.*?-->/gs, '');
+      if (visible.trim().length > 0) {
+        line++;
+        if (line === targetLine) {
+          if (visible !== raw) return { rangeStart: -1, rangeEnd: -1, lineCount: line };
+          let leading: number = 0;
+          while (leading < raw.length && /\s/.test(raw.charAt(leading))) leading++;
+          let trailing: number = raw.length;
+          while (trailing > leading && /\s/.test(raw.charAt(trailing - 1))) trailing--;
+          return {
+            rangeStart: lineStart + leading,
+            rangeEnd: lineStart + trailing,
+            lineCount: line
+          };
+        }
+      }
+      if (lineEnd >= end) break;
+      lineStart = lineEnd + 1;
+    }
+    return { rangeStart: -1, rangeEnd: -1, lineCount: line };
   }
 }

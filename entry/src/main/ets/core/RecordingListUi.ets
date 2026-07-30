@@ -66,18 +66,22 @@ export class RecordingListUi {
 
   static afterRefresh(
     pending: Recording[], remote: Recording[], deletedNames: string[], saving: Recording[] = [],
-    previous: Recording[] = []
+    previous: Recording[] = [], invalidatedStems: string[] = []
   ): Recording[] {
     const hidden: Set<string> = new Set<string>(deletedNames);
+    const invalidated: Set<string> = new Set<string>(invalidatedStems);
     const savingNames: Set<string> = new Set<string>();
     saving.forEach((recording: Recording) => savingNames.add(recording.name));
     const previousByName: Map<string, Recording> = new Map<string, Recording>();
     previous.forEach((recording: Recording) => previousByName.set(recording.name, recording));
     remote.forEach((recording: Recording) => {
       const cached: Recording | undefined = previousByName.get(recording.name);
-      if (cached && recording.title.length === 0) recording.title = cached.title;
-      if (cached && recording.tags.length === 0) recording.tags = cached.tags.slice();
-      if (cached && recording.coverPhotoKey.length === 0) recording.coverPhotoKey = cached.coverPhotoKey;
+      const preserveMetadata: boolean = !invalidated.has(recording.stem());
+      if (cached && preserveMetadata && recording.title.length === 0) recording.title = cached.title;
+      if (cached && preserveMetadata && recording.tags.length === 0) recording.tags = cached.tags.slice();
+      if (cached && preserveMetadata && recording.coverPhotoKey.length === 0) {
+        recording.coverPhotoKey = cached.coverPhotoKey;
+      }
       if (cached && !recording.hasArticles && !recording.isEmpty && recording.phase.length === 0) {
         recording.phase = cached.phase;
       }

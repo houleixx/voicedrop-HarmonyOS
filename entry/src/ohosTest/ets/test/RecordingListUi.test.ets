@@ -101,6 +101,40 @@ export default function recordingListUiTest() {
       expect(refreshed[0].coverPhotoKey).assertEqual('photos/session/0-cover.jpg');
     });
 
+    it('preservesUntouchedMetadataButDropsCommandInvalidatedRows', 0, () => {
+      const changed: Recording = new Recording({
+        name: 'VoiceDrop-changed.m4a',
+        hasArticles: true,
+        title: '旧标题',
+        tags: ['旧标签'],
+        coverPhotoKey: 'photos/old.jpg'
+      });
+      const untouched: Recording = new Recording({
+        name: 'VoiceDrop-untouched.m4a',
+        hasArticles: true,
+        title: '保持标题',
+        tags: ['保持标签'],
+        coverPhotoKey: 'photos/keep.jpg'
+      });
+      const refreshed: Recording[] = RecordingListUi.afterRefresh(
+        [],
+        [
+          new Recording({ name: changed.name, hasArticles: true }),
+          new Recording({ name: untouched.name, hasArticles: true })
+        ],
+        [],
+        [],
+        [changed, untouched],
+        [changed.stem()]
+      );
+      expect(refreshed[0].title).assertEqual('');
+      expect(refreshed[0].tags.length).assertEqual(0);
+      expect(refreshed[0].coverPhotoKey).assertEqual('');
+      expect(refreshed[1].title).assertEqual('保持标题');
+      expect(refreshed[1].tags.join(',')).assertEqual('保持标签');
+      expect(refreshed[1].coverPhotoKey).assertEqual('photos/keep.jpg');
+    });
+
     it('doesNotDowngradeALiveWebSocketPhaseDuringPullRefresh', 0, () => {
       const previous: Recording = new Recording({
         name: 'VoiceDrop-processing.m4a',

@@ -1,6 +1,6 @@
-import { common, Permissions } from '@kit.AbilityKit';
+import { bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
-import { FrameNode, promptAction } from '@kit.ArkUI';
+import { ColorMetrics, FrameNode, LengthMetrics, promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
@@ -66,6 +66,8 @@ import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { PageHeader } from '../ui/PageHeader';
 import { ClientReliability } from '../core/ClientReliability';
+import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
+import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
 import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordingDock';
 import { RecordingSession } from '../components/RecordingSession';
@@ -101,6 +103,7 @@ interface EditSocketMessage {
 }
 interface PendingCommunityShareValue { articleKey: string; replyTo?: string; createdAt?: number; }
 const RECORDING_METER_INTERVAL_MS: number = 100;
+const PARAGRAPH_EDIT_INPUT_ID: string = 'paragraph-inline-edit-input';
 
 class IncomingShareDraft {
   mime: string;
@@ -197,9 +200,10 @@ struct Index {
   @State private commandTalking: boolean = false;
   @State private commandCanceled: boolean = false;
   @State private commandTranscriptText: string = '';
-  @State private showDirectEditor: boolean = false;
-  @State private directTitle: string = '';
-  @State private directBody: string = '';
+  @State private commandTranscriptConfirming: boolean = false;
+  @State private paragraphEditing: boolean = false;
+  @State private paragraphEditText: string = '';
+  @State private paragraphEditSaving: boolean = false;
   @State private showHistoryBrowser: boolean = false;
   @State private dictating: boolean = false;
   @State private dictationState: string = '';
@@ -247,8 +251,16 @@ struct Index {
   private commandLongPressed: boolean = false;
   private commandHoldStartY: number = 0;
   private commandHoldTimer: number = -1;
+  private commandTranscriptConfirmTimer: number = -1;
   private commandRecognizing: boolean = false;
   private commandFinalized: boolean = false;
+  private commandGestureGate: CommandGestureGate = new CommandGestureGate();
+  private commandTranscript: HoldToTalkTranscript = new HoldToTalkTranscript();
+  private commandPrimePromise?: Promise<boolean>;
+  private commandDictationGeneration: number = 0;
+  private commandLibraryRefreshRunning: boolean = false;
+  private commandLibraryRefreshQueued: boolean = false;
+  private commandLibraryRefreshStems: string[] = [];
   private interviewer?: RealtimeInterviewer;
   private dictationTarget: string = '';
   private dictationPrefix: string = '';
@@ -256,6 +268,12 @@ struct Index {
   private holdEditOriginalText: string = '';
   private holdEditShouldSend: boolean = false;
   private holdEditCompleted: boolean = false;
+  private paragraphEditLine: number = 0;
+  private paragraphEditArticleIndex: number = -1;
+  private paragraphEditOriginal: string = '';
+  private paragraphEditRenderedBody: string = '';
+  private deferredParagraphArticle?: ArticleDoc;
+  private paragraphEditController: TextAreaController = new TextAreaController();
   private restyleFinishing: boolean = false;
   private restyleTargetStyleVersion: number = -1;
   private processingReplies: Set<string> = new Set<string>();
@@ -299,7 +317,7 @@ struct Index {
     if (routeName === 'detail') {
       this.showDetailMenu = false;
       this.showPromptMenu = false;
-      this.showDirectEditor = false;
+      this.closeParagraphEdit(false);
       this.showHistoryBrowser = false;
       this.showStyleRewrite = false;
       this.clearPendingPhotoEdits();
@@ -332,6 +350,9 @@ struct Index {
     if (this.timer >= 0) clearInterval(this.timer);
     if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
     this.commandHoldTimer = -1;
+    this.clearCommandTranscriptConfirmation();
+    ++this.commandDictationGeneration;
+    this.commandGestureGate.cancel();
     this.statusSession?.close();
     this.editSession?.close();
     this.commandSession?.close();
@@ -873,8 +894,11 @@ struct Index {
     } catch (_) {}
   }
 
-  private async refreshLibrary(showLoading: boolean = true, showFailure: boolean = showLoading): Promise<void> {
-    if (showLoading) this.loading = true;
+  private async refreshLibrary(showLoading: boolean = true, showFailure: boolean = showLoading,
+    invalidatedStems?: string[]): Promise<void> {
+    const displayLoading: boolean =
+      ClientReliability.libraryRefreshShowsLoading(showLoading, this.recordings.length > 0);
+    if (displayLoading) this.loading = true;
     this.errorText = '';
     try {
       const remote: Recording[] = await libraryStore.load();
@@ -882,10 +906,12 @@ struct Index {
         this.deletedRecordingNames.includes(recording.name));
       this.recordings = RecordingListUi.afterRefresh(
         uploader.pendingRecordings(), remote, this.deletedRecordingNames,
-        this.recordings.filter((recording: Recording) => recording.saving), this.recordings);
+        this.recordings.filter((recording: Recording) => recording.saving), this.recordings,
+        invalidatedStems ?? []);
+      libraryStore.storeRecordingsSnapshot(this.recordings);
       this.commandSession?.setRefs(this.currentCommandRefs());
       staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
-      libraryStore.enrichMissingMetadata(remote).then((changed: boolean) => {
+      libraryStore.enrichMissingMetadata(remote, invalidatedStems).then((changed: boolean) => {
         if (changed) {
           this.recordings = this.recordings.slice();
           libraryStore.storeRecordingsSnapshot(this.recordings);
@@ -896,7 +922,32 @@ struct Index {
     } catch (error) {
       this.errorText = ClientReliability.libraryErrorText(error as Object, this.recordings.length > 0, showFailure);
     } finally {
-      if (showLoading) this.loading = false;
+      if (displayLoading) this.loading = false;
+    }
+  }
+
+  private queueCommandLibraryRefresh(stems: string[]): void {
+    const merged: Set<string> = new Set<string>(this.commandLibraryRefreshStems);
+    stems.forEach((stem: string) => { if (stem.length > 0) merged.add(stem); });
+    this.commandLibraryRefreshStems = Array.from(merged);
+    this.commandLibraryRefreshQueued = true;
+    if (!this.commandLibraryRefreshRunning) this.drainCommandLibraryRefresh().catch(() => {});
+  }
+
+  private async drainCommandLibraryRefresh(): Promise<void> {
+    if (this.commandLibraryRefreshRunning) return;
+    this.commandLibraryRefreshRunning = true;
+    try {
+      while (this.commandLibraryRefreshQueued) {
+        this.commandLibraryRefreshQueued = false;
+        const stems: string[] = this.commandLibraryRefreshStems;
+        this.commandLibraryRefreshStems = [];
+        libraryStore.invalidateArticleStems(stems);
+        await this.refreshLibrary(false, false, stems);
+      }
+    } finally {
+      this.commandLibraryRefreshRunning = false;
+      if (this.commandLibraryRefreshQueued) this.drainCommandLibraryRefresh().catch(() => {});
     }
   }
 
@@ -1046,6 +1097,7 @@ struct Index {
     this.articleEditQueue = [];
     this.articleEditReply = '';
     this.articleEditReplyOk = true;
+    this.closeParagraphEdit(false);
     const detailLoadSequence: number = ++this.detailLoadSequence;
     this.detailLoadError = '';
     this.showDetailMenu = false;
@@ -1123,8 +1175,12 @@ struct Index {
           if (item.id && item.status === 'done') this.continuePendingPhotoEdit(item.id, introduced);
         }
         libraryStore.cacheArticle(recording, updated).catch(() => {});
-        this.article = updated;
-        this.warmArticlePhotos(updated);
+        if (this.paragraphEditing) {
+          this.deferredParagraphArticle = updated;
+        } else {
+          this.article = updated;
+          this.warmArticlePhotos(updated);
+        }
       }
       if ((message.type === 'updated' || message.type === 'error') && message.id) {
         this.finishPendingPhotoEdit(message.id);
@@ -1148,6 +1204,10 @@ struct Index {
     const fresh: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
     if (!fresh || this.selected?.stem() !== recording.stem()) return;
     fresh.owner = fresh.owner ?? this.article?.owner;
+    if (this.paragraphEditing) {
+      this.deferredParagraphArticle = fresh;
+      return;
+    }
     this.article = fresh;
     this.warmArticlePhotos(fresh);
     this.selectedArticle = Math.min(this.selectedArticle, Math.max(0, fresh.articles.length - 1));
@@ -1611,31 +1671,38 @@ struct Index {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
       this.topBar('VoiceDrop 口述')
-      Row() {
-        Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-          .padding({ left: 0, right: 14, top: 6, bottom: 6 })
-        Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-          .padding({ left: 14, right: 14, top: 6, bottom: 6 }).onClick(() => {
-            this.tab = 1; this.refreshCommunity(false).catch(() => {});
-          })
-        Blank()
-      }.width('100%').padding({ left: 18, right: 18 })
+      Scroll() {
+        Row() {
+          Text('我的录音')
+            .fontSize(20).fontWeight(FontWeight.Bold)
+            .fontColor(this.selectedTag.length === 0 ? Theme.INK : Theme.FAINT)
+            .padding({ left: 0, right: 14, top: 6, bottom: 6 })
+            .onClick(() => this.selectedTag = '')
+          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
+            .padding({ left: 14, right: 14, top: 6, bottom: 6 }).onClick(() => {
+              this.selectedTag = '';
+              this.tab = 1;
+              this.refreshCommunity(false).catch(() => {});
+            })
+          ForEach(this.homeTags(), (tag: string) => {
+            Text(tag)
+              .fontSize(20).fontWeight(FontWeight.Bold)
+              .fontColor(this.selectedTag === tag ? Theme.INK : Theme.FAINT)
+              .maxLines(1)
+              .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+              .onClick(() => this.selectedTag = tag)
+          }, (tag: string) => tag)
+        }
+          .constraintSize({ minWidth: '100%' })
+          .justifyContent(FlexAlign.Start)
+          .padding({ left: 18, right: 18 })
+      }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
       Row() { Blank().width(78).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2) }
         .width('100%').padding({ left: 18 }).margin({ bottom: 10 })
-      if (this.homeTags().length > 0) {
-        Scroll() {
-          Row({ space: 8 }) {
-            Button('全部').fontSize(13).fontColor(this.selectedTag.length === 0 ? Theme.WHITE : Theme.SECONDARY)
-              .backgroundColor(this.selectedTag.length === 0 ? Theme.ACCENT : Theme.CARD)
-              .border({ width: 1, color: this.selectedTag.length === 0 ? Theme.ACCENT : Theme.BORDER }).onClick(() => this.selectedTag = '')
-            ForEach(this.homeTags(), (tag: string) =>
-              Button(`#${tag}`).fontSize(13).fontColor(this.selectedTag === tag ? Theme.WHITE : Theme.SECONDARY)
-                .backgroundColor(this.selectedTag === tag ? Theme.ACCENT : Theme.CARD)
-                .border({ width: 1, color: this.selectedTag === tag ? Theme.ACCENT : Theme.BORDER }).onClick(() => this.selectedTag = tag),
-              (tag: string) => tag)
-          }.padding({ left: 16, right: 16 })
-        }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).height(44).width('100%')
-      }
+        .opacity(this.selectedTag.length === 0 ? 1 : 0)
       if (this.loading) {
         this.pageLoadingState()
         Blank()
@@ -1684,7 +1751,6 @@ struct Index {
                           Text('•').fontSize(13).fontColor(this.recordingStatusColor(item))
                           Text(item.statusLabel()).fontSize(13).fontColor(this.recordingStatusColor(item))
                         }.alignItems(VerticalAlign.Center)
-                        ForEach(item.tags.slice(0, 2), (tag: string) => Text(`#${tag}`).fontSize(12).fontColor(Theme.SECONDARY))
                       }.alignItems(VerticalAlign.Center)
                     }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                     RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 24, color: Theme.FAINT })
@@ -1744,7 +1810,7 @@ struct Index {
         .backgroundColor(Theme.BG)
       if (!this.recording) {
         Column() {
-          if (this.commandState.length > 0) {
+          if (this.displayedCommandFeedback().visible()) {
             this.libraryCommandStatus()
           }
           this.recordingFab()
@@ -1759,11 +1825,11 @@ struct Index {
   @Builder
   private libraryCommandStatus() {
     Row() {
-      Text(this.commandState).fontSize(13).fontWeight(FontWeight.Medium)
-        .fontColor(this.commandStateTone === LibraryCommandTone.Error ? '#B42318' :
-          (this.commandStateTone === LibraryCommandTone.Active ? Theme.INK : Theme.SECONDARY))
+      Text(this.displayedCommandFeedback().text).fontSize(13).fontWeight(FontWeight.Medium)
+        .fontColor(this.displayedCommandFeedback().tone === LibraryCommandTone.Error ? '#B42318' :
+          (this.displayedCommandFeedback().tone === LibraryCommandTone.Active ? Theme.INK : Theme.SECONDARY))
         .textAlign(TextAlign.Center).padding({ left: 18, right: 18, top: 9, bottom: 9 })
-        .backgroundColor(this.commandStateTone === LibraryCommandTone.Error ? '#FFEBE8' : Theme.ACCENT_SOFT)
+        .backgroundColor(this.displayedCommandFeedback().tone === LibraryCommandTone.Error ? '#FFEBE8' : Theme.ACCENT_SOFT)
         .borderRadius(14).layoutWeight(1)
     }.width('100%').padding({ left: 16, right: 16, bottom: 10 }).hitTestBehavior(HitTestMode.Transparent)
   }
@@ -1822,6 +1888,35 @@ struct Index {
     this.commandStateTone = feedback.tone;
   }
 
+  private displayedCommandFeedback(): LibraryCommandFeedback {
+    return LibraryCommandUi.displayedFeedback(
+      new LibraryCommandFeedback(this.commandState, this.commandStateTone),
+      this.commandTranscriptText,
+      this.commandTalking || this.commandRecognizing || this.commandTranscriptConfirming
+    );
+  }
+
+  private clearCommandTranscriptConfirmation(): void {
+    if (this.commandTranscriptConfirmTimer >= 0) clearTimeout(this.commandTranscriptConfirmTimer);
+    this.commandTranscriptConfirmTimer = -1;
+    this.commandTranscriptConfirming = false;
+    this.commandTranscriptText = '';
+  }
+
+  private confirmCommandTranscript(text: string, generation: number): void {
+    this.clearCommandTranscriptConfirmation();
+    const transcript: string = text.trim();
+    if (transcript.length === 0) return;
+    this.commandTranscriptText = transcript;
+    this.commandTranscriptConfirming = true;
+    this.commandTranscriptConfirmTimer = setTimeout(() => {
+      this.commandTranscriptConfirmTimer = -1;
+      if (generation !== this.commandDictationGeneration) return;
+      this.commandTranscriptConfirming = false;
+      this.commandTranscriptText = '';
+    }, LibraryCommandUi.transcriptConfirmationMs());
+  }
+
   private async sendLibraryCommandText(value: string): Promise<void> {
     const text: string = value.trim();
     if (text.length === 0) { this.applyCommandFeedback(new LibraryCommandFeedback()); return; }
@@ -1844,18 +1939,24 @@ struct Index {
   private handleRecordFabTouch(event: TouchEvent): void {
     if (event.type === TouchType.Down) {
       if (this.recordingTransitioning || this.commandTalking || this.commandRecognizing) return;
+      if (!this.commandGestureGate.beginPress()) return;
       this.commandHoldPressed = true;
       this.commandLongPressed = false;
       this.commandCanceled = false;
+      this.commandFinalized = false;
+      this.clearCommandTranscriptConfirmation();
+      this.commandTranscript.clear();
       this.commandHoldStartY = this.commandTouchY(event);
+      const generation: number = ++this.commandDictationGeneration;
+      this.commandPrimePromise = this.primeLibraryCommandTalk(generation);
       if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
       this.commandHoldTimer = setTimeout(() => {
         this.commandHoldTimer = -1;
-        if (!this.commandHoldPressed) return;
+        if (!this.commandHoldPressed || !this.commandGestureGate.confirmLongPress()) return;
         this.commandLongPressed = true;
         this.commandTalking = true;
         this.applyCommandFeedback(LibraryCommandUi.dictationFeedback('', false));
-        this.startLibraryCommandTalk();
+        this.startLibraryCommandTalk(generation);
       }, 300);
       return;
     }
@@ -1872,55 +1973,136 @@ struct Index {
     if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
     this.commandHoldTimer = -1;
     if (action === LibraryCommandGestureAction.Send || action === LibraryCommandGestureAction.Cancel) {
+      if (action === LibraryCommandGestureAction.Send && !this.commandGestureGate.beginFinish()) return;
+      if (action === LibraryCommandGestureAction.Cancel) this.commandGestureGate.cancel();
       this.finishLibraryCommandTalk(action === LibraryCommandGestureAction.Cancel);
     } else if (action === LibraryCommandGestureAction.Record) {
-      this.toggleRecording();
+      if (this.commandGestureGate.beginHandoff()) this.cancelPrimedLibraryCommandTalk(true);
+    } else {
+      this.commandGestureGate.cancel();
+      this.cancelPrimedLibraryCommandTalk(false);
     }
   }
 
-  private async startLibraryCommandTalk(): Promise<void> {
-    if (!this.context || !this.commandTalking) return;
-    if (this.dictating) await this.dictation?.stop();
-    const manager = abilityAccessCtrl.createAtManager();
-    const permission = await manager.requestPermissionsFromUser(this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
-    if (permission.authResults[0] !== 0) {
-      this.commandTalking = false;
-      this.commandHoldPressed = false;
-      this.applyCommandFeedback(new LibraryCommandFeedback('需要麦克风权限才能使用语音指令', LibraryCommandTone.Error));
-      return;
+  private microphonePermissionGranted(): boolean {
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
+      const manager = abilityAccessCtrl.createAtManager();
+      return manager.checkAccessTokenSync(info.appInfo.accessTokenId,
+        'ohos.permission.MICROPHONE' as Permissions) === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+    } catch (_) {
+      return false;
     }
-    if (!this.commandTalking) return;
-    this.commandTranscriptText = '';
-    this.commandFinalized = false;
-    this.commandRecognizing = false;
-    this.dictationTarget = 'command';
-    this.dictation = new AsrDictation((text: string, finalResult: boolean) => {
-      if (this.dictationTarget !== 'command') return;
-      this.commandTranscriptText = text;
-      if (this.commandTalking) {
-        this.applyCommandFeedback(LibraryCommandUi.dictationFeedback(text, this.commandCanceled));
+  }
+
+  private async primeLibraryCommandTalk(generation: number): Promise<boolean> {
+    if (!this.context || this.recording || !this.microphonePermissionGranted()) return false;
+    if (generation !== this.commandDictationGeneration) return false;
+    if (this.dictating) {
+      return this.dictationTarget === 'command' && this.dictation?.isRunning() === true;
+    }
+    const session = new AsrDictation((text: string, finalResult: boolean) => {
+      if (generation !== this.commandDictationGeneration || this.dictationTarget !== 'command') return;
+      this.commandTranscript.accept(text, finalResult);
+      this.commandTranscriptText = this.commandTranscript.bestText();
+      if (this.commandTalking || this.commandRecognizing) {
+        this.applyCommandFeedback(
+          LibraryCommandUi.dictationFeedback(this.commandTranscriptText, this.commandCanceled));
       }
-      if (finalResult && this.commandRecognizing) this.finalizeLibraryCommandTalk();
     }, (state: string) => {
-      if (this.dictationTarget !== 'command') return;
+      if (generation !== this.commandDictationGeneration || this.dictationTarget !== 'command') return;
       if (state.includes('失败') || state.includes('关闭')) {
         this.dictating = false;
-        this.commandTalking = false;
-        this.commandRecognizing = false;
-        this.applyCommandFeedback(new LibraryCommandFeedback(state.length > 0 ? state : '听写失败', LibraryCommandTone.Error));
+        if (this.commandTalking || this.commandRecognizing) {
+          this.commandTalking = false;
+          this.commandRecognizing = false;
+          this.commandGestureGate.cancel();
+          this.applyCommandFeedback(
+            new LibraryCommandFeedback(state.length > 0 ? state : '听写失败', LibraryCommandTone.Error));
+        }
       } else if (state.length === 0 && this.commandRecognizing) {
-        this.finalizeLibraryCommandTalk();
+        this.finalizeLibraryCommandTalk(generation);
       } else if (this.commandTalking && this.commandTranscriptText.length === 0) {
         this.applyCommandFeedback(LibraryCommandUi.dictationFeedback('', this.commandCanceled));
       }
     });
+    this.dictationTarget = 'command';
+    this.dictation = session;
     this.dictating = true;
-    try { await this.dictation.start(); }
-    catch (error) {
-      this.dictating = false;
-      this.commandTalking = false;
-      this.applyCommandFeedback(new LibraryCommandFeedback(`听写启动失败：${String(error)}`, LibraryCommandTone.Error));
+    try {
+      await session.start();
+    } catch (error) {
+      if (generation === this.commandDictationGeneration) {
+        this.dictating = false;
+        this.commandTalking = false;
+        this.commandGestureGate.cancel();
+        this.applyCommandFeedback(
+          new LibraryCommandFeedback(`听写启动失败：${String(error)}`, LibraryCommandTone.Error));
+      }
+      return false;
     }
+    if (generation !== this.commandDictationGeneration) {
+      await session.stop();
+      return false;
+    }
+    return session.isRunning();
+  }
+
+  private async startLibraryCommandTalk(generation: number): Promise<void> {
+    if (!this.context || !this.commandTalking ||
+      this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
+    if (this.recording) {
+      this.commandTalking = false;
+      this.commandGestureGate.cancel();
+      this.applyCommandFeedback(
+        new LibraryCommandFeedback('请先结束当前录音', LibraryCommandTone.Error));
+      return;
+    }
+    if (!this.microphonePermissionGranted()) {
+      const manager = abilityAccessCtrl.createAtManager();
+      const permission = await manager.requestPermissionsFromUser(
+        this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
+      if (permission.authResults[0] !== 0) {
+        this.commandTalking = false;
+        this.commandHoldPressed = false;
+        this.commandGestureGate.cancel();
+        this.applyCommandFeedback(
+          new LibraryCommandFeedback('需要麦克风权限才能使用语音指令', LibraryCommandTone.Error));
+        return;
+      }
+      if (generation !== this.commandDictationGeneration || !this.commandTalking ||
+        this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
+      this.commandPrimePromise = this.primeLibraryCommandTalk(generation);
+    }
+    const primePromise: Promise<boolean> | undefined = this.commandPrimePromise;
+    const ready: boolean = primePromise ? await primePromise :
+      await this.primeLibraryCommandTalk(generation);
+    if (generation !== this.commandDictationGeneration || !this.commandTalking ||
+      this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
+    if (!ready) {
+      this.commandTalking = false;
+      this.commandGestureGate.cancel();
+      this.applyCommandFeedback(new LibraryCommandFeedback('听写启动失败，请重试', LibraryCommandTone.Error));
+    }
+  }
+
+  private async cancelPrimedLibraryCommandTalk(startRecording: boolean): Promise<void> {
+    const generation: number = ++this.commandDictationGeneration;
+    const session: AsrDictation | undefined =
+      this.dictationTarget === 'command' ? this.dictation : undefined;
+    if (session) {
+      this.dictation = undefined;
+      this.dictationTarget = '';
+      this.dictating = false;
+      await session.stop();
+    }
+    this.commandTranscript.clear();
+    this.commandTranscriptText = '';
+    this.commandPrimePromise = undefined;
+    if (generation !== this.commandDictationGeneration) return;
+    this.commandGestureGate.complete();
+    if (startRecording) await this.toggleRecording();
   }
 
   private async finishLibraryCommandTalk(cancel: boolean): Promise<void> {
@@ -1929,27 +2111,37 @@ struct Index {
     if (cancel) {
       this.commandRecognizing = false;
       this.commandFinalized = true;
-      this.commandTranscriptText = '';
+      this.clearCommandTranscriptConfirmation();
       this.dictating = false;
       this.dictationTarget = '';
-      await this.dictation?.stop();
+      const session: AsrDictation | undefined = this.dictation;
+      this.dictation = undefined;
+      ++this.commandDictationGeneration;
+      await session?.stop();
+      this.commandTranscript.clear();
+      this.commandPrimePromise = undefined;
       this.applyCommandFeedback(new LibraryCommandFeedback());
       return;
     }
     this.commandRecognizing = true;
     this.applyCommandFeedback(new LibraryCommandFeedback('正在识别…', LibraryCommandTone.Active));
     if (this.dictation?.isRunning()) await this.dictation.finish();
-    else await this.finalizeLibraryCommandTalk();
+    else await this.finalizeLibraryCommandTalk(this.commandDictationGeneration);
   }
 
-  private async finalizeLibraryCommandTalk(): Promise<void> {
+  private async finalizeLibraryCommandTalk(generation: number): Promise<void> {
+    if (generation !== this.commandDictationGeneration) return;
     if (this.commandFinalized) return;
     this.commandFinalized = true;
-    const text: string = this.commandTranscriptText.trim();
+    const text: string = this.commandTranscript.bestText();
     this.commandRecognizing = false;
     this.dictating = false;
     this.dictationTarget = '';
-    this.commandTranscriptText = '';
+    this.dictation = undefined;
+    this.commandPrimePromise = undefined;
+    this.commandTranscript.clear();
+    this.commandGestureGate.complete();
+    this.confirmCommandTranscript(text, generation);
     await this.sendLibraryCommandText(text);
   }
 
@@ -2103,7 +2295,9 @@ struct Index {
       const event: LibraryCommandEvent = new LibraryCommandEvent(message.type, message.state, message.text, message.message);
       const feedback: LibraryCommandFeedback = LibraryCommandUi.feedbackForEvent(event);
       this.applyCommandFeedback(feedback);
-      if (ClientReliability.commandMessageRequiresRefresh(message.type ?? '')) this.refreshLibrary();
+      if (ClientReliability.commandMessageRequiresRefresh(message.type ?? '')) {
+        this.queueCommandLibraryRefresh(message.stems ?? []);
+      }
       if (feedback.visible() && (message.type === 'reply' || message.type === 'error')) {
         promptAction.showToast({ message: feedback.text });
       }
@@ -2172,13 +2366,34 @@ struct Index {
   private communityPage() {
     Column() {
       this.topBar('VoiceDrop 口述')
-      Row() {
-        Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-          .padding({ left: 0, right: 14, top: 6, bottom: 6 }).onClick(() => this.tab = 0)
-        Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-          .padding({ left: 14, right: 14, top: 6, bottom: 6 })
-        Blank()
-      }.width('100%').padding({ left: 18, right: 18 })
+      Scroll() {
+        Row() {
+          Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
+            .padding({ left: 0, right: 14, top: 6, bottom: 6 }).onClick(() => {
+              this.selectedTag = '';
+              this.tab = 0;
+            })
+          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+          ForEach(this.homeTags(), (tag: string) => {
+            Text(tag)
+              .fontSize(20).fontWeight(FontWeight.Bold)
+              .fontColor(Theme.FAINT)
+              .maxLines(1)
+              .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+              .onClick(() => {
+                this.selectedTag = tag;
+                this.tab = 0;
+              })
+          }, (tag: string) => tag)
+        }
+          .constraintSize({ minWidth: '100%' })
+          .justifyContent(FlexAlign.Start)
+          .padding({ left: 18, right: 18 })
+      }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
       Row() { Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2) }
         .width('100%').padding({ left: 124 }).margin({ bottom: 1 })
       Row({ space: 12 }) {
@@ -2404,8 +2619,9 @@ struct Index {
             loadPhoto: (ignoringLocalCache: boolean) =>
               this.loadArticlePhotoToken(block.value, ignoringLocalCache),
             onLoaded: () => this.cacheArticlePhotoToken(block.value),
-            onLongPress: (event: GestureEvent) =>
-              this.openPromptMenu(block, blockIndex, lineNumber, event)
+            onLongPress: (event: GestureEvent) => {
+              if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
+            }
           })
           if (this.showArticleLines) {
             Text(`${lineNumber}`)
@@ -2428,18 +2644,57 @@ struct Index {
       }
     } else {
       if (editable) {
-        Stack({ alignContent: Alignment.TopStart }) {
-          Text(block.value).fontSize(17).lineHeight(30).fontColor(Theme.INK)
-            .width('100%').copyOption(CopyOptions.LocalDevice)
-          if (this.showArticleLines) {
-            Text(`${lineNumber}`)
-              .fontSize(11).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
-              .width(20).textAlign(TextAlign.End).position({ x: -24, y: 4 })
+        if (this.paragraphEditing && this.paragraphEditArticleIndex === this.selectedArticle &&
+          this.paragraphEditLine === lineNumber) {
+          Row() {
+            TextArea({
+              text: this.paragraphEditText,
+              placeholder: '编辑这一段文字',
+              controller: this.paragraphEditController
+            })
+              .id(PARAGRAPH_EDIT_INPUT_ID)
+              .fontSize(17)
+              .lineHeight(30)
+              .fontColor(Theme.INK)
+              .caretColor(Theme.ACCENT_STRONG)
+              .maxLines(8)
+              .enterKeyType(EnterKeyType.Done)
+              .enableKeyboardOnFocus(true)
+              .enabled(!this.paragraphEditSaving)
+              .padding({ left: 4, right: 4, top: 0, bottom: 0 })
+              .layoutWeight(1)
+              .backgroundColor('#FFFDF9')
+              .border({ width: 1, color: 'rgba(216, 89, 59, 0.52)', radius: 7 })
+              .borderRadius(7)
+              .focusBox({
+                margin: LengthMetrics.vp(0),
+                strokeColor: ColorMetrics.rgba(216, 89, 59, 0.52),
+                strokeWidth: LengthMetrics.vp(1)
+              })
+              .onChange((value: string) => this.paragraphEditText = value)
+              .onSubmit(() => this.saveParagraphEdit())
+              .onEditChange((isEditing: boolean) => {
+                if (isEditing) this.placeParagraphCaretAtEnd(30);
+              })
+              .onAppear(() => this.focusParagraphEditor())
           }
+            .width('100%')
+            .padding({ left: 4, right: 4 })
+        } else {
+          Stack({ alignContent: Alignment.TopStart }) {
+            Text(block.value).fontSize(17).lineHeight(30).fontColor(Theme.INK)
+              .width('100%').copyOption(CopyOptions.LocalDevice)
+            if (this.showArticleLines) {
+              Text(`${lineNumber}`)
+                .fontSize(11).lineHeight(30).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+                .width(20).textAlign(TextAlign.End).position({ x: -24, y: 0 })
+            }
+          }
+            .width('100%').clip(false)
+            .gesture(LongPressGesture().onAction((event: GestureEvent) => {
+              if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
+            }))
         }
-          .width('100%').clip(false)
-          .gesture(LongPressGesture().onAction((event: GestureEvent) =>
-            this.openPromptMenu(block, blockIndex, lineNumber, event)))
       } else {
         Text(block.value).fontSize(17).lineHeight(30).fontColor(Theme.INK).width('100%').copyOption(CopyOptions.LocalDevice)
       }
@@ -2639,7 +2894,8 @@ struct Index {
   }
 
   private editPromptTarget(): void {
-    this.showPromptMenu = false; this.beginDirectEdit();
+    this.showPromptMenu = false;
+    this.beginParagraphEdit();
   }
 
   private async applyPrompt(action: PromptNode): Promise<void> {
@@ -2834,59 +3090,76 @@ struct Index {
   @Builder
   private detailToolbar() {
     Row() {
-      this.detailBackButton()
-      Blank()
-      if (!this.detailLoading && this.article && this.article.articles.length > 0) {
-        this.detailPlaybackButton()
-        Button({ type: ButtonType.Normal }) {
-          if (this.insertingPhotos) {
-            LoadingProgress().width(21).height(21).color(Theme.ACCENT_STRONG)
-          } else {
-            RemixIcon({ glyph: RI.IMAGE, iconSize: 25, color: Theme.INK })
-          }
-        }
-          .width(40).height(40).padding(0).margin({ left: 8 })
-          .backgroundColor(Theme.CARD)
-          .border({ width: 1, color: Theme.BORDER, radius: 11 })
-          .borderRadius(11).clip(true)
-          .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
-          .enabled(!this.insertingPhotos)
-          .onClick(() => this.insertPhotos())
-        Row() {
+      if (this.paragraphEditing) {
+        Button('取消')
+          .height(40).padding({ left: 4, right: 4 })
+          .fontSize(15).fontColor(Theme.SECONDARY)
+          .backgroundColor(Color.Transparent)
+          .enabled(!this.paragraphEditSaving)
+          .onClick(() => this.closeParagraphEdit())
+        Blank()
+        Button(this.paragraphEditSaving ? '保存中…' : '完成')
+          .height(40).padding({ left: 4, right: 4 })
+          .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+          .backgroundColor(Color.Transparent)
+          .enabled(!this.paragraphEditSaving)
+          .opacity(this.paragraphEditSaving ? 0.55 : 1)
+          .onClick(() => this.saveParagraphEdit())
+      } else {
+        this.detailBackButton()
+        Blank()
+        if (!this.detailLoading && this.article && this.article.articles.length > 0) {
+          this.detailPlaybackButton()
           Button({ type: ButtonType.Normal }) {
-            RemixIcon({
-              glyph: RI.ARROW_GO_BACK,
-              iconSize: 25,
-              color: this.canUndo() ? Theme.INK : Theme.FAINT
-            })
+            if (this.insertingPhotos) {
+              LoadingProgress().width(21).height(21).color(Theme.ACCENT_STRONG)
+            } else {
+              RemixIcon({ glyph: RI.IMAGE, iconSize: 25, color: Theme.INK })
+            }
           }
-            .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
-            .enabled(this.canUndo()).onClick(() => this.shiftHistory(-1))
-          Divider().vertical(true).height(24).color(Theme.BORDER)
+            .width(40).height(40).padding(0).margin({ left: 8 })
+            .backgroundColor(Theme.CARD)
+            .border({ width: 1, color: Theme.BORDER, radius: 11 })
+            .borderRadius(11).clip(true)
+            .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+            .enabled(!this.insertingPhotos)
+            .onClick(() => this.insertPhotos())
+          Row() {
+            Button({ type: ButtonType.Normal }) {
+              RemixIcon({
+                glyph: RI.ARROW_GO_BACK,
+                iconSize: 25,
+                color: this.canUndo() ? Theme.INK : Theme.FAINT
+              })
+            }
+              .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
+              .enabled(this.canUndo()).onClick(() => this.shiftHistory(-1))
+            Divider().vertical(true).height(24).color(Theme.BORDER)
+            Button({ type: ButtonType.Normal }) {
+              RemixIcon({
+                glyph: RI.ARROW_GO_FORWARD,
+                iconSize: 25,
+                color: this.canRedo() ? Theme.INK : Theme.FAINT
+              })
+            }
+              .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
+              .enabled(this.canRedo()).onClick(() => this.shiftHistory(1))
+          }
+            .height(40).margin({ left: 8 })
+            .backgroundColor(Theme.CARD)
+            .border({ width: 1, color: Theme.BORDER, radius: 11 })
+            .borderRadius(11).clip(true)
+            .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
           Button({ type: ButtonType.Normal }) {
-            RemixIcon({
-              glyph: RI.ARROW_GO_FORWARD,
-              iconSize: 25,
-              color: this.canRedo() ? Theme.INK : Theme.FAINT
-            })
+            RemixIcon({ glyph: RI.MORE, iconSize: 24, color: Theme.SECONDARY })
           }
-            .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
-            .enabled(this.canRedo()).onClick(() => this.shiftHistory(1))
+            .width(40).height(40).padding(0).margin({ left: 8 })
+            .backgroundColor(Theme.CARD)
+            .border({ width: 1, color: Theme.BORDER, radius: 11 })
+            .borderRadius(11).clip(true)
+            .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
+            .onClick(() => this.showDetailMenu = !this.showDetailMenu)
         }
-          .height(40).margin({ left: 8 })
-          .backgroundColor(Theme.CARD)
-          .border({ width: 1, color: Theme.BORDER, radius: 11 })
-          .borderRadius(11).clip(true)
-          .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
-        Button({ type: ButtonType.Normal }) {
-          RemixIcon({ glyph: RI.MORE, iconSize: 24, color: Theme.SECONDARY })
-        }
-          .width(40).height(40).padding(0).margin({ left: 8 })
-          .backgroundColor(Theme.CARD)
-          .border({ width: 1, color: Theme.BORDER, radius: 11 })
-          .borderRadius(11).clip(true)
-          .shadow({ radius: 5, color: '#34291F22', offsetX: 0, offsetY: 2 })
-          .onClick(() => this.showDetailMenu = !this.showDetailMenu)
       }
     }.height(64).padding({ left: 16, right: 12, top: 8, bottom: 8 }).width('100%')
   }
@@ -2957,6 +3230,7 @@ struct Index {
   }
 
   private detailContentBottomPadding(): number {
+    if (this.paragraphEditing) return 40 + this.safeAreaBottom();
     return (this.pendingQuestion() ? 230 : 110) + this.articleEditFeedbackHeight() + this.safeAreaBottom();
   }
 
@@ -3064,7 +3338,12 @@ struct Index {
           LoadingProgress().width(36).height(36).color(Theme.ACCENT_STRONG)
           Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18).fontColor(Theme.INK)
           Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor(Theme.SECONDARY)
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+        }
+          .layoutWeight(1)
+          .width('100%')
+          .padding({ top: 48 })
+          .justifyContent(FlexAlign.Start)
+          .alignItems(HorizontalAlign.Center)
       } else {
         Stack({ alignContent: Alignment.TopStart }) {
           Scroll() {
@@ -3077,7 +3356,9 @@ struct Index {
                 Button(`✎  ${this.currentArticleStyleVersion() === undefined ?
                   '选风格' : `v${this.currentArticleStyleVersion()} 风格`}  ›`)
                   .fontSize(13).fontColor(Theme.FAINT).height(28).padding({ left: 6, right: 6 })
-                  .backgroundColor(Color.Transparent).onClick(() => this.openStyleRewrite())
+                  .backgroundColor(Color.Transparent)
+                  .enabled(!this.paragraphEditing)
+                  .onClick(() => this.openStyleRewrite())
               }.width('100%').margin({ bottom: 6 })
               if (this.article.articles.length > 1) {
                 Scroll() {
@@ -3088,6 +3369,7 @@ struct Index {
                         .fontColor(this.selectedArticle === index ? Theme.WHITE : Theme.SECONDARY)
                         .backgroundColor(this.selectedArticle === index ? Theme.ACCENT_STRONG : Color.Transparent)
                         .borderRadius(16).padding({ left: 14, right: 14 })
+                        .enabled(!this.paragraphEditing)
                         .onClick(() => this.selectedArticle = index)
                     })
                   }
@@ -3114,33 +3396,35 @@ struct Index {
             .height('100%')
             .scrollBar(BarState.Off)
             .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-          Column({ space: 8 }) {
-            if (this.pendingQuestion()) {
-              Column({ space: 8 }) {
-                Row() {
-                  Text('追问').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A85D00').layoutWeight(1)
-                  Button('跳过').fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor(Theme.SECONDARY)
-                    .onClick(() => this.skipQuestion())
-                }.width('100%')
-                Text(this.pendingQuestion()?.text ?? '')
-                  .fontSize(16).fontWeight(FontWeight.Medium).lineHeight(24).fontColor(Theme.INK).width('100%')
-                Text('在下方按住说话回答，内容会被织入正文最合适的位置。')
-                  .fontSize(12).fontColor(Theme.SECONDARY).width('100%')
+          if (!this.paragraphEditing) {
+            Column({ space: 8 }) {
+              if (this.pendingQuestion()) {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('追问').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A85D00').layoutWeight(1)
+                    Button('跳过').fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor(Theme.SECONDARY)
+                      .onClick(() => this.skipQuestion())
+                  }.width('100%')
+                  Text(this.pendingQuestion()?.text ?? '')
+                    .fontSize(16).fontWeight(FontWeight.Medium).lineHeight(24).fontColor(Theme.INK).width('100%')
+                  Text('在下方按住说话回答，内容会被织入正文最合适的位置。')
+                    .fontSize(12).fontColor(Theme.SECONDARY).width('100%')
+                }
+                  .padding(12).width('100%')
+                  .backgroundColor('#FFFBF7')
+                  .border({ width: 1, color: '#FFD6AD', radius: 14 })
+                  .borderRadius(14).alignItems(HorizontalAlign.Start)
               }
-                .padding(12).width('100%')
-                .backgroundColor('#FFFBF7')
-                .border({ width: 1, color: '#FFD6AD', radius: 14 })
-                .borderRadius(14).alignItems(HorizontalAlign.Start)
+              this.articleEditFeedbackPanel()
+              if (this.holdEditPressed || this.holdEditFinishing) {
+                this.detailVoiceBubble()
+              }
+              this.detailVoiceButton()
             }
-            this.articleEditFeedbackPanel()
-            if (this.holdEditPressed || this.holdEditFinishing) {
-              this.detailVoiceBubble()
-            }
-            this.detailVoiceButton()
+              .padding({ left: 20, right: 20, bottom: 12 + this.safeAreaBottom() })
+              .width('100%')
+              .layoutGravity(LocalizedAlignment.BOTTOM)
           }
-            .padding({ left: 20, right: 20, bottom: 12 + this.safeAreaBottom() })
-            .width('100%')
-            .layoutGravity(LocalizedAlignment.BOTTOM)
         }.layoutWeight(1).width('100%')
       }
     }
@@ -3217,30 +3501,120 @@ struct Index {
     }
   }
 
-  private beginDirectEdit(): void {
-    if (!this.article || this.article.articles.length <= this.selectedArticle) return;
-    this.directTitle = this.article.articles[this.selectedArticle].title;
-    this.directBody = this.article.articles[this.selectedArticle].body;
-    this.showDirectEditor = true;
+  private placeParagraphCaretAtEnd(delay: number = 0): void {
+    setTimeout(() => {
+      if (!this.paragraphEditing) return;
+      const end: number = this.paragraphEditText.length;
+      this.paragraphEditController.setTextSelection(end, end);
+      this.paragraphEditController.caretPosition(end);
+    }, delay);
   }
 
-  private async saveDirectEdit(): Promise<void> {
-    if (!this.selected || !this.article || this.directTitle.trim().length === 0) return;
-    const previousTitle: string = this.article.articles[this.selectedArticle].title;
-    const previousBody: string = this.article.articles[this.selectedArticle].body;
-    this.article.articles[this.selectedArticle].title = this.directTitle.trim();
-    this.article.articles[this.selectedArticle].body = this.directBody;
-    if (await libraryStore.saveArticle(this.selected, this.article)) {
-      this.warmArticlePhotos(this.article);
-      this.showDirectEditor = false;
-      this.history = await libraryStore.versionHistory(this.selected);
-      promptAction.showToast({ message: '文章已保存' });
-    } else {
-      this.article.articles[this.selectedArticle].title = previousTitle;
-      this.article.articles[this.selectedArticle].body = previousBody;
-      promptAction.showToast({ message: '文章保存失败' });
+  private focusParagraphEditor(attempt: number = 0): void {
+    setTimeout(() => {
+      if (!this.paragraphEditing) return;
+      const focused: boolean = focusControl.requestFocus(PARAGRAPH_EDIT_INPUT_ID);
+      this.placeParagraphCaretAtEnd(30);
+      if (!focused && attempt < 2) this.focusParagraphEditor(attempt + 1);
+    }, attempt === 0 ? 0 : 50);
+  }
+
+  private beginParagraphEdit(): void {
+    if (!this.article || this.promptTargetKind !== 'text' ||
+      this.article.articles.length <= this.selectedArticle) return;
+    if (this.paragraphEditing) return;
+    if (this.holdEditPressed || this.holdEditFinishing || this.dictating ||
+      this.articleEditQueue.length > 0) {
+      promptAction.showToast({ message: '当前修改完成后再精修' });
+      return;
     }
-    this.article = this.article;
+    const renderedBody: string = this.article.articles[this.selectedArticle].body;
+    const blocks: ArticleBlock[] = ArticleBody.locatedBlocks(renderedBody);
+    const target: ArticleBlock | undefined = blocks[this.promptTargetIndex];
+    const line: number = this.promptTargetLine > 0 ?
+      this.promptTargetLine : (target?.lineNumber ?? 0);
+    if (line < 1 || this.promptTargetValue.trim().length === 0) return;
+    this.paragraphEditLine = line;
+    this.paragraphEditArticleIndex = this.selectedArticle;
+    this.paragraphEditOriginal = this.promptTargetValue.trim();
+    this.paragraphEditRenderedBody = renderedBody;
+    this.paragraphEditText = this.paragraphEditOriginal;
+    this.paragraphEditSaving = false;
+    this.deferredParagraphArticle = undefined;
+    this.paragraphEditing = true;
+  }
+
+  private closeParagraphEdit(applyDeferred: boolean = true): void {
+    const deferred: ArticleDoc | undefined = this.deferredParagraphArticle;
+    this.paragraphEditing = false;
+    this.paragraphEditText = '';
+    this.paragraphEditSaving = false;
+    this.paragraphEditLine = 0;
+    this.paragraphEditArticleIndex = -1;
+    this.paragraphEditOriginal = '';
+    this.paragraphEditRenderedBody = '';
+    this.deferredParagraphArticle = undefined;
+    if (applyDeferred && deferred) {
+      this.article = deferred;
+      this.selectedArticle = Math.min(this.selectedArticle, Math.max(0, deferred.articles.length - 1));
+      this.warmArticlePhotos(deferred);
+    }
+  }
+
+  private async saveParagraphEdit(): Promise<void> {
+    if (this.paragraphEditSaving || !this.selected || !this.article || this.paragraphEditLine < 1 ||
+      this.paragraphEditArticleIndex < 0 ||
+      this.paragraphEditArticleIndex >= this.article.articles.length) return;
+    const recording: Recording = this.selected;
+    const editLine: number = this.paragraphEditLine;
+    const editArticleIndex: number = this.paragraphEditArticleIndex;
+    const edited: string = this.paragraphEditText.trim();
+    if (edited.length === 0 || edited === this.paragraphEditOriginal) {
+      this.closeParagraphEdit();
+      return;
+    }
+    const current: MinedArticle = this.article.articles[this.paragraphEditArticleIndex];
+    const nextBody: string = ArticleBody.replacingRenderedLine(
+      this.paragraphEditLine, edited, this.paragraphEditRenderedBody, current.body);
+    if (nextBody === current.body) {
+      promptAction.showToast({ message: '段落状态已变化，请重新长按编辑' });
+      return;
+    }
+    const articles: MinedArticle[] = this.article.articles.slice();
+    articles[this.paragraphEditArticleIndex] = {
+      title: current.title,
+      body: nextBody,
+      style: current.style,
+      wechatMediaId: current.wechatMediaId
+    };
+    const nextDoc: ArticleDoc = {
+      id: this.article.id,
+      transcript: this.article.transcript,
+      articles: articles,
+      tags: this.article.tags,
+      questions: this.article.questions,
+      photos: this.article.photos,
+      owner: this.article.owner
+    };
+    this.paragraphEditSaving = true;
+    let saved: boolean = false;
+    try {
+      saved = await libraryStore.saveArticle(recording, nextDoc);
+    } catch (_) {}
+    if (!this.paragraphEditing || this.selected?.stem() !== recording.stem() ||
+      this.paragraphEditLine !== editLine || this.paragraphEditArticleIndex !== editArticleIndex) return;
+    if (!saved) {
+      this.paragraphEditSaving = false;
+      this.focusParagraphEditor();
+      promptAction.showToast({ message: '段落保存失败，请重试' });
+      return;
+    }
+    this.deferredParagraphArticle = undefined;
+    this.article = nextDoc;
+    this.warmArticlePhotos(nextDoc);
+    this.closeParagraphEdit(false);
+    this.history = await libraryStore.versionHistory(recording);
+    promptAction.showToast({ message: '这一段已保存' });
   }
 
   private async selectHistoryVersion(version: ArticleVersion): Promise<void> {
@@ -4148,19 +4522,6 @@ struct Index {
           .width('100%')
           .height('100%')
           .zIndex(120)
-      }
-      if (this.showDirectEditor) {
-        Column({ space: 12 }) {
-          Row() {
-            Text('直接编辑文章').fontSize(21).fontWeight(FontWeight.Bold).layoutWeight(1)
-            Button('取消').backgroundColor(Color.Transparent).fontColor('#666666').onClick(() => this.showDirectEditor = false)
-          }.width('100%')
-          TextInput({ text: this.directTitle, placeholder: '文章标题' }).onChange((value: string) => this.directTitle = value).backgroundColor('#F1F1EF')
-          TextArea({ text: this.directBody, placeholder: '文章正文（图片使用 [[photo:key]]）' })
-            .onChange((value: string) => this.directBody = value).layoutWeight(1).width('100%').backgroundColor('#F1F1EF')
-          Button('保存文章').width('100%').height(48).backgroundColor(Theme.ACCENT).onClick(() => this.saveDirectEdit())
-        }.padding({ left: 20, right: 20, top: 20, bottom: 24 }).width('100%').height('92%')
-          .backgroundColor(Color.White).borderRadius({ topLeft: 22, topRight: 22 }).align(Alignment.Bottom)
       }
       if (this.showHistoryBrowser) {
         Column() {

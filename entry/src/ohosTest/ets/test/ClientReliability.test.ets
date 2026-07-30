@@ -35,6 +35,12 @@ export default function clientReliabilityTest() {
       expect(ClientReliability.commandMessageRequiresRefresh('reply')).assertFalse();
     });
 
+    it('keepsExistingLibraryRowsVisibleDuringCommandRefresh', 0, () => {
+      expect(ClientReliability.libraryRefreshShowsLoading(true, false)).assertTrue();
+      expect(ClientReliability.libraryRefreshShowsLoading(true, true)).assertFalse();
+      expect(ClientReliability.libraryRefreshShowsLoading(false, false)).assertFalse();
+    });
+
     it('keepsSocketsAliveEvery25SecondsAndScopesPromptCachesByAccount', 0, () => {
       expect(ClientReliability.HEARTBEAT_MS).assertEqual(25000);
       expect(ClientReliability.isLongLivedSocketPath('/status')).assertTrue();
