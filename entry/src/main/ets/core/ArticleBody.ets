@@ -1,6 +1,8 @@
 export interface ArticleBlock {
   kind: 'text' | 'photo';
   value: string;
+  lineNumber?: number;
+  imageNumber?: number;
 }
 
 export interface ArticleText {
@@ -29,6 +31,27 @@ export class ArticleBody {
       if (text.length > 0) result.push({ kind: 'text', value: text });
     }
     if (result.length === 0) result.push({ kind: 'text', value: stripped });
+    return result;
+  }
+
+  static locatedBlocks(body: string): ArticleBlock[] {
+    const result: ArticleBlock[] = [];
+    let lineNumber: number = 0;
+    let imageNumber: number = 0;
+    for (const block of ArticleBody.blocks(body)) {
+      if (block.kind === 'photo') {
+        lineNumber++;
+        imageNumber++;
+        result.push({ kind: 'photo', value: block.value, lineNumber, imageNumber });
+        continue;
+      }
+      for (const raw of block.value.split('\n')) {
+        const paragraph: string = raw.trim();
+        if (paragraph.length === 0) continue;
+        lineNumber++;
+        result.push({ kind: 'text', value: paragraph, lineNumber, imageNumber: 0 });
+      }
+    }
     return result;
   }
 
@@ -65,6 +88,20 @@ export class ArticleBody {
     return token;
   }
 
+  /**
+   * Image editing requires the article body to contain the resolved photo key.
+   * Older articles may still use positional markers such as [[photo:1]], which
+   * remain valid for rendering but cannot be targeted by the current edit API.
+   */
+  static materializePhotoMarker(body: string, token: string, photos?: string[]): string {
+    const legacyToken: string = token.trim();
+    if (!/^\d+$/.test(legacyToken)) return body;
+    const key: string | undefined = ArticleBody.resolvePhotoKey(legacyToken, photos);
+    if (!key || key.trim().length === 0) return body;
+    const markerPattern: RegExp = new RegExp(`\\[\\[photo:\\s*${legacyToken}\\s*\\]\\]`, 'g');
+    return body.replace(markerPattern, `[[photo:${key.trim()}]]`);
+  }
+
   static stripMarkers(body: string): string {
     return ArticleBody.stripComments(body).replace(/\[\[photo:[^\]]+\]\]/g, '')
       .replace(/\n{3,}/g, '\n\n').trim();
@@ -98,6 +135,14 @@ export class ArticleBody {
   static firstPhotoKey(body: string, photos?: string[]): string | undefined {
     const first: ArticleBlock | undefined = ArticleBody.blocks(body).find((block: ArticleBlock) => block.kind === 'photo');
     return first ? ArticleBody.resolvePhotoKey(first.value, photos) : undefined;
+  }
+
+  static firstArticlePhotoKey(articles: ArticleText[], photos?: string[]): string | undefined {
+    for (const article of articles) {
+      const key: string | undefined = ArticleBody.firstPhotoKey(article.body, photos);
+      if (key && key.trim().length > 0) return key.trim();
+    }
+    return undefined;
   }
 
   static shareText(articles: ArticleText[]): string {

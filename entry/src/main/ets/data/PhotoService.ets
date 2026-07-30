@@ -1,7 +1,6 @@
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
-import { image } from '@kit.ImageKit';
 import { Api } from '../core/Api';
 import { RecordingName } from '../core/RecordingName';
 import { authStore } from './AuthStore';
@@ -10,6 +9,7 @@ import { appPreferences } from './AppPreferences';
 import { common } from '@kit.AbilityKit';
 import { ArticleBody } from '../core/ArticleBody';
 import { ClientReliability } from '../core/ClientReliability';
+import { PhotoJpeg } from '../core/PhotoJpeg';
 import { ArticleDoc } from '../model/Models';
 
 export interface UploadedPhoto {
@@ -86,6 +86,7 @@ export class PhotoService {
   }
 
   async cacheArticlePhoto(fullKey: string, force: boolean = false): Promise<string> {
+    if (force) this.invalidateArticlePhoto(fullKey);
     const existing: string = this.articlePhotoSource(fullKey);
     if (!force && existing.startsWith('file://')) return existing;
     if (this.articleCacheRoot.length === 0) return existing;
@@ -93,14 +94,23 @@ export class PhotoService {
     if (active) return active;
     const generation: number = this.articlePhotoGenerations.get(fullKey) ?? 0;
     const epoch: number = this.articlePhotoEpoch;
-    const task: Promise<string> = this.downloadArticlePhoto(fullKey, existing, generation, epoch);
+    const task: Promise<string> = this.downloadArticlePhoto(fullKey, existing, generation, epoch, force);
     this.articlePhotoTasks.set(fullKey, task);
     try { return await task; }
     finally { if (this.articlePhotoTasks.get(fullKey) === task) this.articlePhotoTasks.delete(fullKey); }
   }
 
-  private async downloadArticlePhoto(fullKey: string, existing: string, generation: number, epoch: number): Promise<string> {
-    const response = await httpClient.getBytes(ArticleBody.photoUrl(fullKey), '');
+  async fetchArticlePhoto(fullKey: string, ignoringLocalCache: boolean = false): Promise<string> {
+    if (fullKey.length === 0) return '';
+    const source: string = await this.cacheArticlePhoto(fullKey, ignoringLocalCache);
+    return source.startsWith('file://') ? source : '';
+  }
+
+  private async downloadArticlePhoto(fullKey: string, existing: string, generation: number, epoch: number,
+    ignoringLocalCache: boolean = false): Promise<string> {
+    let url: string = ArticleBody.photoUrl(fullKey);
+    if (ignoringLocalCache) url = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
+    const response = await httpClient.getBytes(url, '');
     if (!response.ok() || response.data.byteLength === 0) return existing;
     const path: string = this.articlePhotoPath(fullKey);
     const temporary: string = `${path}.tmp.${epoch}.${generation}`;
@@ -247,6 +257,7 @@ export class PhotoService {
       const key: string = await this.uploadUri(uri, recordingName, offset++);
       if (key.length > 0) uploaded.push({ key: key, sourceUri: uri });
     }
+    if (result.photoUris.length > 0 && uploaded.length === 0) throw new Error('所选图片上传失败');
     return uploaded;
   }
 
@@ -282,13 +293,7 @@ export class PhotoService {
   }
 
   private async asJpeg(bytes: ArrayBuffer): Promise<ArrayBuffer> {
-    const source: image.ImageSource = image.createImageSource(bytes);
-    const packer: image.ImagePacker = image.createImagePacker();
-    try { return await packer.packToData(source, { format: 'image/jpeg', quality: 86, bufferSize: 10 * 1024 * 1024 }); }
-    finally {
-      try { await source.release(); } catch (_) {}
-      try { await packer.release(); } catch (_) {}
-    }
+    return PhotoJpeg.transcode(bytes);
   }
 }
 

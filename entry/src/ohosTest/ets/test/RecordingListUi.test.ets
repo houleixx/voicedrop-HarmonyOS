@@ -87,7 +87,8 @@ export default function recordingListUiTest() {
         name: 'VoiceDrop-ready.m4a',
         hasArticles: true,
         title: '已经生成的标题',
-        tags: ['随笔']
+        tags: ['随笔'],
+        coverPhotoKey: 'photos/session/0-cover.jpg'
       });
       const lightweight: Recording = new Recording({
         name: previous.name,
@@ -97,6 +98,7 @@ export default function recordingListUiTest() {
         [], [lightweight], [], [], [previous]);
       expect(refreshed[0].rowTitle()).assertEqual('已经生成的标题');
       expect(refreshed[0].tags.join(',')).assertEqual('随笔');
+      expect(refreshed[0].coverPhotoKey).assertEqual('photos/session/0-cover.jpg');
     });
 
     it('doesNotDowngradeALiveWebSocketPhaseDuringPullRefresh', 0, () => {

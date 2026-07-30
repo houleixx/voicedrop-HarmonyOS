@@ -9,8 +9,16 @@ import photoLoadPolicyTest from './PhotoLoadPolicy.test';
 import recordingPolicyTest from './RecordingPolicy.test';
 import recordingStopPolicyTest from './RecordingStopPolicy.test';
 import communityLikeStateTest from './CommunityLikeState.test';
+import communityReplyUiTest from './CommunityReplyUi.test';
 import recordingUploadPolicyTest from './RecordingUploadPolicy.test';
 import appPageTest from './AppPage.test';
+import articlePhotoInsertTest from './ArticlePhotoInsert.test';
+import articleBodyTest from './ArticleBody.test';
+import articleEditUiTest from './ArticleEditUi.test';
+import articleVersionNavigationTest from './ArticleVersionNavigation.test';
+import styleRewriteUiTest from './StyleRewriteUi.test';
+import photoJpegTest from './PhotoJpeg.test';
+import restyleRequestTest from './RestyleRequest.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -24,6 +32,14 @@ export default function testsuite() {
   recordingPolicyTest();
   recordingStopPolicyTest();
   communityLikeStateTest();
+  communityReplyUiTest();
   recordingUploadPolicyTest();
   appPageTest();
+  articlePhotoInsertTest();
+  articleBodyTest();
+  articleEditUiTest();
+  articleVersionNavigationTest();
+  styleRewriteUiTest();
+  photoJpegTest();
+  restyleRequestTest();
 }

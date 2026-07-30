@@ -36,11 +36,37 @@ export class AudioPlayback {
     try {
       const player: media.AVPlayer = await media.createAVPlayer();
       this.player = player;
+      let initializationSettled: boolean = false;
+      let initializationTimer: number = -1;
+      let resolveInitialization: () => void = () => {};
+      let rejectInitialization: (reason?: Error) => void = () => {};
+      const initialized: Promise<void> = new Promise<void>(
+        (resolve: () => void, reject: (reason?: Error) => void) => {
+          resolveInitialization = resolve;
+          rejectInitialization = reject;
+        });
       player.on('stateChange', (state: media.AVPlayerState) => {
         if (this.player !== player) return;
-        if (state === 'completed' || state === 'error') this.stop().catch(() => {});
+        if (!initializationSettled && state === 'initialized') {
+          initializationSettled = true;
+          if (initializationTimer >= 0) clearTimeout(initializationTimer);
+          resolveInitialization();
+        } else if (!initializationSettled && (state === 'error' || state === 'released')) {
+          initializationSettled = true;
+          if (initializationTimer >= 0) clearTimeout(initializationTimer);
+          rejectInitialization(new Error(`播放器初始化失败：${state}`));
+        } else if (initializationSettled && (state === 'completed' || state === 'error')) {
+          this.stop().catch(() => {});
+        }
       });
-      player.url = `fd://${this.file.fd}`;
+      const size: number = fs.statSync(this.file.fd).size;
+      initializationTimer = setTimeout(() => {
+        if (initializationSettled) return;
+        initializationSettled = true;
+        rejectInitialization(new Error('播放器初始化超时'));
+      }, 5000);
+      player.fdSrc = { fd: this.file.fd, offset: 0, length: size };
+      await initialized;
       await player.prepare();
       await player.play();
       this.handler(true, 0, player.duration);
@@ -56,13 +82,17 @@ export class AudioPlayback {
   async stop(): Promise<void> {
     if (this.timer >= 0) clearInterval(this.timer);
     this.timer = -1;
-    if (this.player) {
-      this.player.off('stateChange');
-      try { await this.player.stop(); } catch (_) {}
-      await this.player.release();
+    const player: media.AVPlayer | undefined = this.player;
+    this.player = undefined;
+    if (player) {
+      player.off('stateChange');
+      if (player.state === 'prepared' || player.state === 'playing' ||
+          player.state === 'paused' || player.state === 'completed') {
+        try { await player.stop(); } catch (_) {}
+      }
+      await player.release();
     }
     if (this.file) fs.closeSync(this.file);
-    this.player = undefined;
     this.file = undefined;
     this.handler(false, 0, 0);
   }

@@ -7,6 +7,8 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { ClientReliability } from '../core/ClientReliability';
 import { photoService } from './PhotoService';
+import { RestyleRequest, RestyleResult } from '../core/RestyleRequest';
+import { ArticleBody } from '../core/ArticleBody';
 
 interface RecordingsResponse { recordings?: RecordingRowPayload[]; }
 class CachedRecordingRow implements RecordingRowPayload {
@@ -17,12 +19,14 @@ class CachedRecordingRow implements RecordingRowPayload {
   hasTags: boolean = false;
   title: string = '';
   tags: string[] = [];
+  coverPhotoKey: string = '';
   phase: string = '';
   blockReason: string = '';
   constructor(recording: Recording) {
     this.name = recording.name; this.uploaded = recording.uploaded; this.hasArticles = recording.hasArticles;
     this.isEmpty = recording.isEmpty; this.hasTags = recording.hasTags; this.title = recording.title;
-    this.tags = recording.tags; this.phase = recording.phase; this.blockReason = recording.blockReason;
+    this.tags = recording.tags; this.coverPhotoKey = recording.coverPhotoKey;
+    this.phase = recording.phase; this.blockReason = recording.blockReason;
   }
 }
 interface ShareResponse { url?: string; }
@@ -53,8 +57,7 @@ export class ShareLinkTarget {
 }
 class StemRequest {
   stem: string;
-  styleV?: number;
-  constructor(stem: string, styleV?: number) { this.stem = stem; this.styleV = styleV; }
+  constructor(stem: string) { this.stem = stem; }
 }
 class HeadRequest {
   head: number;
@@ -114,6 +117,7 @@ export class LibraryStore {
       .map((row: RecordingRowPayload) => {
         const recording: Recording = new Recording(row);
         recording.title = row.title ?? ''; recording.tags = row.tags ?? [];
+        recording.coverPhotoKey = row.coverPhotoKey ?? '';
         recording.phase = row.phase ?? ''; recording.blockReason = row.blockReason ?? '';
         return recording;
       })
@@ -129,7 +133,10 @@ export class LibraryStore {
           if (recording.hasArticles) {
             const doc: ArticleDoc | undefined = await this.fetchArticle(recording);
             if (doc) {
-              recording.title = doc.articles?.[0]?.title ?? ''; recording.tags = doc.tags ?? []; changed = true;
+              recording.title = doc.articles?.[0]?.title ?? '';
+              recording.tags = doc.tags ?? [];
+              recording.coverPhotoKey = ArticleBody.firstArticlePhotoKey(doc.articles ?? [], doc.photos) ?? '';
+              changed = true;
             }
           } else if (recording.hasTags) {
             const response = await httpClient.getBytes(`${Api.FILES}/download/${Api.path(recording.tagsKey())}`, authStore.bearer());
@@ -276,11 +283,20 @@ export class LibraryStore {
     return response.ok() || response.code === 404;
   }
 
-  async remine(recording: Recording, styleVersion?: number): Promise<boolean> {
-    const response: HttpResponse = await httpClient.postJson(`${Api.AGENT}/restyle`, authStore.bearer(),
-      new StemRequest(recording.stem(), styleVersion), 300000);
-    if (response.ok()) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
-    return response.ok();
+  async restyle(recording: Recording, styleVersion: number): Promise<RestyleResult> {
+    const response: HttpResponse = await httpClient.postJson(Api.restyleUrl(), authStore.bearer(),
+      RestyleRequest.body(recording.stem(), styleVersion), 300000);
+    const result: RestyleResult = RestyleRequest.result(response.code, response.text);
+    if (result.ok) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
+    return result;
+  }
+
+  async remine(recording: Recording): Promise<boolean> {
+    const response: HttpResponse = await httpClient.postJson(Api.restyleUrl(), authStore.bearer(),
+      RestyleRequest.body(recording.stem()), 300000);
+    const result: RestyleResult = RestyleRequest.result(response.code, response.text);
+    if (result.ok) { await this.invalidateArticle(recording); authStore.clearLibraryListCache(); }
+    return result.ok;
   }
 
   async versionHistory(recording: Recording): Promise<ArticleHistory> {

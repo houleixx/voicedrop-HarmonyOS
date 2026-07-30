@@ -68,6 +68,12 @@ export class RecordingName {
     return parsed.place.length > 0 ? `${base} · ${parsed.place}` : base;
   }
 
+  static dateTimeLabel(name: string): string {
+    const parsed: ParsedRecordingName | undefined = RecordingName.parse(name);
+    if (!parsed) return '';
+    return `${parsed.month}月${parsed.day}日 ${parsed.hhmm}`;
+  }
+
   private static two(value: number): string { return value.toString().padStart(2, '0'); }
   private static period(hour: number): string {
     if (hour < 5) return 'LateNight';

@@ -16,6 +16,20 @@ export class CommunityLikeState {
     return JSON.stringify(ids);
   }
 
+  static countAfterToggle(currentCount: number, currentLiked: boolean, nextLiked: boolean): number {
+    if (currentLiked === nextLiked) return Math.max(0, currentCount);
+    return Math.max(0, currentCount + (nextLiked ? 1 : -1));
+  }
+
+  static reconciledLiked(serverLiked: boolean, locallyLiked: boolean): boolean {
+    return serverLiked || locallyLiked;
+  }
+
+  static reconciledCount(serverCount: number, serverLiked: boolean, locallyLiked: boolean): number {
+    const liked: boolean = CommunityLikeState.reconciledLiked(serverLiked, locallyLiked);
+    return CommunityLikeState.countAfterToggle(serverCount, serverLiked, liked);
+  }
+
   private static ids(raw: string): string[] {
     try {
       const values: string[] = JSON.parse(raw.length > 0 ? raw : '[]') as string[];

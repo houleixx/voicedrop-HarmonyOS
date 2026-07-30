@@ -26,12 +26,20 @@ class EditRequest {
   id: string;
   text: string;
   articleIndex: number;
+  images?: EditImage[];
   anchor?: EditAnchor;
   itemId?: string;
-  constructor(id: string, text: string, articleIndex: number, anchor?: EditAnchor, itemId?: string) {
+  constructor(id: string, text: string, articleIndex: number, anchor?: EditAnchor, itemId?: string,
+    images: EditImage[] = []) {
     this.id = id; this.text = text; this.articleIndex = articleIndex;
     this.anchor = anchor; this.itemId = itemId;
+    if (images.length > 0) this.images = images;
   }
+}
+
+export class EditImage {
+  key: string;
+  constructor(key: string) { this.key = key; }
 }
 
 export class AgentSocket {
@@ -148,12 +156,36 @@ export class StatusSession extends AgentSocket {
 }
 
 export class ArticleEditSession extends AgentSocket {
+  private pending: EditRequest[] = [];
+
   constructor(stem: string, handler: SocketMessageHandler, state?: SocketStateHandler) {
-    super(`/edit?stem=${Api.path(stem)}`, handler, state, true);
+    let session: ArticleEditSession | undefined = undefined;
+    super(`/edit?stem=${Api.path(stem)}`, handler, (connected: boolean, code?: number, reason?: string) => {
+      if (connected) session?.flushPending();
+      if (state) state(connected, code, reason);
+    }, true);
+    session = this;
   }
 
-  sendEdit(id: string, text: string, articleIndex: number, anchor?: EditAnchor, itemId?: string): Promise<boolean> {
-    return this.sendJson(new EditRequest(id, text, articleIndex, anchor, itemId));
+  async sendEdit(id: string, text: string, articleIndex: number, anchor?: EditAnchor, itemId?: string,
+    images: EditImage[] = []): Promise<boolean> {
+    const request: EditRequest = new EditRequest(id, text, articleIndex, anchor, itemId, images);
+    if (!this.isConnected()) {
+      this.pending.push(request);
+      this.connect().catch(() => {});
+      return true;
+    }
+    const sent: boolean = await this.sendJson(request);
+    if (!sent) this.pending.push(request);
+    return sent || this.pending.includes(request);
+  }
+
+  private async flushPending(): Promise<void> {
+    const requests: EditRequest[] = this.pending.slice();
+    this.pending = [];
+    for (const request of requests) {
+      if (!await this.sendJson(request)) this.pending.push(request);
+    }
   }
 }
 

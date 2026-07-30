@@ -13,6 +13,7 @@ export class RecordingListUi {
       recording.phase,
       recording.blockReason,
       recording.title,
+      recording.coverPhotoKey,
       recording.tags.join('\u001f')
     ].join('\u001e');
   }
@@ -76,6 +77,7 @@ export class RecordingListUi {
       const cached: Recording | undefined = previousByName.get(recording.name);
       if (cached && recording.title.length === 0) recording.title = cached.title;
       if (cached && recording.tags.length === 0) recording.tags = cached.tags.slice();
+      if (cached && recording.coverPhotoKey.length === 0) recording.coverPhotoKey = cached.coverPhotoKey;
       if (cached && !recording.hasArticles && !recording.isEmpty && recording.phase.length === 0) {
         recording.phase = cached.phase;
       }

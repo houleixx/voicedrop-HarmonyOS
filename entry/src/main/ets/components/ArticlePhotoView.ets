@@ -1,104 +1,164 @@
 import { PhotoLoadIntent, PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
+import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 
-type ArticlePhotoState = 'loading' | 'loaded' | 'grace' | 'making' | 'loadFailed' | 'failed';
+type ArticlePhotoState = 'loading' | 'loaded' | 'making' | 'loadFailed' | 'failed';
+
+class ArticlePhotoRequest {
+  id: number;
+  url: string;
+
+  constructor(id: number, url: string) {
+    this.id = id;
+    this.url = url;
+  }
+}
 
 @Component
 export struct ArticlePhotoView {
-  @Prop @Watch('onUrlChanged') url: string = '';
+  @Prop @Watch('onPhotoKeyChanged') photoKey: string = '';
   @Prop @Watch('onIntentChanged') intent: PhotoLoadIntent = 'original';
+  loadPhoto: (ignoringLocalCache: boolean) => Promise<string> =
+    (_: boolean): Promise<string> => Promise.resolve('');
   onLoaded: () => void = () => {};
+  onLongPress: (event: GestureEvent) => void = (_: GestureEvent) => {};
   @State private state: ArticlePhotoState = 'loading';
-  @State private attempt: number = 0;
-  private timer: number = -1;
-  private deadline: number = 0;
+  @State private activeRequest: ArticlePhotoRequest = new ArticlePhotoRequest(0, '');
+  private nextRequestId: number = 0;
+  private makingTimer: number = -1;
+  private retryTimer: number = -1;
+  private startedAt: number = 0;
 
-  aboutToDisappear(): void {
-    this.clearTimer();
+  aboutToAppear(): void {
+    this.beginLoad(false);
   }
 
-  private onUrlChanged(): void {
-    this.clearTimer();
-    this.deadline = 0;
-    this.attempt = 0;
-    this.state = 'loading';
+  aboutToDisappear(): void {
+    this.clearTimers();
+    this.activeRequest = new ArticlePhotoRequest(++this.nextRequestId, '');
+  }
+
+  private onPhotoKeyChanged(): void {
+    this.beginLoad(false);
   }
 
   private onIntentChanged(): void {
-    if (this.intent !== 'generated') return;
-    this.clearTimer();
-    this.deadline = Date.now() + 300000;
-    this.state = 'grace';
-    this.attempt += 1;
-    this.timer = setTimeout(() => {
-      this.timer = -1;
-      this.retryGenerated();
-    }, 900);
+    this.beginLoad(false);
   }
 
-  private requestUrl(): string {
-    if (this.attempt === 0) return this.url;
-    return `${this.url}${this.url.includes('?') ? '&' : '?'}v=${Date.now()}-${this.attempt}`;
+  private beginLoad(forceRefresh: boolean): void {
+    this.clearTimers();
+    this.activeRequest = new ArticlePhotoRequest(++this.nextRequestId, '');
+    this.startedAt = Date.now();
+    this.state = PhotoLoadPolicy.startsMaking(this.intent) ? 'making' : 'loading';
+    if (!PhotoLoadPolicy.shouldLoad(this.intent)) return;
+    if (PhotoLoadPolicy.shouldPoll(this.intent) && this.state === 'loading') this.scheduleMakingState();
+    this.fetchPhoto(forceRefresh).catch(() => {});
   }
 
-  private clearTimer(): void {
-    if (this.timer < 0) return;
-    clearTimeout(this.timer);
-    this.timer = -1;
+  private async fetchPhoto(ignoringLocalCache: boolean): Promise<void> {
+    const requestId: number = ++this.nextRequestId;
+    this.activeRequest = new ArticlePhotoRequest(requestId, '');
+    try {
+      const source: string = await this.loadPhoto(ignoringLocalCache);
+      if (requestId !== this.activeRequest.id) return;
+      if (source.length === 0) {
+        this.failed(requestId);
+        return;
+      }
+      this.activeRequest = new ArticlePhotoRequest(requestId, source);
+      this.loaded(requestId);
+    } catch (_) {
+      this.failed(requestId);
+    }
   }
 
-  private loaded(): void {
-    this.clearTimer();
-    this.deadline = 0;
+  private clearMakingTimer(): void {
+    if (this.makingTimer < 0) return;
+    clearTimeout(this.makingTimer);
+    this.makingTimer = -1;
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer < 0) return;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = -1;
+  }
+
+  private clearTimers(): void {
+    this.clearMakingTimer();
+    this.clearRetryTimer();
+  }
+
+  private loaded(requestId: number): void {
+    if (requestId !== this.activeRequest.id) return;
+    this.clearTimers();
+    this.startedAt = 0;
     this.state = 'loaded';
     this.onLoaded();
   }
 
-  private failed(): void {
+  private failed(requestId: number): void {
+    if (requestId !== this.activeRequest.id) return;
     if (!PhotoLoadPolicy.shouldPoll(this.intent)) {
-      this.clearTimer();
+      this.clearTimers();
       this.state = 'loadFailed';
-      return;
-    }
-    if (this.deadline === 0) {
-      this.deadline = Date.now() + 300000;
-      this.state = 'grace';
-      this.clearTimer();
-      this.timer = setTimeout(() => {
-        this.timer = -1;
-        this.retryGenerated();
-      }, 900);
       return;
     }
     this.scheduleGeneratedRetry();
   }
 
-  private scheduleGeneratedRetry(): void {
-    this.clearTimer();
-    if (Date.now() >= this.deadline) {
+  private elapsed(): number {
+    return this.startedAt > 0 ? Math.max(0, Date.now() - this.startedAt) : 0;
+  }
+
+  private scheduleMakingState(): void {
+    this.clearMakingTimer();
+    const elapsed: number = this.elapsed();
+    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(elapsed);
+    if (nextState === 'failed') {
       this.state = 'failed';
       return;
     }
-    this.state = 'making';
-    this.timer = setTimeout(() => {
-      this.timer = -1;
+    if (nextState === 'making') {
+      if (this.state !== 'loaded') this.state = 'making';
+      return;
+    }
+    this.makingTimer = setTimeout(() => {
+      this.makingTimer = -1;
+      if (this.state === 'loading') this.state = 'making';
+    }, PhotoLoadPolicy.MAKING_GRACE_MS - elapsed);
+  }
+
+  private scheduleGeneratedRetry(): void {
+    this.clearRetryTimer();
+    const elapsed: number = this.elapsed();
+    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(elapsed);
+    if (nextState === 'failed') {
+      this.clearMakingTimer();
+      this.state = 'failed';
+      return;
+    }
+    if (nextState === 'making') this.state = 'making';
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = -1;
       this.retryGenerated();
-    }, 3000);
+    }, PhotoLoadPolicy.generatedRetryDelay(elapsed));
   }
 
   private retryGenerated(): void {
-    if (Date.now() >= this.deadline) {
+    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(this.elapsed());
+    if (nextState === 'failed') {
+      this.clearMakingTimer();
       this.state = 'failed';
       return;
     }
-    this.state = 'making';
-    this.attempt += 1;
+    this.state = nextState;
+    if (nextState === 'loading') this.scheduleMakingState();
+    this.fetchPhoto(true).catch(() => {});
   }
 
   private retry(): void {
-    this.clearTimer();
-    this.deadline = 0;
-    this.state = 'loading';
-    this.attempt += 1;
+    this.beginLoad(true);
   }
 
   @Builder
@@ -117,21 +177,21 @@ export struct ArticlePhotoView {
 
   build() {
     Stack() {
-      if (this.state === 'loading' || this.state === 'loaded' ||
-          this.state === 'grace' || this.state === 'making') {
-        Image(this.requestUrl())
-          .width('100%')
-          .objectFit(ImageFit.Contain)
-          .borderRadius(12)
-          .opacity(this.state === 'loaded' || this.state === 'loading' ? 1 : 0)
-          .onComplete(() => this.loaded())
-          .onError(() => this.failed())
+      if (this.state === 'loaded' && this.activeRequest.url.length > 0) {
+        ForEach([this.activeRequest], (request: ArticlePhotoRequest) => {
+          Image(request.url)
+            .width('100%')
+            .objectFit(ImageFit.Contain)
+            .borderRadius(12)
+            .draggable(false)
+            .opacity(1)
+            .onError(() => this.failed(request.id))
+            .priorityGesture(LongPressGesture().onAction((event: GestureEvent) => this.onLongPress(event)))
+        }, (request: ArticlePhotoRequest) => `${request.id}`)
       }
-      if (this.state === 'grace') {
-        this.placeholder('', '')
-      } else if (this.state === 'loading') {
+      if (this.state === 'loading') {
         Column() {
-          LoadingProgress().width(34).height(34).color('#C98A2E')
+          LoadingProgress().width(34).height(34).color(Theme.ACCENT_STRONG)
         }
           .justifyContent(FlexAlign.Center)
           .width('100%')
@@ -153,6 +213,8 @@ export struct ArticlePhotoView {
           .backgroundColor('#F4F1EB')
           .borderRadius(12)
       }
-    }.width('100%').margin({ top: 10, bottom: 10 })
+    }
+      .width('100%')
+      .margin({ top: 10, bottom: 10 })
   }
 }
