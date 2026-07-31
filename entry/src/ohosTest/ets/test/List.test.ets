@@ -22,6 +22,8 @@ import restyleRequestTest from './RestyleRequest.test';
 import pendingAudioFramesTest from './PendingAudioFrames.test';
 import holdToTalkTest from './HoldToTalk.test';
 import asrResponseGateTest from './AsrResponseGate.test';
+import wechatAuthResponseTest from './WechatAuthResponse.test';
+import wechatLoginStateTest from './WechatLoginState.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -48,4 +50,6 @@ export default function testsuite() {
   pendingAudioFramesTest();
   holdToTalkTest();
   asrResponseGateTest();
+  wechatAuthResponseTest();
+  wechatLoginStateTest();
 }

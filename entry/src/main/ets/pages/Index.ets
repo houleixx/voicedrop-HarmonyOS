@@ -66,6 +66,7 @@ import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { PageHeader } from '../ui/PageHeader';
 import { ClientReliability } from '../core/ClientReliability';
+import { WechatAuthResponse } from '../core/WechatAuthResponse';
 import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
 import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
@@ -184,6 +185,7 @@ struct Index {
   @State private showCommunityMenu: boolean = false;
   @State private promptImporting: boolean = false;
   @State private wechatLoggedIn: boolean = false;
+  @State private wechatLoggingIn: boolean = false;
   @State private pendingReplyTarget: string = '';
   @State private showPromptMenu: boolean = false;
   @State private promptMenuNodes: PromptNode[] = [];
@@ -448,10 +450,11 @@ struct Index {
     communityStore.clearPostSnapshots();
     this.reconnectAgentSessions();
     this.navigateHome();
-    await this.refreshLibrary();
+    await this.refreshLibrary(true, true, undefined, true);
   }
 
   private onForegroundSequence(): void {
+    this.wechatLoggingIn = false;
     if (!this.initialized || this.pathStack.size() > 0) return;
     this.refreshLibrary(this.recordings.length === 0).catch(() => {});
     if (this.tab === 1) this.refreshCommunity().catch(() => {});
@@ -459,19 +462,30 @@ struct Index {
 
   private onWechatSequence(): void {
     if (!this.initialized) return;
-    this.handleWechatCallback().catch((error: Error) => promptAction.showToast({ message: `微信登录失败：${error.message}` }));
+    this.handleWechatCallback().catch((error: Error) => {
+      this.wechatLoggingIn = false;
+      promptAction.showToast({ message: `微信登录失败：${error.message}` });
+    });
   }
 
   private async startWechatLogin(): Promise<void> {
-    if (!this.context) return;
+    if (!this.context || this.wechatLoggingIn) return;
+    this.wechatLoggingIn = true;
     try {
-      if (!await WechatLogin.start(this.context)) promptAction.showToast({ message: '无法打开微信，请确认已安装微信' });
-    } catch (error) { promptAction.showToast({ message: `无法打开微信：${String(error)}` }); }
+      if (!await WechatLogin.start(this.context)) {
+        this.wechatLoggingIn = false;
+        promptAction.showToast({ message: '无法打开微信，请确认已安装微信' });
+      }
+    } catch (error) {
+      this.wechatLoggingIn = false;
+      promptAction.showToast({ message: `无法打开微信：${String(error)}` });
+    }
   }
 
   private async handleWechatCallback(): Promise<void> {
     const code: string = String(AppStorage.get<string>('wechatCode') ?? '');
     const callbackMessage: string = String(AppStorage.get<string>('wechatMessage') ?? '');
+    if (code.length > 0 || callbackMessage.length > 0) this.wechatLoggingIn = false;
     if (code.length === 0) {
       if (callbackMessage.length > 0) {
         AppStorage.setOrCreate<string>('wechatMessage', ''); promptAction.showToast({ message: callbackMessage });
@@ -481,26 +495,31 @@ struct Index {
     AppStorage.setOrCreate<string>('wechatCode', ''); AppStorage.setOrCreate<string>('wechatMessage', '');
     const result: WechatAuthResult = await WechatAuthStore.exchange(code);
     if (!result.ok) {
-      promptAction.showToast({ message: `微信登录失败：${result.detail || result.error}` }); return;
+      promptAction.showToast({ message: `微信登录失败：${result.message()}` }); return;
     }
-    const previousBearer: string = authStore.bearer();
+    const previousScope: string = authStore.storageScope();
     const anonId: string = await DeviceLinkCrypto.accountId(authStore.anonymousBearer());
-    const switchingAccount: boolean = result.scope !== `users/${anonId}/`;
+    const switchingAccount: boolean = WechatAuthResponse.requiresAccountSwitch(result.scope, anonId);
     let switched: boolean = false;
     if (switchingAccount) {
       const confirmation = await promptAction.showDialog({ title: '该微信已关联另一个云端空间',
-        message: '是否切换到微信已绑定的云端空间？当前匿名空间会保存在本机，退出微信登录后自动恢复。',
+        message: '是否切换到微信已绑定的云端空间？当前空间会保存在本机，退出微信登录后会恢复当前空间。',
         buttons: [{ text: '保留当前空间', color: '#666666' }, { text: '切换到微信空间', color: '#D92D20' }] });
       if (confirmation.index !== 1) return;
       switched = await authStore.switchToWechatAccount(result.session);
     } else switched = await authStore.storeSession(result.session);
     if (!switched) { promptAction.showToast({ message: '微信登录失败：无效会话' }); return; }
-    if (ClientReliability.accountIdentityChanged(previousBearer, authStore.bearer())) {
-      await this.applyAccountIdentityChange(switchingAccount);
+    const accountChanged: boolean =
+      ClientReliability.accountIdentityChanged(previousScope, authStore.storageScope());
+    this.wechatLoggedIn = true;
+    if (accountChanged) {
+      await this.applyAccountIdentityChange(true);
+    } else {
+      this.reconnectAgentSessions();
+      this.navigateHome();
+      await this.refreshLibrary(false, false);
     }
-    this.wechatLoggedIn = true; this.navigateHome();
     promptAction.showToast({ message: result.scope === `users/${anonId}/` ? '已登录微信' : '已切换到微信空间' });
-    await this.refreshLibrary();
   }
 
   private async handleStatusMessage(raw: string): Promise<void> {
@@ -895,13 +914,14 @@ struct Index {
   }
 
   private async refreshLibrary(showLoading: boolean = true, showFailure: boolean = showLoading,
-    invalidatedStems?: string[]): Promise<void> {
+    invalidatedStems?: string[], enrichBeforeDisplay: boolean = false): Promise<void> {
     const displayLoading: boolean =
       ClientReliability.libraryRefreshShowsLoading(showLoading, this.recordings.length > 0);
     if (displayLoading) this.loading = true;
     this.errorText = '';
     try {
       const remote: Recording[] = await libraryStore.load();
+      if (enrichBeforeDisplay) await libraryStore.enrichMissingMetadata(remote, invalidatedStems);
       const staleDeleted: Recording[] = remote.filter((recording: Recording) =>
         this.deletedRecordingNames.includes(recording.name));
       this.recordings = RecordingListUi.afterRefresh(
@@ -911,12 +931,14 @@ struct Index {
       libraryStore.storeRecordingsSnapshot(this.recordings);
       this.commandSession?.setRefs(this.currentCommandRefs());
       staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
-      libraryStore.enrichMissingMetadata(remote, invalidatedStems).then((changed: boolean) => {
-        if (changed) {
-          this.recordings = this.recordings.slice();
-          libraryStore.storeRecordingsSnapshot(this.recordings);
-        }
-      }).catch(() => {});
+      if (!enrichBeforeDisplay) {
+        libraryStore.enrichMissingMetadata(remote, invalidatedStems).then((changed: boolean) => {
+          if (changed) {
+            this.recordings = this.recordings.slice();
+            libraryStore.storeRecordingsSnapshot(this.recordings);
+          }
+        }).catch(() => {});
+      }
       this.publishReadyReplies();
       this.drainPendingCommunityShare().catch(() => {});
     } catch (error) {
@@ -4343,6 +4365,7 @@ struct Index {
   private accountPage() {
     AccountPage({
       loggedIn: this.wechatLoggedIn,
+      wechatLoggingIn: this.wechatLoggingIn,
       recordingNames: this.recordings.map((recording: Recording) => recording.name),
       recordingCount: this.recordings.length,
       articleCount: this.recordings.filter((recording: Recording) => recording.hasArticles).length,
