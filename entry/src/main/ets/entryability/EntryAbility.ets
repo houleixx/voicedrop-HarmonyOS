@@ -22,19 +22,44 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
   onReq(request: BaseReq): void {}
 
   onResp(response: BaseResp): void {
-    let code: string = ''; let message: string = '';
     if (response instanceof SendAuthResp) {
-      if (response.errCode === ErrCode.ERR_OK && response.state === WechatLogin.STATE) code = response.code?.trim() ?? '';
-      else if (response.errCode === ErrCode.ERR_USER_CANCEL) message = '已取消微信登录';
-      else message = response.errStr?.trim() || '微信登录失败';
-    } else if ((response.transaction ?? '').startsWith('voicedrop-community-share-')) {
+      this.handleWechatAuthResponse(response).catch((error: Object) => {
+        hilog.error(0x0000, 'VoiceDrop', 'handle WeChat response failed: %{public}s', JSON.stringify(error));
+        this.publishWechatCallback('', '微信登录回调处理失败，请重试');
+      });
+      return;
+    }
+    let message: string = '';
+    if ((response.transaction ?? '').startsWith('voicedrop-community-share-')) {
       if (response.errCode === ErrCode.ERR_USER_CANCEL) message = '已取消微信分享';
       else if (response.errCode !== ErrCode.ERR_OK) message = response.errStr?.trim() || '微信分享失败';
       else return;
     } else {
       return;
     }
-    if (code.length === 0 && message.length === 0) message = '微信登录返回无效';
+    this.publishWechatCallback('', message);
+  }
+
+  private async handleWechatAuthResponse(response: SendAuthResp): Promise<void> {
+    const validState: boolean = await WechatLogin.consumeState(this.context, response.state ?? '');
+    if (!validState) {
+      this.publishWechatCallback('', '微信登录返回无效，请重新发起登录');
+      return;
+    }
+    if (response.errCode === ErrCode.ERR_USER_CANCEL) {
+      this.publishWechatCallback('', '已取消微信登录');
+      return;
+    }
+    if (response.errCode !== ErrCode.ERR_OK) {
+      const fallback: string = response.errCode === ErrCode.ERR_AUTH_DENIED ? '微信授权未通过' : '微信登录失败';
+      this.publishWechatCallback('', response.errStr?.trim() || fallback);
+      return;
+    }
+    const code: string = response.code?.trim() ?? '';
+    this.publishWechatCallback(code, code.length > 0 ? '' : '微信登录返回无效，请重新发起登录');
+  }
+
+  private publishWechatCallback(code: string, message: string): void {
     AppStorage.setOrCreate<string>('wechatCode', code);
     AppStorage.setOrCreate<string>('wechatMessage', message);
     const sequence: number = AppStorage.get<number>('wechatSequence') ?? 0;

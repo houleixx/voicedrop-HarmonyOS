@@ -65,7 +65,12 @@ VoiceDrop-2026-07-22-143052-0m33s-Wed-Afternoon.m4a
 /Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install
 ```
 
-项目不需要手工填写上传 Token：首次同意隐私政策后会创建匿名身份。微信登录依赖腾讯官方 `@tencent/wechat_open_sdk`，正式发布前仍需在微信开放平台登记 HarmonyOS bundle、identifier 和发布证书签名。
+项目不需要手工填写上传 Token：首次同意隐私政策后会创建匿名身份。微信登录依赖腾讯官方
+`@tencent/wechat_open_sdk`，使用与 Android 移动应用一致的开放平台 AppID
+`wx1573f936967f5420`；微信小程序的 AppID 属于另一套登录凭据，不能用于 HarmonyOS
+客户端。本地默认 product 使用 `default` 调试签名，并与微信开放平台的调试配置保持一致；
+正式发布时需显式切换为 `release`，并确认开放平台已登记 bundle
+`com.baixingai.voicedrop.hm`、应用 identifier 和同一发布证书签名。
 
 ### 构建 Debug HAP
 

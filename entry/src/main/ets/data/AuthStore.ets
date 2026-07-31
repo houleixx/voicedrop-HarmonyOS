@@ -108,7 +108,7 @@ export class AuthStore {
   clearCommunityFeedCache(): void { this.store?.deleteSync(this.homeCacheKey('communityFeed')); this.store?.flush(); }
 
   private homeCacheKey(kind: string): string {
-    return ClientReliability.homeSnapshotCacheKey(kind, this.bearer());
+    return ClientReliability.homeSnapshotCacheKey(kind, this.storageScope());
   }
 
   private newAnonymousToken(): string {

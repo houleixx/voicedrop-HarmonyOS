@@ -26,8 +26,8 @@ export class ClientReliability {
     return activeGeneration === callbackGeneration;
   }
 
-  static accountIdentityChanged(previousBearer: string, currentBearer: string): boolean {
-    return previousBearer !== currentBearer;
+  static accountIdentityChanged(previousIdentity: string, currentIdentity: string): boolean {
+    return previousIdentity !== currentIdentity;
   }
 
   static errorMessage(error: Object): string {

@@ -62,7 +62,7 @@
 - 社区帖子封面图、回应原文跳转、系统分享链接、本人帖子取消分享，以及回复详情数据规范化。
 - 账号页展示并可复制匿名账号 ID/脱敏 Token，显示录音和文章数量；关于页补齐社区公约、已屏蔽用户、支持邮箱和完整入口。
 - 离线完整隐私政策：覆盖录音/文章/图片/账号/社区数据场景、权限、委托处理、保存与安全、用户权利、未成年人保护和联系方式。
-- 腾讯官方 HarmonyOS OpenSDK `@tencent/wechat_open_sdk` 1.0.19：微信安装检测、`snsapi_userinfo` 授权、EntryAbility 回调校验、`/auth/wechat` 换取 session、同空间直接登录、异空间确认切换和退出后恢复匿名空间。
+- 腾讯官方 HarmonyOS OpenSDK `@tencent/wechat_open_sdk` 1.0.19：使用 Android 移动应用 AppID 和发布签名，完成微信安装检测、`snsapi_userinfo` 授权、可跨进程恢复的一次性 `state` 回调校验、`/auth/wechat` 响应校验、同空间直接登录、异空间确认切换和退出后恢复匿名空间。
 - 录音静音保护：周期采集 `AVRecorder` 最大振幅，低峰值录音上传前要求确认；丢弃时同步清理录音、照片和回复待办。
 - 首页动态标签筛选，以及 `voicedrop://record?tag=…` 指定新录音标签；标签以 `.tags` sidecar 随录音上传。
 - 上传可靠性与恢复：M4A `moov`/大小校验、三次退避重试、本地标签 sidecar、上传成功后删除或移入 `uploaded`，启动时展示并续传遗留录音。

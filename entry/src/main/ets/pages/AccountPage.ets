@@ -113,6 +113,7 @@ export struct AccountPage {
   onWechatSignOut: () => void = () => {};
   onAccountChanged: () => void = () => {};
   @Prop loggedIn: boolean = false;
+  @Prop wechatLoggingIn: boolean = false;
   recordingNames: string[] = [];
   recordingCount: number = 0;
   articleCount: number = 0;
@@ -156,13 +157,13 @@ export struct AccountPage {
   }
 
   private async importToken(token: string): Promise<boolean> {
-    const previousBearer: string = authStore.bearer();
+    const previousScope: string = authStore.storageScope();
     const ok: boolean = await authStore.adoptAnonymousToken(token.trim());
     if (!ok) {
       promptAction.showToast({ message: '请粘贴以 anon_ 开头的访问令牌'});
       return false;
     }
-    if (ClientReliability.accountIdentityChanged(previousBearer, authStore.bearer())) {
+    if (ClientReliability.accountIdentityChanged(previousScope, authStore.storageScope())) {
       await appPreferences.clearAccountQueues(this.recordingNames);
     }
     this.refreshAccountIdentity();
@@ -270,9 +271,15 @@ export struct AccountPage {
       } else {
         Row() {
           RemixIcon({ glyph: RI.WECHAT, iconSize: 18, color: Theme.ACCENT_STRONG })
-          Text('用微信登录（同步设备 · 参与社区）')
+          Text(this.wechatLoggingIn ? '正在打开微信…' : '用微信登录（同步设备 · 参与社区）')
             .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG).margin({ left: 9 })
-        }.height(28).width('100%').alignItems(VerticalAlign.Center).onClick(this.onWechatLogin)
+        }
+          .height(28)
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .opacity(this.wechatLoggingIn ? 0.55 : 1)
+          .enabled(!this.wechatLoggingIn)
+          .onClick(this.onWechatLogin)
       }
       Row() {
         RemixIcon({ glyph: RI.LINK, iconSize: 18, color: Theme.ACCENT_STRONG })
