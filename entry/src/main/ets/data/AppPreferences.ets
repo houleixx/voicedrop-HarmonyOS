@@ -6,7 +6,7 @@ interface PendingCommunityTimestamp { createdAt?: number; }
 
 export class AppPreferences {
   private store?: preferences.Preferences;
-  static readonly PRIVACY_VERSION: string = '2026-07-17';
+  static readonly PRIVACY_VERSION: string = '2026-07-31';
 
   async initialize(context: common.Context): Promise<void> {
     this.store = await preferences.getPreferences(context, { name: 'voicedrop.prefs' });

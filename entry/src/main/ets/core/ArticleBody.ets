@@ -17,6 +17,15 @@ interface ArticleTextLineMatch {
 }
 
 export class ArticleBody {
+  static markdownHeadingLevel(text: string): number {
+    const match: RegExpMatchArray | null = text.trim().match(/^(#{1,3})\s+\S/);
+    return match ? match[1].length : 0;
+  }
+
+  static markdownDisplayText(text: string): string {
+    return text.trim().replace(/^#{1,3}\s+/, '');
+  }
+
   static blocks(body: string): ArticleBlock[] {
     const stripped: string = ArticleBody.stripComments(body);
     const photoPattern: RegExp = /\[\[photo:([^\]]+)\]\]/g;

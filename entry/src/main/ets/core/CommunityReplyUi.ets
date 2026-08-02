@@ -1,6 +1,6 @@
 export class CommunityReplyUi {
   static headerHeight(_recording: boolean): number {
-    return 64;
+    return 56;
   }
 
   static savedMessage(uploaded: boolean): string {

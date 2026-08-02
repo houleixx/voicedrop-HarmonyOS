@@ -6,6 +6,10 @@
   "author": "BaixingAI",
   "license": "Apache-2.0",
   "dependencies": {
-    "@tencent/wechat_open_sdk": "1.0.19"
-  }
+    "@tencent/wechat_open_sdk": "1.0.19",
+    "@umeng/analytics": "1.2.12",
+    "@umeng/common": "1.1.12"
+  },
+  "devDependencies": {},
+  "dynamicDependencies": {}
 }

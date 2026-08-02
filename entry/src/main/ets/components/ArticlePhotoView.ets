@@ -215,6 +215,6 @@ export struct ArticlePhotoView {
       }
     }
       .width('100%')
-      .margin({ top: 10, bottom: 10 })
+      .margin({ top: 5, bottom: 9 })
   }
 }

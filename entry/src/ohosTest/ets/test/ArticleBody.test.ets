@@ -21,6 +21,13 @@ export default function articleBodyTest() {
       expect(blocks[1].lineNumber).assertEqual(2);
     });
 
+    it('recognizesMarkdownHeadingsWithoutShowingMarkers', 0, () => {
+      expect(ArticleBody.markdownHeadingLevel('## 一个具体的变化')).assertEqual(2);
+      expect(ArticleBody.markdownDisplayText('## 一个具体的变化')).assertEqual('一个具体的变化');
+      expect(ArticleBody.markdownHeadingLevel('正文里的 # 号')).assertEqual(0);
+      expect(ArticleBody.markdownDisplayText('正文里的 # 号')).assertEqual('正文里的 # 号');
+    });
+
     it('findsTheFirstPhotoAcrossArticlesLikeAndroidRecordingRows', 0, () => {
       const key: string | undefined = ArticleBody.firstArticlePhotoKey([
         { title: '没有图片', body: '只有正文' },
