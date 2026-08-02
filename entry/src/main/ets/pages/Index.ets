@@ -27,6 +27,7 @@ import { RestyleResult } from '../core/RestyleRequest';
 import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, MinedArticle, CommunityPost } from '../model/Models';
 import { authStore } from '../data/AuthStore';
 import { appPreferences } from '../data/AppPreferences';
+import { umengAnalytics } from '../data/UmengAnalytics';
 import { libraryStore, ShareLinkTarget, XhsPack } from '../data/LibraryStore';
 import { communityStore, CommunityShareResult, CommunityFeed, CommunityFeedState, CommunityFeedResult } from '../data/CommunityStore';
 import { settingsStore, StyleSettings, StyleHistory, StyleVersion, WechatSettings, AppConfig } from '../data/SettingsStore';
@@ -372,6 +373,7 @@ struct Index {
 
   private async activateBusiness(): Promise<void> {
     if (this.initialized || !this.context) return;
+    await umengAnalytics.initializeAfterPrivacyConsent();
     await authStore.initialize(this.context);
     libraryStore.initialize(this.context);
     communityStore.initialize(this.context);
@@ -1103,8 +1105,8 @@ struct Index {
   }
 
   private recordingStatusColor(recording: Recording): string {
-    if (recording.isEmpty) return '#B9B2A8';
-    return recording.hasArticles ? Theme.GREEN : Theme.AMBER;
+    if (recording.isEmpty) return '#8F877D';
+    return recording.hasArticles ? '#3E8765' : Theme.AMBER;
   }
 
   private async openRecording(recording: Recording): Promise<void> {
@@ -1567,7 +1569,7 @@ struct Index {
           .backgroundColor(Theme.CARD).width(40).height(40)
           .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11).clip(true)
           .onClick(() => this.navigateTo('settings'))
-      }.height(56).width('100%').padding({ left: 18, right: 12, top: 8 })
+      }.height(52).width('100%').padding({ left: 18, right: 12, top: 8 })
     }
   }
 
@@ -1697,11 +1699,11 @@ struct Index {
         Row() {
           Text('我的录音')
             .fontSize(20).fontWeight(FontWeight.Bold)
-            .fontColor(this.selectedTag.length === 0 ? Theme.INK : Theme.FAINT)
-            .padding({ left: 0, right: 14, top: 6, bottom: 6 })
+            .fontColor(this.selectedTag.length === 0 ? Theme.INK : Theme.SECONDARY)
+            .padding({ left: 0, right: 14, top: 2, bottom: 6 })
             .onClick(() => this.selectedTag = '')
-          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-            .padding({ left: 14, right: 14, top: 6, bottom: 6 }).onClick(() => {
+          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
+            .padding({ left: 14, right: 14, top: 2, bottom: 6 }).onClick(() => {
               this.selectedTag = '';
               this.tab = 1;
               this.refreshCommunity(false).catch(() => {});
@@ -1709,9 +1711,9 @@ struct Index {
           ForEach(this.homeTags(), (tag: string) => {
             Text(tag)
               .fontSize(20).fontWeight(FontWeight.Bold)
-              .fontColor(this.selectedTag === tag ? Theme.INK : Theme.FAINT)
+              .fontColor(this.selectedTag === tag ? Theme.INK : Theme.SECONDARY)
               .maxLines(1)
-              .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+              .padding({ left: 14, right: 14, top: 2, bottom: 6 })
               .onClick(() => this.selectedTag = tag)
           }, (tag: string) => tag)
         }
@@ -1739,7 +1741,8 @@ struct Index {
                 }.width('100%').height(180)
                   .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
               }
-            }.width('100%').height('100%').padding({ left: 14, right: 14, top: 6, bottom: 16 })
+            }.width('100%').height('100%')
+              .padding({ left: 18, right: 18, top: 6, bottom: 16 })
           }.width('100%').height('100%')
             .onStateChange((status: RefreshStatus) => this.libraryRefreshStatus = status)
             .onOffsetChange((offset: number) => this.libraryRefreshOffset = offset)
@@ -1763,21 +1766,23 @@ struct Index {
                   Row() {
                     this.recordingRowIcon(item)
                     Column({ space: 5 }) {
-                      Text(item.rowTitle()).fontSize(16).fontWeight(FontWeight.Bold)
+                      Text(item.rowTitle()).fontSize(17).fontWeight(FontWeight.Medium)
                         .fontColor(item.isEmpty ? '#6F6A63' : Theme.INK)
                         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                       Row({ space: 10 }) {
-                        Text(item.dateTimeLabel()).fontSize(13).fontColor(item.isEmpty ? '#B9B2A8' : Theme.FAINT)
-                        Text(item.durationLabel()).fontSize(13).fontColor(item.isEmpty ? '#B9B2A8' : Theme.FAINT)
+                        Text(item.dateTimeLabel()).fontSize(14)
+                          .fontColor(item.isEmpty ? '#8F877D' : Theme.SECONDARY)
+                        Text(item.durationLabel()).fontSize(14)
+                          .fontColor(item.isEmpty ? '#8F877D' : Theme.SECONDARY)
                         Row({ space: 4 }) {
-                          Text('•').fontSize(13).fontColor(this.recordingStatusColor(item))
-                          Text(item.statusLabel()).fontSize(13).fontColor(this.recordingStatusColor(item))
+                          Text('•').fontSize(14).fontColor(this.recordingStatusColor(item))
+                          Text(item.statusLabel()).fontSize(14).fontColor(this.recordingStatusColor(item))
                         }.alignItems(VerticalAlign.Center)
                       }.alignItems(VerticalAlign.Center)
                     }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                    RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 24, color: Theme.FAINT })
+                    RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 22, color: '#9F968B' })
                   }.padding({ left: 16, right: 16, top: 12, bottom: 12 }).width('100%')
-                    .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 1, color: Theme.BORDER })
+                    .backgroundColor(Theme.CARD).borderRadius(16).border({ width: 1, color: Theme.BORDER })
                 }
                   .id(this.recordingSwipeItemId(item.name))
                   .swipeAction({
@@ -1796,7 +1801,8 @@ struct Index {
                   })
                   .onClick(() => this.openRecording(item))
               }, (item: Recording) => `${RecordingListUi.rowRenderKey(item)}-${this.recordingSwipeRevision}`)
-            }.width('100%').height('100%').padding({ left: 16, right: 16, bottom: 8 })
+            }.width('100%').height('100%')
+              .padding({ left: 18, right: 18, bottom: 8 })
               .onScrollStart(() => this.closeOpenRecordingSwipe())
           }.width('100%').height('100%')
             .onStateChange((status: RefreshStatus) => this.libraryRefreshStatus = status)
@@ -1858,7 +1864,7 @@ struct Index {
 
   @Builder
   private recordingFab() {
-    Column({ space: -3 }) {
+    Column({ space: 2 }) {
       Row() {
         Stack({ alignContent: Alignment.Center }) {
           Column()
@@ -1872,10 +1878,11 @@ struct Index {
         }
           .width(82).height(82)
           .enabled(!this.recordingTransitioning)
+          .monopolizeEvents(true)
           .onTouch((event: TouchEvent) => this.handleRecordFabTouch(event))
       }.justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
       Text(LibraryCommandUi.recordButtonLabel(this.commandTalking, this.commandCanceled))
-        .fontSize(12).fontColor(this.commandTalking ? Theme.ACCENT_STRONG : Theme.SECONDARY).letterSpacing(1)
+        .fontSize(13).fontColor(this.commandTalking ? Theme.ACCENT_STRONG : Theme.SECONDARY)
         .hitTestBehavior(HitTestMode.Transparent)
     }.alignItems(HorizontalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
   }
@@ -1959,6 +1966,7 @@ struct Index {
   }
 
   private handleRecordFabTouch(event: TouchEvent): void {
+    event.stopPropagation();
     if (event.type === TouchType.Down) {
       if (this.recordingTransitioning || this.commandTalking || this.commandRecognizing) return;
       if (!this.commandGestureGate.beginPress()) return;
@@ -2390,19 +2398,19 @@ struct Index {
       this.topBar('VoiceDrop 口述')
       Scroll() {
         Row() {
-          Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-            .padding({ left: 0, right: 14, top: 6, bottom: 6 }).onClick(() => {
+          Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
+            .padding({ left: 0, right: 14, top: 2, bottom: 6 }).onClick(() => {
               this.selectedTag = '';
               this.tab = 0;
             })
           Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-            .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+            .padding({ left: 14, right: 14, top: 2, bottom: 6 })
           ForEach(this.homeTags(), (tag: string) => {
             Text(tag)
               .fontSize(20).fontWeight(FontWeight.Bold)
-              .fontColor(Theme.FAINT)
+              .fontColor(Theme.SECONDARY)
               .maxLines(1)
-              .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+              .padding({ left: 14, right: 14, top: 2, bottom: 6 })
               .onClick(() => {
                 this.selectedTag = tag;
                 this.tab = 0;
@@ -2629,6 +2637,91 @@ struct Index {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   }
 
+  private detailTitleVisualUnits(title: string): number {
+    let units: number = 0;
+    for (let index: number = 0; index < title.length; index++) {
+      units += title.charCodeAt(index) <= 0x7F ? 0.56 : 1;
+    }
+    return Math.max(1, units);
+  }
+
+  private detailTitleFontSize(title: string, preferred: number): number {
+    const windowWidth: number = this.windowWidthPx > 0 ? this.getUIContext().px2vp(this.windowWidthPx) : 360;
+    const contentWidth: number = Math.max(1, windowWidth - 44);
+    const fitted: number = Math.floor(contentWidth / this.detailTitleVisualUnits(title) * 2) / 2;
+    return fitted >= 23 && fitted < preferred ? fitted : preferred;
+  }
+
+  private detailTitleLineHeight(title: string, preferred: number): number {
+    return this.detailTitleFontSize(title, preferred) + 10;
+  }
+
+  @Builder
+  private communityDetailSummary() {
+    Column() {
+      Text(this.selectedPost?.title ?? '(无题)')
+        .fontSize(this.detailTitleFontSize(this.selectedPost?.title ?? '(无题)', 26))
+        .fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+        .lineHeight(this.detailTitleLineHeight(this.selectedPost?.title ?? '(无题)', 26)).width('100%')
+      Row({ space: 8 }) {
+        Text(this.communityAuthor(this.selectedPost))
+          .fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+        if (this.communityDate(this.selectedPost).length > 0) {
+          Text(this.communityDate(this.selectedPost)).fontSize(14).fontColor(Theme.SECONDARY)
+        }
+      }.width('100%').margin({ top: 9, bottom: 4 })
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  private articleHeadingFontSize(value: string): number {
+    const level: number = ArticleBody.markdownHeadingLevel(value);
+    if (level === 1) return 22;
+    if (level === 2) return 20;
+    return 18;
+  }
+
+  private articleHeadingLineHeight(value: string): number {
+    const level: number = ArticleBody.markdownHeadingLevel(value);
+    if (level === 1) return 32;
+    if (level === 2) return 30;
+    return 27;
+  }
+
+  @Builder
+  private articleHeadingBlock(block: ArticleBlock, editable: boolean, blockIndex: number, lineNumber: number) {
+    if (editable) {
+      Stack({ alignContent: Alignment.TopStart }) {
+        Text(ArticleBody.markdownDisplayText(block.value))
+          .fontSize(this.articleHeadingFontSize(block.value))
+          .lineHeight(this.articleHeadingLineHeight(block.value))
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.INK)
+          .width('100%')
+          .padding({ top: 6, bottom: 12 })
+          .copyOption(CopyOptions.LocalDevice)
+        if (this.showArticleLines) {
+          Text(`${lineNumber}`)
+            .fontSize(11).lineHeight(this.articleHeadingLineHeight(block.value))
+            .fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+            .width(20).textAlign(TextAlign.End).position({ x: -24, y: 6 })
+        }
+      }
+        .width('100%').clip(false)
+        .gesture(LongPressGesture().onAction((event: GestureEvent) => {
+          if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
+        }))
+    } else {
+      Text(ArticleBody.markdownDisplayText(block.value))
+        .fontSize(this.articleHeadingFontSize(block.value))
+        .lineHeight(this.articleHeadingLineHeight(block.value))
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Theme.INK)
+        .width('100%')
+        .padding({ top: 6, bottom: 12 })
+        .copyOption(CopyOptions.LocalDevice)
+    }
+  }
+
   @Builder
   private articleBlock(block: ArticleBlock, editable: boolean = false, blockIndex: number = -1,
     lineNumber: number = 0, imageNumber: number = 0) {
@@ -2675,8 +2768,8 @@ struct Index {
               controller: this.paragraphEditController
             })
               .id(PARAGRAPH_EDIT_INPUT_ID)
-              .fontSize(17)
-              .lineHeight(30)
+              .fontSize(16)
+              .lineHeight(28)
               .fontColor(Theme.INK)
               .caretColor(Theme.ACCENT_STRONG)
               .maxLines(8)
@@ -2702,13 +2795,15 @@ struct Index {
           }
             .width('100%')
             .padding({ left: 4, right: 4 })
+        } else if (ArticleBody.markdownHeadingLevel(block.value) > 0) {
+          this.articleHeadingBlock(block, true, blockIndex, lineNumber)
         } else {
           Stack({ alignContent: Alignment.TopStart }) {
-            Text(block.value).fontSize(17).lineHeight(30).fontColor(Theme.INK)
-              .width('100%').copyOption(CopyOptions.LocalDevice)
+            Text(block.value).fontSize(16).lineHeight(28).fontColor(Theme.INK)
+              .width('100%').padding({ bottom: 8 }).copyOption(CopyOptions.LocalDevice)
             if (this.showArticleLines) {
               Text(`${lineNumber}`)
-                .fontSize(11).lineHeight(30).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+                .fontSize(11).lineHeight(28).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
                 .width(20).textAlign(TextAlign.End).position({ x: -24, y: 0 })
             }
           }
@@ -2717,8 +2812,16 @@ struct Index {
               if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
             }))
         }
+      } else if (ArticleBody.markdownHeadingLevel(block.value) > 0) {
+        this.articleHeadingBlock(block, false, blockIndex, lineNumber)
       } else {
-        Text(block.value).fontSize(17).lineHeight(30).fontColor(Theme.INK).width('100%').copyOption(CopyOptions.LocalDevice)
+        Text(block.value)
+          .fontSize(16)
+          .lineHeight(28)
+          .fontColor(Theme.INK)
+          .width('100%')
+          .padding({ bottom: 8 })
+          .copyOption(CopyOptions.LocalDevice)
       }
     }
   }
@@ -3106,7 +3209,7 @@ struct Index {
     Row() {
       this.detailBackButton()
       Blank()
-    }.height(64).padding({ left: 16, right: 12, top: 8, bottom: 8 }).width('100%')
+    }.height(56).padding({ left: 16, right: 12, top: 8, bottom: 0 }).width('100%')
   }
 
   @Builder
@@ -3183,7 +3286,7 @@ struct Index {
             .onClick(() => this.showDetailMenu = !this.showDetailMenu)
         }
       }
-    }.height(64).padding({ left: 16, right: 12, top: 8, bottom: 8 }).width('100%')
+    }.height(56).padding({ left: 16, right: 12, top: 8, bottom: 0 }).width('100%')
   }
 
   @Builder
@@ -3225,6 +3328,32 @@ struct Index {
     const parsed = RecordingName.parse(this.selected.name);
     if (!parsed) return '';
     return `${parsed.month}月${parsed.day}日${parsed.hhmm.length > 0 ? ` ${parsed.hhmm}` : ''}`;
+  }
+
+  private detailSummaryTitle(): string {
+    const current: MinedArticle | undefined = this.article?.articles[this.selectedArticle];
+    return current?.title || this.selected?.rowTitle() || '(无题)';
+  }
+
+  @Builder
+  private recordingDetailSummary(showStyle: boolean) {
+    Column() {
+      Text(this.detailSummaryTitle())
+        .fontSize(this.detailTitleFontSize(this.detailSummaryTitle(), 23))
+        .fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+        .lineHeight(this.detailTitleLineHeight(this.detailSummaryTitle(), 23)).width('100%')
+      Row({ space: 4 }) {
+        Text(this.detailSubtitle()).fontSize(13).fontColor(Theme.SECONDARY)
+        if (showStyle) {
+          Button(`✎  ${this.currentArticleStyleVersion() === undefined ?
+            '选风格' : `v${this.currentArticleStyleVersion()} 风格`}  ›`)
+            .fontSize(13).fontColor(Theme.FAINT).height(28).padding({ left: 8, right: 8 })
+            .backgroundColor(Color.Transparent)
+            .enabled(!this.paragraphEditing)
+            .onClick(() => this.openStyleRewrite())
+        }
+      }.width('100%').margin({ top: 8, bottom: 4 })
+    }.width('100%').alignItems(HorizontalAlign.Start)
   }
 
   private currentArticleStyleVersion(): number | undefined {
@@ -3345,43 +3474,51 @@ struct Index {
     Column() {
       this.detailToolbar()
       if (this.detailLoading) {
-        this.pageLoadingState()
-        Blank()
+        Column() {
+          this.recordingDetailSummary(false)
+          this.pageLoadingState()
+          Blank()
+        }
+          .layoutWeight(1).width('100%')
+          .padding({ left: 22, right: 22, top: 8, bottom: 40 })
+          .alignItems(HorizontalAlign.Start)
       } else if (this.detailLoadError.length > 0 && !this.article) {
-        Column({ space: 14 }) {
-          Text(this.detailLoadError).fontSize(16).fontColor(Theme.SECONDARY)
-          Button('重新加载').fontSize(14).height(38).backgroundColor(Theme.ACCENT_STRONG)
-            .onClick(() => {
-              if (this.selected) this.openRecording(this.selected);
-            })
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+        Column() {
+          this.recordingDetailSummary(false)
+          Column({ space: 14 }) {
+            Text(this.detailLoadError).fontSize(16).fontColor(Theme.SECONDARY)
+            Button('重新加载').fontSize(14).height(38).backgroundColor(Theme.ACCENT_STRONG)
+              .onClick(() => {
+                if (this.selected) this.openRecording(this.selected);
+              })
+          }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
+        }
+          .layoutWeight(1).width('100%')
+          .padding({ left: 22, right: 22, top: 8, bottom: 40 })
+          .alignItems(HorizontalAlign.Start)
       } else if (!this.article || this.article.articles.length === 0) {
-        Column({ space: 14 }) {
-          LoadingProgress().width(36).height(36).color(Theme.ACCENT_STRONG)
-          Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18).fontColor(Theme.INK)
-          Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor(Theme.SECONDARY)
+        Column() {
+          this.recordingDetailSummary(false)
+          Column({ space: 14 }) {
+            LoadingProgress().width(36).height(36).color(Theme.ACCENT_STRONG)
+            Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18).fontColor(Theme.INK)
+            Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor(Theme.SECONDARY)
+          }
+            .layoutWeight(1)
+            .width('100%')
+            .padding({ top: 48 })
+            .justifyContent(FlexAlign.Start)
+            .alignItems(HorizontalAlign.Center)
         }
           .layoutWeight(1)
           .width('100%')
-          .padding({ top: 48 })
-          .justifyContent(FlexAlign.Start)
-          .alignItems(HorizontalAlign.Center)
+          .padding({ left: 22, right: 22, top: 8, bottom: 40 })
+          .alignItems(HorizontalAlign.Start)
       } else {
         Stack({ alignContent: Alignment.TopStart }) {
           Scroll() {
-            Column({ space: 12 }) {
-              Text(this.article.articles[this.selectedArticle].title)
-                .fontSize(28).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                .lineHeight(39).width('100%')
-              Row({ space: 4 }) {
-                Text(this.detailSubtitle()).fontSize(14).fontColor(Theme.FAINT)
-                Button(`✎  ${this.currentArticleStyleVersion() === undefined ?
-                  '选风格' : `v${this.currentArticleStyleVersion()} 风格`}  ›`)
-                  .fontSize(13).fontColor(Theme.FAINT).height(28).padding({ left: 6, right: 6 })
-                  .backgroundColor(Color.Transparent)
-                  .enabled(!this.paragraphEditing)
-                  .onClick(() => this.openStyleRewrite())
-              }.width('100%').margin({ bottom: 6 })
+            Column() {
+              this.recordingDetailSummary(true)
               if (this.article.articles.length > 1) {
                 Scroll() {
                   Row({ space: 8 }) {
@@ -3396,7 +3533,7 @@ struct Index {
                     })
                   }
                 }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
-                  .margin({ bottom: 8 })
+                  .margin({ bottom: 12 })
               }
               ForEach(ArticleBody.locatedBlocks(this.article.articles[this.selectedArticle].body),
                 (block: ArticleBlock, index: number) =>
@@ -3406,7 +3543,7 @@ struct Index {
               .padding({
                 left: 22,
                 right: 22,
-                top: 12,
+                top: 8,
                 bottom: this.detailContentBottomPadding()
               })
               .constraintSize({ minHeight: '100%' })
@@ -3973,7 +4110,7 @@ struct Index {
     }
       .height(CommunityReplyUi.headerHeight(this.communityReplyRecording))
       .width('100%')
-      .padding({ left: 16, right: 5, top: 8, bottom: 8 })
+      .padding({ left: 16, right: 5, top: 8, bottom: 0 })
   }
 
   @Builder
@@ -3985,38 +4122,42 @@ struct Index {
         this.communityDetailHeader()
       }
       if (this.communityDetailLoading) {
-        this.pageLoadingState()
-        Blank()
+        Column() {
+          this.communityDetailSummary()
+          this.pageLoadingState()
+          Blank()
+        }
+          .layoutWeight(1).width('100%')
+          .padding({ left: 22, right: 22, top: 8, bottom: 40 })
+          .alignItems(HorizontalAlign.Start)
       } else if (this.communityDetailError.length > 0) {
-        Column({ space: 14 }) {
-          RemixIcon({ glyph: RI.INFORMATION, iconSize: 30, color: Theme.FAINT })
-          Text(this.communityDetailError)
-            .fontSize(15)
-            .fontColor(Theme.SECONDARY)
-          Button('重新加载')
-            .fontSize(14)
-            .fontColor(Theme.WHITE)
-            .height(38)
-            .backgroundColor(Theme.ACCENT)
-            .onClick(() => this.retryCommunityDetail())
+        Column() {
+          this.communityDetailSummary()
+          Column({ space: 14 }) {
+            RemixIcon({ glyph: RI.INFORMATION, iconSize: 30, color: Theme.FAINT })
+            Text(this.communityDetailError)
+              .fontSize(15)
+              .fontColor(Theme.SECONDARY)
+            Button('重新加载')
+              .fontSize(14)
+              .fontColor(Theme.WHITE)
+              .height(38)
+              .backgroundColor(Theme.ACCENT)
+              .onClick(() => this.retryCommunityDetail())
+          }
+            .layoutWeight(1)
+            .width('100%')
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
         }
           .layoutWeight(1)
           .width('100%')
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
+          .padding({ left: 22, right: 22, top: 8, bottom: 40 })
+          .alignItems(HorizontalAlign.Start)
       } else {
         Scroll() {
           Column() {
-          Text(this.selectedPost?.title ?? '(无题)')
-            .fontSize(27).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-            .lineHeight(38).width('100%')
-          Row({ space: 8 }) {
-            Text(this.communityAuthor(this.selectedPost))
-              .fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
-            if (this.communityDate(this.selectedPost).length > 0) {
-              Text(this.communityDate(this.selectedPost)).fontSize(14).fontColor(Theme.FAINT)
-            }
-          }.width('100%').margin({ top: 9, bottom: 14 })
+          this.communityDetailSummary()
           if (this.selectedReplyParent) {
             Row({ space: 5 }) {
               RemixIcon({ glyph: RI.CHAT, iconSize: 15, color: Theme.ACCENT_STRONG })
@@ -4079,13 +4220,13 @@ struct Index {
               }
             }.width('100%')
           } else if (this.selectedPost?.doc && this.selectedPost!.doc!.articles.length > 0) {
-            Column({ space: 12 }) {
-              ForEach(ArticleBody.blocks(this.selectedPost!.doc!.articles[0].body),
+            Column() {
+              ForEach(ArticleBody.locatedBlocks(this.selectedPost!.doc!.articles[0].body),
                 (block: ArticleBlock) => this.articleBlock(block))
             }.width('100%')
           } else {
             Text(this.selectedPost?.excerpt ?? '')
-              .fontSize(17).lineHeight(30).fontColor(Theme.INK).width('100%')
+              .fontSize(16).lineHeight(28).fontColor(Theme.INK).width('100%')
           }
           if (this.communityReplies.length > 0) {
             Row({ space: 12 }) {
@@ -4096,7 +4237,6 @@ struct Index {
             }.width('100%').margin({ top: 30, bottom: 2 })
             ForEach(this.communityReplies, (reply: CommunityPost) => {
               Row() {
-                Column().width(3).height('100%').backgroundColor('#E8C7B8').borderRadius(2)
                 Column({ space: 8 }) {
                   Row() {
                     Text(this.communityAuthor(reply)).fontSize(13).fontWeight(FontWeight.Bold)
@@ -4106,14 +4246,18 @@ struct Index {
                   }.width('100%')
                   Text(reply.title || reply.excerpt)
                     .fontSize(18).fontWeight(FontWeight.Bold).lineHeight(27).fontColor(Theme.INK).width('100%')
-                }.padding({ left: 16 }).layoutWeight(1).alignItems(HorizontalAlign.Start)
+                }
+                  .padding({ left: 16 })
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  .border({ width: { left: 3 }, color: '#E8C7B8', radius: 2 })
               }
                 .padding({ top: 24 }).width('100%').alignItems(VerticalAlign.Top)
                 .onClick(() => this.openCommunityPost(reply))
             }, (reply: CommunityPost) => reply.shareId)
           }
           }
-            .padding({ left: 22, right: 22, top: 12, bottom: 40 })
+            .padding({ left: 22, right: 22, top: 8, bottom: 40 })
             .alignItems(HorizontalAlign.Start)
             .justifyContent(FlexAlign.Start)
             .constraintSize({ minHeight: '100%' })

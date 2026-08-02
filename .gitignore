@@ -31,6 +31,7 @@ local.properties
 .env.*
 !.env.example
 !.env.example.*
+/AppScope/resources/rawfile/umconfig.json
 /signing/
 /META-INF/
 *.p12

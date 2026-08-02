@@ -159,52 +159,67 @@ export struct SettingsPage {
   @Builder
   private row(title: string, subtitle: string, target: SettingsTarget, glyph: string) {
     Row({ space: 12 }) {
-      Row() { RemixIcon({ glyph: glyph, iconSize: 20, color: Theme.ACCENT }) }
-        .width(38).height(38).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(10)
-      Column({ space: 4 }) {
-        Text(title).fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-        Text(subtitle).fontSize(12).fontColor(Theme.SECONDARY)
+      Row() { RemixIcon({ glyph: glyph, iconSize: 21, color: Theme.ACCENT }) }
+        .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+      Column({ space: 2 }) {
+        Text(title).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text(subtitle).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 23, color: Theme.FAINT })
-    }.padding({ left: 16, right: 16, top: 13, bottom: 13 }).width('100%').onClick(() => this.onNavigate(target))
+      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
+    }
+      .constraintSize({ minHeight: 68 })
+      .padding({ left: 16, right: 16, top: 11, bottom: 11 })
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .onClick(() => this.onNavigate(target))
   }
 
   @Builder
   private nameRow() {
     Row({ space: 12 }) {
-      Row() { RemixIcon({ glyph: RI.USER, iconSize: 20, color: Theme.ACCENT }) }
-        .width(38).height(38).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(10)
-      Column({ space: 4 }) {
-        Text('名字').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-        Text('署名和挖文章时对你的称呼').fontSize(12).fontColor(Theme.SECONDARY)
+      Row() { RemixIcon({ glyph: RI.USER, iconSize: 21, color: Theme.ACCENT }) }
+        .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+      Column({ space: 2 }) {
+        Text('名字').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text('署名和挖文章时对你的称呼').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       if (this.currentName.length > 0) {
         Text(this.currentName)
-          .fontSize(15)
+          .fontSize(14)
+          .lineHeight(20)
           .fontColor(Theme.SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .constraintSize({ maxWidth: 96 })
       }
-      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 23, color: Theme.FAINT })
+      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
     }
-      .padding({ left: 16, right: 16, top: 13, bottom: 13 })
+      .constraintSize({ minHeight: 68 })
+      .padding({ left: 16, right: 16, top: 11, bottom: 11 })
       .width('100%')
+      .alignItems(VerticalAlign.Center)
       .onClick(() => this.openNameEditor())
   }
 
   @Builder
   private divider() {
     Divider()
-      .strokeWidth(1)
+      .strokeWidth(0.5)
       .color(Theme.BORDER)
-      .margin({ left: 66, right: 16 })
+      .margin({ left: 68, right: 16 })
   }
 
   @Builder
   private section(label: string) {
-    Text(label).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.FAINT)
-      .width('100%').padding({ left: 4 }).margin({ top: 10 })
+    Text(label)
+      .fontSize(14)
+      .fontWeight(FontWeight.Medium)
+      .lineHeight(20)
+      .letterSpacing(0.2)
+      .fontColor(Theme.SECONDARY)
+      .width('100%')
+      .padding({ left: 4 })
+      .margin({ top: 14 })
   }
 
   build() {
@@ -216,17 +231,18 @@ export struct SettingsPage {
             this.row('账户', this.wechatAuthenticated ? '已登录微信账号' : '无需登录 · 匿名 ID 已保存在本机', 'account', RI.USER)
             this.divider()
             this.row('算力', '余额与消耗明细', 'usage', RI.FLASHLIGHT)
-          }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
+          }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           Row({ space: 12 }) {
-            Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 20, color: Theme.AMBER }) }
-              .width(38).height(38).justifyContent(FlexAlign.Center).backgroundColor(Theme.AMBER_BG).borderRadius(10)
-            Column({ space: 4 }) {
-              Text('邀请好友').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-              Text('生成专属邀请链接并通过系统分享').fontSize(12).fontColor(Theme.SECONDARY)
+            Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 21, color: Theme.AMBER }) }
+              .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.AMBER_BG).borderRadius(11)
+            Column({ space: 2 }) {
+              Text('邀请好友').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+              Text('生成专属邀请链接并通过系统分享').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-            RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 23, color: Theme.FAINT })
-          }.padding({ left: 16, right: 16, top: 13, bottom: 13 }).backgroundColor(Theme.CARD).borderRadius(12)
-            .border({ width: 1, color: Theme.BORDER }).width('100%')
+            RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
+          }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
+            .alignItems(VerticalAlign.Center).backgroundColor(Theme.CARD).borderRadius(14)
+            .border({ width: 0.5, color: Theme.BORDER }).width('100%')
             .enabled(!this.preparingInvite).onClick(this.onInvite)
           this.section('写作')
           Column() {
@@ -235,38 +251,40 @@ export struct SettingsPage {
             this.row('写作风格', '成文时模仿这套语气', 'style', RI.QUILL_PEN)
             this.divider()
             this.row('提示词', '自定义长按菜单里的每个动作', 'prompts', RI.MAGIC)
-          }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
+          }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           this.section('发布')
           Column() {
             this.row('微信公众号', '成文一键推送到草稿箱', 'wechat', RI.WECHAT)
             this.divider()
             Row({ space: 12 }) {
-              Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 20, color: Theme.GREEN }) }
-                .width(38).height(38).justifyContent(FlexAlign.Center).backgroundColor(Theme.GREEN_BG).borderRadius(10)
-              Column({ space: 4 }) {
-                Text('自动分享到 VD 社区').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                Text('挖出新文章后自动发到社区').fontSize(12).fontColor(Theme.SECONDARY)
+              Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 21, color: Theme.GREEN }) }
+                .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.GREEN_BG).borderRadius(11)
+              Column({ space: 2 }) {
+                Text('自动分享到 VD 社区').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+                Text('挖出新文章后自动发到社区').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               Toggle({ type: ToggleType.Switch, isOn: this.autoShareCommunity }).enabled(!this.savingAutoShare)
                 .selectedColor(Theme.ACCENT).onChange(this.onAutoShareChange)
-            }.padding({ left: 16, right: 16, top: 13, bottom: 13 }).width('100%')
-          }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
+            }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
+              .alignItems(VerticalAlign.Center).width('100%')
+          }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           this.section('其他')
           Column() {
             Row({ space: 12 }) {
-              Row() { RemixIcon({ glyph: RI.DOWNLOAD, iconSize: 20, color: Theme.ACCENT }) }
-                .width(38).height(38).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(10)
-              Column({ space: 4 }) {
-                Text('导出数据').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                Text('所有录音、文章、字幕和图片打包下载').fontSize(12).fontColor(Theme.SECONDARY)
+              Row() { RemixIcon({ glyph: RI.DOWNLOAD, iconSize: 21, color: Theme.ACCENT }) }
+                .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+              Column({ space: 2 }) {
+                Text('导出数据').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+                Text('所有录音、文章、字幕和图片打包下载').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-              RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 23, color: Theme.FAINT })
-            }.padding({ left: 16, right: 16, top: 13, bottom: 13 }).width('100%')
+              RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
+            }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
+              .alignItems(VerticalAlign.Center).width('100%')
               .enabled(!this.exporting).onClick(this.onExport)
             this.divider()
             this.row('关于', '隐私 · 公约 · 屏蔽 · 联系', 'about', RI.INFORMATION)
-          }.backgroundColor(Theme.CARD).borderRadius(12).border({ width: 1, color: Theme.BORDER }).width('100%')
-        }.padding({ left: 16, right: 16, top: 6, bottom: 28 }).width('100%')
+          }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
+        }.padding({ left: 16, right: 16, top: 10, bottom: 32 }).width('100%')
       }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }
       .width('100%')

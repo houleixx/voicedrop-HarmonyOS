@@ -17,25 +17,44 @@ export struct AboutPage {
   blockedAuthorCount: number = 0;
 
   @Builder
-  private row(title: string, subtitle: string, onClick: () => void) {
-    Row() {
-      Column({ space: 4 }) {
-        Text(title).fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-        Text(subtitle).fontSize(12).fontColor(Theme.SECONDARY)
+  private row(title: string, subtitle: string, glyph: string, onClick: () => void) {
+    Row({ space: 12 }) {
+      Row() {
+        RemixIcon({ glyph: glyph, iconSize: 21, color: Theme.ACCENT })
+      }
+        .width(40)
+        .height(40)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(Theme.ACCENT_SOFT)
+        .borderRadius(11)
+      Column({ space: 2 }) {
+        Text(title)
+          .fontSize(17)
+          .fontWeight(FontWeight.Medium)
+          .lineHeight(24)
+          .letterSpacing(0)
+          .fontColor(Theme.INK)
+        Text(subtitle)
+          .fontSize(13)
+          .lineHeight(19)
+          .letterSpacing(0)
+          .fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 23, color: Theme.FAINT })
+      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
     }
-      .padding({ left: 16, right: 16, top: 13, bottom: 13 })
+      .constraintSize({ minHeight: 68 })
+      .padding({ left: 16, right: 16, top: 11, bottom: 11 })
       .width('100%')
+      .alignItems(VerticalAlign.Center)
       .onClick(onClick)
   }
 
   @Builder
   private divider() {
     Divider()
-      .strokeWidth(1)
+      .strokeWidth(0.5)
       .color(Theme.BORDER)
-      .margin({ left: 16, right: 16 })
+      .margin({ left: 68, right: 16 })
   }
 
   build() {
@@ -44,9 +63,9 @@ export struct AboutPage {
       Scroll() {
         Column() {
           Column() {
-            this.row('隐私政策', '查看个人信息与权限处理说明', this.onPrivacy)
+            this.row('隐私政策', '查看个人信息与权限处理说明', RI.FILE_TEXT, this.onPrivacy)
             this.divider()
-            this.row('社区公约', '发布、举报与内容治理规则', () => {
+            this.row('社区公约', '发布、举报与内容治理规则', RI.FLAG, () => {
               promptAction.showDialog({
                 title: '社区公约',
                 message: COMMUNITY_TERMS,
@@ -54,16 +73,16 @@ export struct AboutPage {
               });
             })
             this.divider()
-            this.row('已屏蔽用户', `${this.blockedAuthorCount} 人`, this.onBlockedAuthors)
+            this.row('已屏蔽用户', `${this.blockedAuthorCount} 人`, RI.USER, this.onBlockedAuthors)
             this.divider()
-            this.row('联系我们 / 内容投诉', SUPPORT_EMAIL, this.onContact)
+            this.row('联系我们 / 内容投诉', SUPPORT_EMAIL, RI.CHAT, this.onContact)
           }
             .backgroundColor(Theme.CARD)
-            .borderRadius(12)
-            .border({ width: 1, color: Theme.BORDER })
+            .borderRadius(14)
+            .border({ width: 0.5, color: Theme.BORDER })
             .width('100%')
         }
-          .padding({ left: 16, right: 16, top: 6, bottom: 28 })
+          .padding({ left: 16, right: 16, top: 10, bottom: 32 })
           .width('100%')
           .constraintSize({ minHeight: '100%' })
           .justifyContent(FlexAlign.Start)
