@@ -13,8 +13,10 @@ export class VoiceDropTheme {
   static readonly ACCENT_SOFT: string = '#F6E4DC';
   static readonly GREEN: string = '#5E8A6A';
   static readonly GREEN_BG: string = '#E7F1E8';
+  static readonly SETTINGS_GREEN_BG: string = '#EAF1EC';
   static readonly AMBER: string = '#C98A2E';
   static readonly AMBER_BG: string = '#FBEAD2';
+  static readonly TILE_NEUTRAL: string = '#F1ECE3';
   static readonly PROMPT_BG: string = '#F4DFAC';
   static readonly PROMPT_TEXT: string = '#6F5529';
   static readonly COMMUNITY_PREVIEW: string = '#8A7B63';

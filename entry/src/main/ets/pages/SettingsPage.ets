@@ -157,10 +157,20 @@ export struct SettingsPage {
   }
 
   @Builder
-  private row(title: string, subtitle: string, target: SettingsTarget, glyph: string) {
+  private settingIcon(glyph: string, tileColor: string, iconColor: string) {
+    Row() { RemixIcon({ glyph: glyph, iconSize: 21, color: iconColor }) }
+      .width(40)
+      .height(40)
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor(tileColor)
+      .borderRadius(11)
+  }
+
+  @Builder
+  private row(title: string, subtitle: string, target: SettingsTarget, glyph: string,
+    tileColor: string, iconColor: string) {
     Row({ space: 12 }) {
-      Row() { RemixIcon({ glyph: glyph, iconSize: 21, color: Theme.ACCENT }) }
-        .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+      this.settingIcon(glyph, tileColor, iconColor)
       Column({ space: 2 }) {
         Text(title).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
         Text(subtitle).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
@@ -177,8 +187,7 @@ export struct SettingsPage {
   @Builder
   private nameRow() {
     Row({ space: 12 }) {
-      Row() { RemixIcon({ glyph: RI.USER, iconSize: 21, color: Theme.ACCENT }) }
-        .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+      this.settingIcon(RI.USER, Theme.TILE_NEUTRAL, Theme.SECONDARY)
       Column({ space: 2 }) {
         Text('名字').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
         Text('署名和挖文章时对你的称呼').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
@@ -228,13 +237,13 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 10 }) {
           Column() {
-            this.row('账户', this.wechatAuthenticated ? '已登录微信账号' : '无需登录 · 匿名 ID 已保存在本机', 'account', RI.USER)
+            this.row('账户', this.wechatAuthenticated ? '已登录微信账号' : '无需登录 · 匿名 ID 已保存在本机',
+              'account', RI.USER, Theme.INK, Theme.WHITE)
             this.divider()
-            this.row('算力', '余额与消耗明细', 'usage', RI.FLASHLIGHT)
+            this.row('算力', '余额与消耗明细', 'usage', RI.FLASHLIGHT, Theme.AMBER_BG, Theme.AMBER)
           }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           Row({ space: 12 }) {
-            Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 21, color: Theme.AMBER }) }
-              .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.AMBER_BG).borderRadius(11)
+            this.settingIcon(RI.TEAM, Theme.ACCENT_SOFT, Theme.ACCENT)
             Column({ space: 2 }) {
               Text('邀请好友').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
               Text('生成专属邀请链接并通过系统分享').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
@@ -248,17 +257,19 @@ export struct SettingsPage {
           Column() {
             this.nameRow()
             this.divider()
-            this.row('写作风格', '成文时模仿这套语气', 'style', RI.QUILL_PEN)
+            this.row('写作风格', '成文时模仿这套语气', 'style', RI.QUILL_PEN,
+              Theme.TILE_NEUTRAL, Theme.SECONDARY)
             this.divider()
-            this.row('提示词', '自定义长按菜单里的每个动作', 'prompts', RI.MAGIC)
+            this.row('提示词', '自定义长按菜单里的每个动作', 'prompts', RI.MAGIC,
+              Theme.TILE_NEUTRAL, Theme.SECONDARY)
           }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           this.section('发布')
           Column() {
-            this.row('微信公众号', '成文一键推送到草稿箱', 'wechat', RI.WECHAT)
+            this.row('微信公众号', '成文一键推送到草稿箱', 'wechat', RI.WECHAT,
+              Theme.ACCENT_SOFT, Theme.ACCENT)
             this.divider()
             Row({ space: 12 }) {
-              Row() { RemixIcon({ glyph: RI.TEAM, iconSize: 21, color: Theme.GREEN }) }
-                .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.GREEN_BG).borderRadius(11)
+              this.settingIcon(RI.TEAM, Theme.SETTINGS_GREEN_BG, Theme.GREEN)
               Column({ space: 2 }) {
                 Text('自动分享到 VD 社区').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
                 Text('挖出新文章后自动发到社区').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
@@ -271,8 +282,7 @@ export struct SettingsPage {
           this.section('其他')
           Column() {
             Row({ space: 12 }) {
-              Row() { RemixIcon({ glyph: RI.DOWNLOAD, iconSize: 21, color: Theme.ACCENT }) }
-                .width(40).height(40).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+              this.settingIcon(RI.DOWNLOAD, Theme.TILE_NEUTRAL, Theme.SECONDARY)
               Column({ space: 2 }) {
                 Text('导出数据').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
                 Text('所有录音、文章、字幕和图片打包下载').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
@@ -282,7 +292,8 @@ export struct SettingsPage {
               .alignItems(VerticalAlign.Center).width('100%')
               .enabled(!this.exporting).onClick(this.onExport)
             this.divider()
-            this.row('关于', '隐私 · 公约 · 屏蔽 · 联系', 'about', RI.INFORMATION)
+            this.row('关于', '隐私 · 公约 · 屏蔽 · 联系', 'about', RI.INFORMATION,
+              Theme.TILE_NEUTRAL, Theme.SECONDARY)
           }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
         }.padding({ left: 16, right: 16, top: 10, bottom: 32 }).width('100%')
       }.layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
