@@ -214,20 +214,34 @@ export class PhotoService {
   }
 
   async uploadCaptured(photos: CapturedPhoto[]): Promise<number> {
-    let uploaded: number = 0;
-    for (const photo of photos) {
-      try {
-        const file: fs.File = fs.openSync(photo.localPath, fs.OpenMode.READ_ONLY);
+    // Photo PUTs are independent from the audio PUT. Keep a small sliding window
+    // so several images can catch up on weak networks without monopolising memory.
+    const queue: CapturedPhoto[] = photos.slice();
+    const uploadedKeys: Set<string> = new Set<string>();
+    const worker = async (): Promise<void> => {
+      while (queue.length > 0) {
+        const photo: CapturedPhoto | undefined = queue.shift();
+        if (!photo) return;
         try {
-          const bytes: ArrayBuffer = new ArrayBuffer(fs.statSync(file.fd).size); fs.readSync(file.fd, bytes);
-          const response = await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(photo.key)}`,
-            authStore.bearer(), bytes, 'image/jpeg');
-          if (!response.ok()) continue;
-        } finally { fs.closeSync(file); }
-        uploaded++; await this.removeCaptured(photo);
-      } catch (_) {}
+          const file: fs.File = fs.openSync(photo.localPath, fs.OpenMode.READ_ONLY);
+          try {
+            const bytes: ArrayBuffer = new ArrayBuffer(fs.statSync(file.fd).size); fs.readSync(file.fd, bytes);
+            const response = await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(photo.key)}`,
+              authStore.bearer(), bytes, 'image/jpeg');
+            if (response.ok()) uploadedKeys.add(photo.key);
+          } finally { fs.closeSync(file); }
+        } catch (_) {}
+      }
+    };
+    const workers: Promise<void>[] = [];
+    for (let index: number = 0; index < Math.min(3, queue.length); index++) workers.push(worker());
+    await Promise.all(workers);
+    if (uploadedKeys.size > 0) {
+      const completed: CapturedPhoto[] = this.pending().filter((photo: CapturedPhoto) => uploadedKeys.has(photo.key));
+      for (const photo of completed) { try { fs.unlinkSync(photo.localPath); } catch (_) {} }
+      await this.persist(this.pending().filter((photo: CapturedPhoto) => !uploadedKeys.has(photo.key)));
     }
-    return uploaded;
+    return uploadedKeys.size;
   }
 
   async retryPending(): Promise<number> { return this.uploadCaptured(this.pending()); }
