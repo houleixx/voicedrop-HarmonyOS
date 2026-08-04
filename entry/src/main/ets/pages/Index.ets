@@ -384,15 +384,8 @@ struct Index {
     uploader.initialize(this.context);
     photoService.initialize(this.context);
     this.restoreCachedHomeSnapshots();
-    photoService.retryPending().then(async () => {
-      // Uploading an audio file immediately kicks the miner. Do not let a recovered
-      // recording overtake its session photos or the generated article will miss them.
-      if (photoService.pendingCount() > 0) {
-        promptAction.showToast({ message: '照片等待续传，关联录音已保留' });
-        return;
-      }
-      const count: number = await uploader.drainPending();
-      if (count > 0) { promptAction.showToast({ message: `已续传 ${count} 条录音` }); this.refreshLibrary(); }
+    Promise.all([photoService.retryPending(), uploader.drainPending(), uploader.drainPendingTags()]).then((result: number[]) => {
+      if (result[1] > 0) { promptAction.showToast({ message: `已续传 ${result[1]} 条录音` }); this.refreshLibrary(); }
     }).catch(() => {});
     audioPlayback.initialize(this.context);
     audioPlayback.setProgressHandler((playing: boolean, progress: number, duration: number) => {
@@ -1002,8 +995,7 @@ struct Index {
     if (this.libraryRefreshing) return;
     this.libraryRefreshing = true;
     try {
-      await photoService.retryPending();
-      if (photoService.pendingCount() === 0) await uploader.drainPending();
+      await Promise.all([photoService.retryPending(), uploader.drainPending(), uploader.drainPendingTags()]);
       await this.refreshLibrary(false, true);
     }
     finally {
@@ -1466,11 +1458,9 @@ struct Index {
   private async continueRecordingUpload(path: string, audioName: string, photos: CapturedPhoto[],
     showFailureToast: boolean = true): Promise<boolean> {
     try {
-      const uploadedPhotoCount: number = await photoService.uploadCaptured(photos);
-      if (uploadedPhotoCount !== photos.length) {
-        if (showFailureToast) promptAction.showToast({ message: '照片上传失败，录音已保留，稍后自动续传' });
-        return false;
-      }
+      // Photo uploads are durable and no longer gate audio. The server backfills
+      // a late photo marker after its PUT succeeds.
+      photoService.uploadCaptured(photos).catch(() => {});
       const uploaded: boolean = await uploader.upload(path);
       if (!uploaded && showFailureToast) promptAction.showToast({ message: '上传失败，录音已保留' });
       if (uploaded) {

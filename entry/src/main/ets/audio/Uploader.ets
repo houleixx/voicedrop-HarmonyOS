@@ -41,7 +41,9 @@ export class Uploader {
     if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
     this.prepare(path, tags);
     const storedTags: string[] = this.readTags(path);
-    try { await this.uploadTags(path, storedTags, bearer); } catch (_) {}
+    // Tags are a durable sidecar, not an audio gate. Start it now, alongside the
+    // audio PUT; a failed sidecar remains on disk and is retried independently.
+    const tagsTask: Promise<boolean> = this.uploadTags(path, storedTags, bearer).catch(() => false);
     if (generation !== this.generation) return false;
     if (this.discardedNames.has(name)) { await this.finishDiscarded(path, name); return false; }
     for (let attempt: number = 1; attempt <= 3; attempt++) {
@@ -61,6 +63,7 @@ export class Uploader {
           } catch (_) {}
           if (generation !== this.generation) return false;
           if (RecordingUploadPolicy.uploadCompleted(true, mineTriggered)) {
+            await tagsTask.catch(() => false);
             this.finishLocal(path);
             return true;
           }
@@ -90,6 +93,18 @@ export class Uploader {
     for (const name of names) {
       if (!RecordingName.parse(name)) continue;
       if (await this.upload(`${this.context.filesDir}/${name}`)) uploaded++;
+    }
+    return uploaded;
+  }
+
+  async drainPendingTags(): Promise<number> {
+    if (!this.context) return 0;
+    let uploaded: number = 0;
+    let names: string[] = [];
+    try { names = fs.listFileSync(this.context.filesDir).filter((name: string) => name.endsWith('.tags.json')); } catch (_) {}
+    for (const name of names.sort()) {
+      const audioPath: string = `${this.context.filesDir}/${name.substring(0, name.length - '.tags.json'.length)}.m4a`;
+      if (await this.uploadTags(audioPath, this.readTags(audioPath), authStore.bearer()).catch(() => false)) uploaded++;
     }
     return uploaded;
   }
@@ -155,14 +170,17 @@ export class Uploader {
     } catch (_) { return []; }
   }
 
-  private async uploadTags(path: string, tags: string[], bearer: string): Promise<void> {
-    if (tags.length === 0) return;
+  private async uploadTags(path: string, tags: string[], bearer: string): Promise<boolean> {
+    if (tags.length === 0) return true;
     const name: string = path.substring(path.lastIndexOf('/') + 1);
     const stem: string = name.endsWith('.m4a') ? name.substring(0, name.length - 4) : name;
     const bytes: Uint8Array = new util.TextEncoder().encodeInto(JSON.stringify(tags));
     const buffer: ArrayBuffer = new ArrayBuffer(bytes.byteLength); new Uint8Array(buffer).set(bytes);
-    await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(`articles/${stem}.tags`)}`,
+    const response: HttpResponse = await httpClient.putBytes(`${Api.FILES}/upload/${Api.path(`articles/${stem}.tags`)}`,
       bearer, buffer, 'application/json');
+    if (!response.ok()) return false;
+    try { fs.unlinkSync(this.tagPath(path)); } catch (_) {}
+    return true;
   }
 
   private removeChildren(directory: string): void {
@@ -182,7 +200,6 @@ export class Uploader {
   }
 
   private finishLocal(path: string): void {
-    try { fs.unlinkSync(this.tagPath(path)); } catch (_) {}
     if (appPreferences.deleteLocalAfterUpload()) { try { fs.unlinkSync(path); } catch (_) {} return; }
     if (!this.context) return;
     const uploadedDir: string = `${this.context.filesDir}/uploaded`;
