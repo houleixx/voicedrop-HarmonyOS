@@ -4,6 +4,7 @@ import { PageHeader } from '../ui/PageHeader';
 @Component
 export struct BlockedAuthorsPage {
   onBack: () => void = () => {};
+  onUnblocked: () => void = () => {};
   @State private authors: string[] = [];
 
   aboutToAppear(): void { this.authors = appPreferences.blockedAuthors(); }
@@ -24,6 +25,7 @@ export struct BlockedAuthorsPage {
                 Button('解除屏蔽').fontSize(13).onClick(async () => {
                   await appPreferences.setAuthorBlocked(author, false);
                   this.authors = appPreferences.blockedAuthors();
+                  this.onUnblocked();
                 })
               }.padding(16).backgroundColor(Color.White).borderRadius(12)
             }

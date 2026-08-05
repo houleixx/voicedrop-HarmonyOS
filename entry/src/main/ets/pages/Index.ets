@@ -54,6 +54,7 @@ import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
 import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { CommunityLikeState } from '../core/CommunityLikeState';
+import { CommunityLikePresentation } from '../core/CommunityLikePresentation';
 import { CommunityReplyUi } from '../core/CommunityReplyUi';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
 import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
@@ -183,6 +184,12 @@ struct Index {
   @State private postLiked: boolean = false;
   @State private postFeedCount: number = 0;
   @State private postFeeding: boolean = false;
+  private communityLikeRequest?: Promise<boolean>;
+  private communityLikeShareId: string = '';
+  private communityLikeTargetCount: number = -1;
+  private communityLikeTargetLiked: boolean = false;
+  private communityLikeSucceeded: boolean = false;
+  private communityDetailDirty: boolean = false;
   @State private showCommunityMenu: boolean = false;
   @State private promptImporting: boolean = false;
   @State private wechatLoggedIn: boolean = false;
@@ -330,7 +337,39 @@ struct Index {
     if (routeName === 'communityDetail') {
       this.showCommunityMenu = false;
       if (this.communityReplyRecording) this.cancelCommunityReplyRecording().catch(() => {});
+      if (this.communityDetailDirty) {
+        this.communityDetailDirty = false;
+        this.refreshCommunityAfterDetail().catch(() => {});
+      }
     }
+  }
+
+  /**
+   * Match the mini program's onShow -> loadCommunity behavior when a community
+   * detail route is popped. Wait for a pending like write so the fresh feed does
+   * not race the engagement request and restore the old count.
+   */
+  private async refreshCommunityAfterDetail(): Promise<void> {
+    const likeRequest: Promise<boolean> | undefined = this.communityLikeRequest;
+    let likeSucceeded: boolean = this.communityLikeSucceeded;
+    if (likeRequest) likeSucceeded = await likeRequest.catch(() => false);
+    await this.refreshCommunity(false);
+    if (likeSucceeded) this.reapplyCommunityLikeTarget();
+    this.communityLikeRequest = undefined;
+    this.communityLikeShareId = '';
+    this.communityLikeTargetCount = -1;
+    this.communityLikeSucceeded = false;
+  }
+
+  private reapplyCommunityLikeTarget(): void {
+    if (this.communityLikeShareId.length === 0 || this.communityLikeTargetCount < 0) return;
+    this.communityRecommended = CommunityLikePresentation.applyTarget(
+      this.communityRecommended, this.communityLikeShareId,
+      this.communityLikeTargetCount, this.communityLikeTargetLiked);
+    this.communityLatest = CommunityLikePresentation.applyTarget(
+      this.communityLatest, this.communityLikeShareId,
+      this.communityLikeTargetCount, this.communityLikeTargetLiked);
+    this.updateCommunityFilter();
   }
 
   private safeAreaTop(): number {
@@ -1022,6 +1061,20 @@ struct Index {
     else this.posts = this.communityRecommended.slice();
   }
 
+  // Community detail is a nested route. Remove moderated content from every
+  // in-memory feed before returning; refreshCommunity below reconciles it with
+  // the server snapshot afterwards.
+  private removeCommunityContent(shareId: string, author: string = ''): void {
+    const keep = (post: CommunityPost): boolean => {
+      if (shareId.length > 0 && post.shareId === shareId) return false;
+      if (author.length > 0 && post.author === author) return false;
+      return true;
+    };
+    this.communityRecommended = this.communityRecommended.filter(keep);
+    this.communityLatest = this.communityLatest.filter(keep);
+    this.updateCommunityFilter();
+  }
+
   /**
    * Keep stable card instances while replacing a disk snapshot with its fresh network copy.
    * Image aspect ratios are runtime presentation state, so carry them across an unchanged cover.
@@ -1050,15 +1103,7 @@ struct Index {
   }
 
   private applyCommunityLikeToPosts(posts: CommunityPost[], shareId: string, liked: boolean): CommunityPost[] {
-    let matched: boolean = false;
-    posts.forEach((post: CommunityPost) => {
-      if (post.shareId !== shareId) return;
-      matched = true;
-      const currentLiked: boolean = post.liked ?? false;
-      post.likes = CommunityLikeState.countAfterToggle(post.likes, currentLiked, liked);
-      post.liked = liked;
-    });
-    return matched ? posts.slice() : posts;
+    return CommunityLikePresentation.apply(posts, shareId, liked);
   }
 
   private updateCommunityLikePresentation(shareId: string, liked: boolean): void {
@@ -1532,10 +1577,21 @@ struct Index {
       if (!pending.articleKey) { await appPreferences.clearPendingCommunityShare(); return; }
       const result: CommunityShareResult = await communityStore.shareResult(pending.articleKey, pending.replyTo ?? '');
       if (result.ok) {
+        if (!pending.replyTo && this.selected?.articleKey() === pending.articleKey) {
+          this.communityShareId = result.shareId;
+        }
         await appPreferences.clearPendingCommunityShare();
         promptAction.showToast({ message: pending.replyTo ? '登录后已自动续发社区回复' : '登录后已自动续发社区文章' });
       }
     } catch (_) {}
+  }
+
+  private async startCommunityShareWechatLogin(articleKey: string): Promise<void> {
+    await appPreferences.savePendingCommunityShare(articleKey);
+    await this.startWechatLogin();
+    if (this.wechatLoggingIn) {
+      promptAction.showToast({ message: '请在微信中完成登录，登录后将自动分享到社区' });
+    }
   }
 
   private async acceptPrivacy(): Promise<void> {
@@ -2441,11 +2497,11 @@ struct Index {
               Row({ space: 8 }) {
                 Column({ space: 8 }) {
                   ForEach(this.communityColumnPosts(0), (post: CommunityPost) => this.communityCard(post),
-                    (post: CommunityPost) => post.shareId)
+                    (post: CommunityPost) => CommunityLikePresentation.cardKey(post))
                 }.layoutWeight(1)
                 Column({ space: 8 }) {
                   ForEach(this.communityColumnPosts(1), (post: CommunityPost) => this.communityCard(post),
-                    (post: CommunityPost) => post.shareId)
+                    (post: CommunityPost) => CommunityLikePresentation.cardKey(post))
                 }.layoutWeight(1)
               }.alignItems(VerticalAlign.Top).padding({ left: 16, right: 16, bottom: 24 }).width('100%')
             }.width('100%').height('100%').scrollBar(BarState.Off)
@@ -2488,7 +2544,7 @@ struct Index {
     this.communityReplies = [];
     this.communityDetailLoading = ClientReliability.shouldBlockDetailLoading(cached !== undefined);
     this.communityDetailError = '';
-    this.postLiked = appPreferences.likedCommunityPost(shareId);
+    this.postLiked = Boolean(this.selectedPost?.liked) || appPreferences.likedCommunityPost(shareId);
     this.postFed = false; this.postFeedCount = 0; this.postFeeding = false;
     this.navigateTo('communityDetail');
     communityStore.engage(shareId, 'view').catch(() => {});
@@ -3793,15 +3849,18 @@ struct Index {
       const accepted: boolean = await this.confirmCommunityTerms();
       if (!accepted) return;
     }
-    const result: CommunityShareResult = await communityStore.shareResult(this.selected.articleKey());
+    const articleKey: string = this.selected.articleKey();
+    if (!authStore.isWechatAuthenticated()) {
+      await this.startCommunityShareWechatLogin(articleKey);
+      return;
+    }
+    const result: CommunityShareResult = await communityStore.shareResult(articleKey);
     if (result.ok) {
       this.communityShareId = result.shareId;
       promptAction.showToast({ message: '已在 VD 社区可见' });
     } else if (result.needsWechatSignin()) {
       if (result.code === 401) await authStore.signOutWechat();
-      await appPreferences.savePendingCommunityShare(this.selected.articleKey());
-      this.navigateTo('account');
-      promptAction.showToast({ message: '已保存分享请求，微信登录后会自动续发' });
+      await this.startCommunityShareWechatLogin(articleKey);
     } else {
       promptAction.showToast({ message: result.error ? `分享社区失败：${result.error}` : '分享社区失败，请稍后再试' });
     }
@@ -3908,9 +3967,10 @@ struct Index {
     });
     if (result.index !== 1) return;
     if (await communityStore.report(post.shareId)) {
+      this.communityDetailDirty = true;
+      this.removeCommunityContent(post.shareId);
       promptAction.showToast({ message: '已举报，内容已下架待审核' });
       this.navigateHome();
-      await this.refreshCommunity();
     } else {
       promptAction.showToast({ message: '举报失败，请稍后重试' });
     }
@@ -4365,11 +4425,22 @@ struct Index {
     this.selectedPost.likes =
       CommunityLikeState.countAfterToggle(this.selectedPost.likes, currentLiked, next);
     this.selectedPost.liked = next;
+    this.communityDetailDirty = true;
+    const visiblePost: CommunityPost | undefined = this.posts.find((post: CommunityPost) => post.shareId === shareId);
+    this.communityLikeShareId = shareId;
+    this.communityLikeTargetCount = visiblePost?.likes ?? this.selectedPost.likes;
+    this.communityLikeTargetLiked = next;
+    this.communityLikeSucceeded = false;
     const updatedPost: CommunityPost = this.selectedPost;
     appPreferences.setLikedCommunityPost(shareId, next).catch(() => {});
-    communityStore.engage(shareId, 'like', next).then((ok: boolean) => {
+    const likeRequest: Promise<boolean> = communityStore.engage(shareId, 'like', next);
+    this.communityLikeRequest = likeRequest;
+    likeRequest.then((ok: boolean) => {
       if (ok) communityStore.cachePost(updatedPost);
-    }).catch(() => {});
+      if (this.communityLikeRequest === likeRequest) this.communityLikeSucceeded = ok;
+    }).catch(() => {
+      if (this.communityLikeRequest === likeRequest) this.communityLikeSucceeded = false;
+    });
   }
 
   private async shareSelectedCommunityPost(): Promise<void> {
@@ -4412,9 +4483,10 @@ struct Index {
     });
     if (result.index !== 1) return;
     await appPreferences.setAuthorBlocked(author, true);
+    this.communityDetailDirty = true;
+    this.removeCommunityContent('', author);
     promptAction.showToast({ message: '已屏蔽，TA 的内容将不再显示' });
     this.navigateHome();
-    await this.refreshCommunity();
   }
 
   private async shareRecording(): Promise<void> {
@@ -4553,7 +4625,10 @@ struct Index {
     else if (page === 'wechat') this.wechatPage()
     else if (page === 'account') this.accountPage()
     else if (page === 'prompts') PromptSettingsPage({ onBack: () => this.navigateBack(), initialCode: this.promptImportCode })
-    else if (page === 'blocked') BlockedAuthorsPage({ onBack: () => this.navigateBack() })
+    else if (page === 'blocked') BlockedAuthorsPage({
+      onBack: () => this.navigateBack(),
+      onUnblocked: () => { this.refreshCommunity(false).catch(() => {}); }
+    })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
     else if (page === 'usage') UsagePage({ onBack: () => this.navigateBack() })
     else if (page === 'about') AboutPage({
