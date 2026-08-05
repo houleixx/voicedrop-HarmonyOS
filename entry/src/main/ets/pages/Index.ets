@@ -2910,8 +2910,11 @@ struct Index {
     if (nodes.length === 0) { promptAction.showToast({ message: '请先在设置中添加快捷提示词' }); return; }
     this.promptMenuNodes = nodes; this.promptMenuNested = false;
     const finger: FingerInfo | undefined = event?.fingerList.length ? event.fingerList[0] : undefined;
-    this.promptMenuAnchorX = finger ? finger.globalX - finger.localX : 16;
-    this.promptMenuAnchorY = finger ? finger.globalY - finger.localY : 160;
+    // Use the actual finger position. Subtracting localY/localX yields the
+    // pressed view's top-left, which can be above the viewport for a long image
+    // and makes the popup clamp to the screen top.
+    this.promptMenuAnchorX = finger && finger.globalX > 0 ? finger.globalX : 16;
+    this.promptMenuAnchorY = finger && finger.globalY > 0 ? finger.globalY : 160;
     this.promptTargetKind = block.kind; this.promptTargetValue = block.value;
     this.promptTargetIndex = blockIndex; this.promptTargetLine = lineNumber; this.showPromptMenu = true;
   }
