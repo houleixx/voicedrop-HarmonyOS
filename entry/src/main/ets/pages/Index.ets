@@ -4556,9 +4556,18 @@ struct Index {
 
   private async publishWechat(): Promise<void> {
     if (!this.selected) return;
-    const response = await libraryStore.publishWechat(this.selected);
-    if (response.code === 409) this.navigateTo('wechat');
-    else promptAction.showToast({ message: response.ok() ? '已发送到公众号草稿箱' : `发布失败 HTTP ${response.code}` });
+    try {
+      promptAction.showToast({ message: '正在发布到公众号草稿箱…' });
+      const response = await libraryStore.publishWechat(this.selected);
+      if (response.code === 409) {
+        promptAction.showToast({ message: '请先连接微信公众号' });
+        this.navigateTo('wechat');
+      } else {
+        promptAction.showToast({ message: response.ok() ? '已发送到公众号草稿箱' : `发布失败 HTTP ${response.code}` });
+      }
+    } catch (error) {
+      promptAction.showToast({ message: `发布公众号失败：${ClientReliability.errorMessage(error as Object)}` });
+    }
   }
 
   private async shareToXhs(): Promise<void> {

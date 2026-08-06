@@ -68,6 +68,7 @@ class QuestionRequest {
   status: string;
   constructor(id: string, status: string) { this.id = id; this.status = status; }
 }
+class EmptyPublishBody {}
 export class XhsPack {
   title: string;
   body: string;
@@ -418,7 +419,8 @@ export class LibraryStore {
   }
 
   async publishWechat(recording: Recording): Promise<HttpResponse> {
-    return httpClient.postJson(`${Api.FILES}/wechat/${Api.path(recording.articleKey())}`, authStore.bearer());
+    return httpClient.postJson(`${Api.FILES}/wechat/${Api.path(recording.articleKey())}`, authStore.bearer(),
+      new EmptyPublishBody());
   }
 
   async xhsPack(recording: Recording): Promise<XhsPack | undefined> {
