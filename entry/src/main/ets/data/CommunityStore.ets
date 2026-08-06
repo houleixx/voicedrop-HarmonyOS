@@ -25,6 +25,7 @@ class ReplyBody {
   replyTo: string;
   constructor(replyTo: string) { this.replyTo = replyTo; }
 }
+class EmptyCommunityShareBody {}
 class CommunityIdResponse { shareId?: string; }
 class CommunityPostsResponse { posts?: CommunityPost[]; }
 class CommunityPostResponse { post?: CommunityPost; }
@@ -114,7 +115,8 @@ export class CommunityStore {
   async report(shareId: string): Promise<boolean> {
     const identity: string = authStore.bearer();
     const ok: boolean = (await httpClient.postJson(
-      `${Api.FILES}/community/report/${Api.path(shareId)}`, identity)).ok();
+      `${Api.FILES}/community/report/${Api.path(shareId)}`, identity,
+      new EmptyCommunityShareBody())).ok();
     if (ok) {
       this.invalidatePost(shareId, identity);
       this.invalidateFeed();
@@ -152,7 +154,10 @@ export class CommunityStore {
   }
 
   async shareResult(articleKey: string, replyTo: string = ''): Promise<CommunityShareResult> {
-    const body: Object | string = replyTo.length > 0 ? new ReplyBody(replyTo) : '';
+    // HarmonyOS http.request rejects an empty string as extraData with
+    // "parameter error". The backend accepts an empty JSON object for a
+    // top-level article share; replies still carry their replyTo field.
+    const body: Object = replyTo.length > 0 ? new ReplyBody(replyTo) : new EmptyCommunityShareBody();
     const identity: string = authStore.bearer();
     const response: HttpResponse = await httpClient.postJson(`${Api.FILES}/community/share/${Api.path(articleKey)}`,
       identity, body);
@@ -175,7 +180,8 @@ export class CommunityStore {
   async unshare(shareId: string): Promise<boolean> {
     const identity: string = authStore.bearer();
     const ok: boolean = (await httpClient.postJson(
-      `${Api.FILES}/community/unshare/${Api.path(shareId)}`, identity)).ok();
+      `${Api.FILES}/community/unshare/${Api.path(shareId)}`, identity,
+      new EmptyCommunityShareBody())).ok();
     if (ok) {
       this.invalidatePost(shareId, identity);
       this.invalidateFeed();

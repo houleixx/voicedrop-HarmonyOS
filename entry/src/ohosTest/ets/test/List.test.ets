@@ -24,6 +24,7 @@ import holdToTalkTest from './HoldToTalk.test';
 import asrResponseGateTest from './AsrResponseGate.test';
 import wechatAuthResponseTest from './WechatAuthResponse.test';
 import wechatLoginStateTest from './WechatLoginState.test';
+import communityShareUiTest from './CommunityShareUi.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -52,4 +53,5 @@ export default function testsuite() {
   asrResponseGateTest();
   wechatAuthResponseTest();
   wechatLoginStateTest();
+  communityShareUiTest();
 }

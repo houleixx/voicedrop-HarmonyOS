@@ -56,6 +56,7 @@ import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { CommunityLikeState } from '../core/CommunityLikeState';
 import { CommunityLikePresentation } from '../core/CommunityLikePresentation';
 import { CommunityReplyUi } from '../core/CommunityReplyUi';
+import { CommunityShareUi } from '../core/CommunityShareUi';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
 import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
 import { PromptSettingsPage } from './PromptSettingsPage';
@@ -175,6 +176,7 @@ struct Index {
   @State private playbackDuration: number = 0;
   @State private history: ArticleHistory = new ArticleHistory();
   @State private communityShareId: string = '';
+  private communityShareGeneration: number = 0;
   @State private selectedPost?: CommunityPost = undefined;
   @State private selectedReplyParent?: CommunityPost = undefined;
   @State private communityReplies: CommunityPost[] = [];
@@ -238,6 +240,7 @@ struct Index {
   @State private incomingShareExcerpt: string = '';
   @State private importingShare: boolean = false;
   @State private appVersion: string = '0.1.0';
+  @State private blockedAuthorCount: number = 0;
   @State private checkingUpdate: boolean = false;
   @State private autoShareCommunity: boolean = false;
   @State private savingAutoShare: boolean = false;
@@ -324,6 +327,11 @@ struct Index {
   }
 
   private handleDestinationHidden(routeName: string): void {
+    if (routeName === 'blocked') {
+      // Wait for NavPathStack to finish popping the blocked page before
+      // replacing the cached About page with one bound to the latest count.
+      setTimeout(() => this.reopenAboutAfterBlockedAuthors(), 0);
+    }
     if (routeName === 'detail') {
       this.showDetailMenu = false;
       this.showPromptMenu = false;
@@ -342,6 +350,14 @@ struct Index {
         this.refreshCommunityAfterDetail().catch(() => {});
       }
     }
+  }
+
+  private reopenAboutAfterBlockedAuthors(): void {
+    this.blockedAuthorCount = appPreferences.blockedAuthors().length;
+    const paths: string[] = this.pathStack.getAllPathName();
+    if (paths.length === 0 || paths[paths.length - 1] !== 'about') return;
+    this.pathStack.removeByName('about');
+    this.pathStack.pushPath({ name: 'about' });
   }
 
   /**
@@ -406,6 +422,7 @@ struct Index {
   private async initialize(): Promise<void> {
     this.context = getContext(this) as common.UIAbilityContext;
     await appPreferences.initialize(this.context);
+    this.blockedAuthorCount = appPreferences.blockedAuthors().length;
     this.showPrivacy = !appPreferences.privacyAccepted();
     if (!this.showPrivacy) await this.activateBusiness();
   }
@@ -1158,6 +1175,7 @@ struct Index {
     this.articleEditQueue = [];
     this.articleEditReply = '';
     this.articleEditReplyOk = true;
+    const communityShareGeneration: number = ++this.communityShareGeneration;
     this.closeParagraphEdit(false);
     const detailLoadSequence: number = ++this.detailLoadSequence;
     this.detailLoadError = '';
@@ -1176,7 +1194,8 @@ struct Index {
             this.selected?.stem() === recording.stem()) this.history = history;
         }).catch(() => {});
         communityStore.sharedShareId(recording.articleKey()).then((shareId: string) => {
-          if (detailLoadSequence === this.detailLoadSequence &&
+          if (CommunityShareUi.shouldApplyLookup(communityShareGeneration, this.communityShareGeneration) &&
+            detailLoadSequence === this.detailLoadSequence &&
             this.selected?.stem() === recording.stem()) this.communityShareId = shareId;
         }).catch(() => {});
         const fresh: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
@@ -1575,15 +1594,18 @@ struct Index {
     try {
       const pending: PendingCommunityShareValue = JSON.parse(raw) as PendingCommunityShareValue;
       if (!pending.articleKey) { await appPreferences.clearPendingCommunityShare(); return; }
+      ++this.communityShareGeneration;
       const result: CommunityShareResult = await communityStore.shareResult(pending.articleKey, pending.replyTo ?? '');
       if (result.ok) {
         if (!pending.replyTo && this.selected?.articleKey() === pending.articleKey) {
           this.communityShareId = result.shareId;
         }
         await appPreferences.clearPendingCommunityShare();
-        promptAction.showToast({ message: pending.replyTo ? '登录后已自动续发社区回复' : '登录后已自动续发社区文章' });
+        promptAction.showToast({ message: CommunityShareUi.successMessage((pending.replyTo ?? '').length > 0) });
       }
-    } catch (_) {}
+    } catch (error) {
+      promptAction.showToast({ message: `社区分享失败：${ClientReliability.errorMessage(error as Object)}` });
+    }
   }
 
   private async startCommunityShareWechatLogin(articleKey: string): Promise<void> {
@@ -3837,32 +3859,42 @@ struct Index {
   }
 
   private async toggleCommunityShare(): Promise<void> {
-    if (!this.selected) return;
-    if (this.communityShareId.length > 0) {
-      if (await communityStore.unshare(this.communityShareId)) {
-        this.communityShareId = '';
-        promptAction.showToast({ message: '已从 VD 社区隐藏' });
+    try {
+      if (!this.selected) return;
+      if (this.communityShareId.length > 0) {
+        ++this.communityShareGeneration;
+        promptAction.showToast({ message: '正在从 VD 社区隐藏…' });
+        if (await communityStore.unshare(this.communityShareId)) {
+          this.communityShareId = '';
+          promptAction.showToast({ message: '已从 VD 社区隐藏' });
+        } else {
+          promptAction.showToast({ message: '从 VD 社区隐藏失败，请稍后重试' });
+        }
+        return;
       }
-      return;
-    }
-    if (!appPreferences.communityTermsAccepted()) {
-      const accepted: boolean = await this.confirmCommunityTerms();
-      if (!accepted) return;
-    }
-    const articleKey: string = this.selected.articleKey();
-    if (!authStore.isWechatAuthenticated()) {
-      await this.startCommunityShareWechatLogin(articleKey);
-      return;
-    }
-    const result: CommunityShareResult = await communityStore.shareResult(articleKey);
-    if (result.ok) {
-      this.communityShareId = result.shareId;
-      promptAction.showToast({ message: '已在 VD 社区可见' });
-    } else if (result.needsWechatSignin()) {
-      if (result.code === 401) await authStore.signOutWechat();
-      await this.startCommunityShareWechatLogin(articleKey);
-    } else {
-      promptAction.showToast({ message: result.error ? `分享社区失败：${result.error}` : '分享社区失败，请稍后再试' });
+      if (!appPreferences.communityTermsAccepted()) {
+        const accepted: boolean = await this.confirmCommunityTerms();
+        if (!accepted) return;
+      }
+      ++this.communityShareGeneration;
+      const articleKey: string = this.selected.articleKey();
+      promptAction.showToast({ message: '正在设置 VD 社区可见…' });
+      if (!authStore.isWechatAuthenticated()) {
+        await this.startCommunityShareWechatLogin(articleKey);
+        return;
+      }
+      const result: CommunityShareResult = await communityStore.shareResult(articleKey);
+      if (result.ok) {
+        this.communityShareId = result.shareId;
+        promptAction.showToast({ message: CommunityShareUi.successMessage(false) });
+      } else if (result.needsWechatSignin()) {
+        if (result.code === 401) await authStore.signOutWechat();
+        await this.startCommunityShareWechatLogin(articleKey);
+      } else {
+        promptAction.showToast({ message: result.error ? `分享社区失败：${result.error}` : '分享社区失败，请稍后再试' });
+      }
+    } catch (error) {
+      promptAction.showToast({ message: `社区分享失败：${ClientReliability.errorMessage(error as Object)}` });
     }
   }
 
@@ -4483,6 +4515,7 @@ struct Index {
     });
     if (result.index !== 1) return;
     await appPreferences.setAuthorBlocked(author, true);
+    this.blockedAuthorCount = appPreferences.blockedAuthors().length;
     this.communityDetailDirty = true;
     this.removeCommunityContent('', author);
     promptAction.showToast({ message: '已屏蔽，TA 的内容将不再显示' });
@@ -4627,17 +4660,23 @@ struct Index {
     else if (page === 'prompts') PromptSettingsPage({ onBack: () => this.navigateBack(), initialCode: this.promptImportCode })
     else if (page === 'blocked') BlockedAuthorsPage({
       onBack: () => this.navigateBack(),
-      onUnblocked: () => { this.refreshCommunity(false).catch(() => {}); }
+      onUnblocked: (count: number) => {
+        this.blockedAuthorCount = count;
+        this.refreshCommunity(false).catch(() => {});
+      }
     })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
     else if (page === 'usage') UsagePage({ onBack: () => this.navigateBack() })
     else if (page === 'about') AboutPage({
       onBack: () => this.navigateBack(),
       onPrivacy: () => this.navigateTo('privacy'),
-      onBlockedAuthors: () => this.navigateTo('blocked'),
+      onBlockedAuthors: () => {
+        this.blockedAuthorCount = appPreferences.blockedAuthors().length;
+        this.navigateTo('blocked');
+      },
       onContact: () => this.openSupportEmail(),
       appVersion: this.appVersion,
-      blockedAuthorCount: appPreferences.blockedAuthors().length
+      blockedAuthorCount: $blockedAuthorCount
     })
     else Column({ space: 8 }) {
       Text('页面不存在').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
