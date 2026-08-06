@@ -14,7 +14,7 @@ export struct AboutPage {
   onBlockedAuthors: () => void = () => {};
   onContact: () => void = () => {};
   appVersion: string = '';
-  blockedAuthorCount: number = 0;
+  @Link blockedAuthorCount: number;
 
   @Builder
   private row(title: string, subtitle: string, glyph: string, onClick: () => void) {
