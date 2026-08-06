@@ -114,9 +114,14 @@ export class CommunityStore {
 
   async report(shareId: string): Promise<boolean> {
     const identity: string = authStore.bearer();
-    const ok: boolean = (await httpClient.postJson(
+    const response: HttpResponse = await httpClient.postJson(
       `${Api.FILES}/community/report/${Api.path(shareId)}`, identity,
-      new EmptyCommunityShareBody())).ok();
+      new EmptyCommunityShareBody());
+    if (!response.ok()) {
+      const detail: string = response.text.trim();
+      throw new Error(detail.length > 0 ? `HTTP ${response.code}: ${detail}` : `HTTP ${response.code}`);
+    }
+    const ok: boolean = response.ok();
     if (ok) {
       this.invalidatePost(shareId, identity);
       this.invalidateFeed();
