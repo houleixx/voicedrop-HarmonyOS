@@ -1616,6 +1616,15 @@ struct Index {
     }
   }
 
+  private async confirmCommunityShareWechatLogin(): Promise<boolean> {
+    const result = await promptAction.showDialog({
+      title: '需要微信登录',
+      message: '分享到 VD 社区需要先完成微信登录，登录后才能分享。',
+      buttons: [{ text: '取消', color: '#666666' }, { text: '去登录', color: Theme.ACCENT_STRONG }]
+    });
+    return result.index === 1;
+  }
+
   private async acceptPrivacy(): Promise<void> {
     await appPreferences.acceptPrivacy();
     this.showPrivacy = false;
@@ -3872,14 +3881,16 @@ struct Index {
         }
         return;
       }
+      const articleKey: string = this.selected.articleKey();
+      const needsWechatLogin: boolean = !authStore.isWechatAuthenticated();
+      if (needsWechatLogin && !await this.confirmCommunityShareWechatLogin()) return;
       if (!appPreferences.communityTermsAccepted()) {
         const accepted: boolean = await this.confirmCommunityTerms();
         if (!accepted) return;
       }
       ++this.communityShareGeneration;
-      const articleKey: string = this.selected.articleKey();
       promptAction.showToast({ message: '正在设置 VD 社区可见…' });
-      if (!authStore.isWechatAuthenticated()) {
+      if (needsWechatLogin) {
         await this.startCommunityShareWechatLogin(articleKey);
         return;
       }
@@ -3889,6 +3900,7 @@ struct Index {
         promptAction.showToast({ message: CommunityShareUi.successMessage(false) });
       } else if (result.needsWechatSignin()) {
         if (result.code === 401) await authStore.signOutWechat();
+        if (!await this.confirmCommunityShareWechatLogin()) return;
         await this.startCommunityShareWechatLogin(articleKey);
       } else {
         promptAction.showToast({ message: result.error ? `分享社区失败：${result.error}` : '分享社区失败，请稍后再试' });
@@ -3992,19 +4004,23 @@ struct Index {
   private async reportSelectedCommunityPost(): Promise<void> {
     if (!this.selectedPost) return;
     const post: CommunityPost = this.selectedPost;
-    const result = await promptAction.showDialog({
-      title: '举报这篇分享？',
-      message: '举报后这篇会立即从社区下架，并在 24 小时内由人工审核处理。',
-      buttons: [{ text: '取消', color: '#666666' }, { text: '举报并下架', color: Theme.ACCENT_STRONG }]
-    });
-    if (result.index !== 1) return;
-    if (await communityStore.report(post.shareId)) {
-      this.communityDetailDirty = true;
-      this.removeCommunityContent(post.shareId);
-      promptAction.showToast({ message: '已举报，内容已下架待审核' });
-      this.navigateHome();
-    } else {
-      promptAction.showToast({ message: '举报失败，请稍后重试' });
+    try {
+      const result = await promptAction.showDialog({
+        title: '举报这篇分享？',
+        message: '举报后这篇会立即从社区下架，并在 24 小时内由人工审核处理。',
+        buttons: [{ text: '取消', color: '#666666' }, { text: '举报并下架', color: Theme.ACCENT_STRONG }]
+      });
+      if (result.index !== 1) return;
+      if (await communityStore.report(post.shareId)) {
+        this.communityDetailDirty = true;
+        this.removeCommunityContent(post.shareId);
+        promptAction.showToast({ message: '已举报，内容已下架待审核' });
+        this.navigateHome();
+      } else {
+        promptAction.showToast({ message: '举报失败，请稍后重试' });
+      }
+    } catch (error) {
+      promptAction.showToast({ message: `举报失败：${ClientReliability.errorMessage(error as Object)}` });
     }
   }
 
