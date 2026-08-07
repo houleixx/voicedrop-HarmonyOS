@@ -35,7 +35,6 @@ import { CapturedPhoto, photoService, UploadedPhoto } from '../data/PhotoService
 import { usageStore, UsageBalance, UsageSummary, UsageSummaryRow, UsageEntry, UsageLedgerPage } from '../data/UsageStore';
 import { promptStore } from '../data/PromptStore';
 import { ExportManager } from '../data/ExportManager';
-import { appUpdateService, HarmonyRelease, UpdateCheckResult } from '../data/AppUpdateService';
 import { referralService, InviteLink } from '../data/ReferralService';
 import { DeviceLinkPending, DeviceLinkStore } from '../data/DeviceLinkStore';
 import { DeviceLinkCrypto } from '../data/DeviceLinkCrypto';
@@ -239,9 +238,7 @@ struct Index {
   @State private incomingShareDescription: string = '';
   @State private incomingShareExcerpt: string = '';
   @State private importingShare: boolean = false;
-  @State private appVersion: string = '0.1.0';
   @State private blockedAuthorCount: number = 0;
-  @State private checkingUpdate: boolean = false;
   @State private autoShareCommunity: boolean = false;
   @State private savingAutoShare: boolean = false;
   @State private preparingInvite: boolean = false;
@@ -449,7 +446,6 @@ struct Index {
       this.playbackProgress = progress;
       this.playbackDuration = duration;
     });
-    this.appVersion = await appUpdateService.currentVersion();
     this.loadAppConfig().catch(() => {});
     await this.handleSharedWant();
     await this.refreshLibrary(this.recordings.length === 0);
@@ -457,7 +453,6 @@ struct Index {
     this.runReferralOnLaunch().catch(() => {});
     this.startAgentSessions();
     this.recoverPendingLink().catch(() => {});
-    if (appPreferences.shouldCheckUpdate(this.appVersion)) this.checkForUpdate(false).catch(() => {});
     this.initialized = true;
   }
 
@@ -820,55 +815,6 @@ struct Index {
       promptAction.showToast({ message: '录音、文章、字幕和图片已导出' });
     } catch (error) { promptAction.showToast({ message: `导出失败：${String(error)}` }); }
     finally { this.exporting = false; }
-  }
-
-  private async checkForUpdate(manual: boolean): Promise<void> {
-    if (this.checkingUpdate) {
-      if (manual) promptAction.showToast({ message: '正在检查更新…' });
-      return;
-    }
-    this.checkingUpdate = true;
-    if (manual) promptAction.showToast({ message: '正在检查更新…' });
-    try {
-      const result: UpdateCheckResult = await appUpdateService.check();
-      this.appVersion = result.currentVersion;
-      await appPreferences.markUpdateChecked(result.currentVersion);
-      if (result.status === 'no_update') {
-        if (manual) promptAction.showToast({ message: '已是最新版本' });
-        return;
-      }
-      if (result.status === 'unavailable') {
-        if (manual) promptAction.showToast({ message: 'HarmonyOS 更新渠道尚未发布' });
-        return;
-      }
-      if (result.status === 'rate_limited') {
-        if (manual) promptAction.showToast({ message: '检查太频繁，请稍后再试' });
-        return;
-      }
-      const release: HarmonyRelease | undefined = result.release;
-      if (result.status !== 'available' || !release) {
-        if (manual) promptAction.showToast({ message: '检查更新失败' });
-        return;
-      }
-      if (appPreferences.ignoredUpdateTag() === release.tag) {
-        if (manual) promptAction.showToast({ message: `已忽略此版本：${release.tag}` });
-        return;
-      }
-      const size: string = release.size > 0 ? `\n签名 HAP 约 ${this.formatFileSize(release.size)}` : '';
-      const notes: string = release.notes.trim().length > 0 ? `\n\n${release.notes.trim().substring(0, 500)}` : '';
-      const choice = await promptAction.showDialog({ title: '发现 HarmonyOS 新版本',
-        message: `${release.tag}\n当前版本 ${result.currentVersion}${size}${notes}\n\n将打开发布页，由系统完成下载与安装。`,
-        buttons: [{ text: '忽略此版本', color: '#666666' }, { text: '打开发布页', color: '#16825D' }] });
-      if (choice.index === 0) await appPreferences.ignoreUpdate(release.tag);
-      else await this.openExternalUrl(release.pageUrl || release.downloadUrl);
-    } catch (_) {
-      if (manual) promptAction.showToast({ message: '检查更新失败' });
-    } finally { this.checkingUpdate = false; }
-  }
-
-  private formatFileSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 
   private async openExternalUrl(url: string): Promise<void> {
@@ -4700,7 +4646,6 @@ struct Index {
         this.navigateTo('blocked');
       },
       onContact: () => this.openSupportEmail(),
-      appVersion: this.appVersion,
       blockedAuthorCount: $blockedAuthorCount
     })
     else Column({ space: 8 }) {

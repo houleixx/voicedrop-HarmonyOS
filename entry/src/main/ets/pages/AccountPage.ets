@@ -330,7 +330,6 @@ export struct AccountPage {
       Text('云端空间由访问令牌决定。换设备时导入同一个访问令牌，就会看到同一套录音、文章、写作风格和配置。')
         .fontSize(13)
         .fontColor(Theme.FAINT)
-        .textAlign(TextAlign.Center)
         .lineHeight(20)
         .width('100%')
         .padding({ left: 4, right: 4, top: 10 })

@@ -43,25 +43,6 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
-  shouldCheckUpdate(currentVersion: string): boolean {
-    const last: number = Number(this.store?.getSync('updateLastCheckMs', 0) ?? 0);
-    const version: string = String(this.store?.getSync('updateLastCheckVersion', '') ?? '');
-    return last <= 0 || version !== currentVersion || Date.now() - last >= 24 * 60 * 60 * 1000;
-  }
-
-  async markUpdateChecked(currentVersion: string): Promise<void> {
-    this.store?.putSync('updateLastCheckMs', Date.now());
-    this.store?.putSync('updateLastCheckVersion', currentVersion);
-    await this.store?.flush();
-  }
-
-  ignoredUpdateTag(): string { return String(this.store?.getSync('ignoredUpdateTag', '') ?? ''); }
-
-  async ignoreUpdate(tag: string): Promise<void> {
-    this.store?.putSync('ignoredUpdateTag', tag);
-    await this.store?.flush();
-  }
-
   referralDone(): boolean { return Boolean(this.store?.getSync('referralDone', false) ?? false); }
 
   referralWithinWindow(): boolean {
