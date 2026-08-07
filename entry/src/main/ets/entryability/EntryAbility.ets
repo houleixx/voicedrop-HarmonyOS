@@ -77,14 +77,16 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
         hilog.error(0x0000, 'VoiceDrop', 'enable immersive layout failed: %{public}s', JSON.stringify(error));
       });
       mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
-        statusBarContentColor: '#1F1F1F',
+        // Keep the system-bar background aligned with the app canvas. A transparent
+        // bar sits on top of arbitrary scroll content and cannot guarantee contrast.
+        statusBarColor: '#FAF6EF',
+        statusBarContentColor: '#2A2521',
         isStatusBarLightIcon: false,
-        navigationBarColor: '#00000000',
-        navigationBarContentColor: '#777777',
+        navigationBarColor: '#FAF6EF',
+        navigationBarContentColor: '#2A2521',
         isNavigationBarLightIcon: false
       }).catch((error: Object) => {
-        hilog.error(0x0000, 'VoiceDrop', 'set transparent system bars failed: %{public}s', JSON.stringify(error));
+        hilog.error(0x0000, 'VoiceDrop', 'set system bar properties failed: %{public}s', JSON.stringify(error));
       });
       this.updateSafeAreas(mainWindow);
       mainWindow.on('avoidAreaChange', (options: window.AvoidAreaOptions) => {

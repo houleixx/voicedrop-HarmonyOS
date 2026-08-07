@@ -13,7 +13,6 @@ export struct AboutPage {
   onPrivacy: () => void = () => {};
   onBlockedAuthors: () => void = () => {};
   onContact: () => void = () => {};
-  appVersion: string = '';
   @Link blockedAuthorCount: number;
 
   @Builder

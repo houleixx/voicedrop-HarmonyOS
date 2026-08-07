@@ -6,8 +6,11 @@ export class VoiceDropTheme {
   static readonly BORDER: string = '#ECE3D5';
   static readonly DIVIDER: string = '#F0E8DA';
   static readonly INK: string = '#2A2521';
-  static readonly SECONDARY: string = '#8A8175';
-  static readonly FAINT: string = '#B8AE9E';
+  // Both colors are used by 12–16 fp text on light cards and the warm canvas.
+  // Keep them above the 4.5:1 text contrast threshold instead of relying on
+  // opacity to create hierarchy.
+  static readonly SECONDARY: string = '#6D655B';
+  static readonly FAINT: string = '#756C61';
   static readonly ACCENT: string = '#D8593B';
   static readonly ACCENT_STRONG: string = '#E5392E';
   static readonly ACCENT_SOFT: string = '#F6E4DC';
