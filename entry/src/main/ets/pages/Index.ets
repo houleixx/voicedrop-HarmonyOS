@@ -41,6 +41,7 @@ import { DeviceLinkCrypto } from '../data/DeviceLinkCrypto';
 import { WechatLogin } from '../data/WechatLogin';
 import { WechatCommunityShare } from '../data/WechatCommunityShare';
 import { WechatAuthResult, WechatAuthStore } from '../data/WechatAuthStore';
+import { XhsExportService, XhsPreparedImages } from '../data/XhsExportService';
 import { shareCollectService } from '../share/ShareCollectService';
 import { voiceRecorder } from '../audio/VoiceRecorder';
 import { uploader } from '../audio/Uploader';
@@ -865,6 +866,19 @@ struct Index {
     if (!this.context) throw new Error('ability context unavailable');
     const record: systemShare.SharedRecord = { utd: 'general.plain-text', content: text, title: title };
     const data: systemShare.SharedData = new systemShare.SharedData(record);
+    await new systemShare.ShareController(data).show(this.context, {
+      previewMode: systemShare.SharePreviewMode.DEFAULT
+    });
+  }
+
+  private async showImageShare(uris: string[], title: string): Promise<void> {
+    if (!this.context || uris.length === 0) throw new Error('没有可分享的小红书图片');
+    const first: systemShare.SharedRecord = { utd: 'general.jpeg', uri: uris[0], title: title };
+    const data: systemShare.SharedData = new systemShare.SharedData(first);
+    for (let index: number = 1; index < uris.length; index++) {
+      const record: systemShare.SharedRecord = { utd: 'general.jpeg', uri: uris[index], title: title };
+      data.addRecord(record);
+    }
     await new systemShare.ShareController(data).show(this.context, {
       previewMode: systemShare.SharePreviewMode.DEFAULT
     });
@@ -4519,17 +4533,25 @@ struct Index {
   private async shareToXhs(): Promise<void> {
     if (!this.selected || !this.context || this.xhsPreparing) return;
     this.xhsPreparing = true;
-    promptAction.showToast({ message: '正在生成小红书文案…' });
+    promptAction.showToast({ message: '正在生成小红书素材…' });
     try {
       const pack: XhsPack | undefined = await libraryStore.xhsPack(this.selected);
       if (!pack || pack.clipboardText().length === 0) {
-        promptAction.showToast({ message: '小红书文案生成失败，稍后再试' }); return;
+        promptAction.showToast({ message: '小红书素材生成失败，稍后再试' }); return;
       }
       const text: string = pack.clipboardText();
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(text));
-      promptAction.showToast({ message: '文案已复制，请在分享面板中选择小红书' });
-      await this.showTextShare(text, pack.title || 'VoiceDrop 小红书文案');
-    } catch (error) { promptAction.showToast({ message: `小红书文案生成失败：${String(error)}` }); }
+      const prepared: XhsPreparedImages = await new XhsExportService(this.context)
+        .prepare(pack, this.selected, this.article);
+      if (prepared.fileUris.length === 0) throw new Error('没有生成可分享的图片');
+      const saved: number = prepared.savedUris.length;
+      promptAction.showToast({
+        message: saved > 0
+          ? `文案已复制，${saved} 张图片已保存，请在分享面板中选择小红书`
+          : '文案已复制，图片已生成，请在分享面板中选择小红书'
+      });
+      await this.showImageShare(prepared.fileUris, pack.title || 'VoiceDrop 小红书素材');
+    } catch (error) { promptAction.showToast({ message: `小红书素材生成失败：${String(error)}` }); }
     finally { this.xhsPreparing = false; }
   }
 
