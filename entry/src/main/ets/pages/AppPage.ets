@@ -1,5 +1,6 @@
 export type AppPage = 'home' | 'detail' | 'communityDetail' | 'shared' | 'settings' | 'style' |
-  'wechat' | 'account' | 'about' | 'privacy' | 'usage' | 'prompts' | 'blocked';
+  'wechat' | 'account' | 'about' | 'privacy' | 'usage' | 'prompts' | 'blocked' |
+  'manual' | 'feedback' | 'books';
 
 export const SECONDARY_PAGES: AppPage[] = [
   'detail',
@@ -13,5 +14,8 @@ export const SECONDARY_PAGES: AppPage[] = [
   'privacy',
   'usage',
   'prompts',
-  'blocked'
+  'blocked',
+  'manual',
+  'feedback',
+  'books'
 ];

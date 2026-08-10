@@ -13,6 +13,9 @@ export struct AboutPage {
   onPrivacy: () => void = () => {};
   onBlockedAuthors: () => void = () => {};
   onContact: () => void = () => {};
+  onManual: () => void = () => {};
+  onFeedback: () => void = () => {};
+  onBooks: () => void = () => {};
   @Link blockedAuthorCount: number;
 
   @Builder
@@ -62,6 +65,10 @@ export struct AboutPage {
       Scroll() {
         Column() {
           Column() {
+            this.row('使用手册', '录音、文章、分享与常见问题', RI.FILE_TEXT, this.onManual)
+            this.divider()
+            this.row('意见反馈', '告诉我们哪里不顺手', RI.CHAT, this.onFeedback)
+            this.divider()
             this.row('隐私政策', '查看个人信息与权限处理说明', RI.FILE_TEXT, this.onPrivacy)
             this.divider()
             this.row('社区公约', '发布、举报与内容治理规则', RI.FLAG, () => {
@@ -75,6 +82,19 @@ export struct AboutPage {
             this.row('已屏蔽用户', `${this.blockedAuthorCount} 人`, RI.USER, this.onBlockedAuthors)
             this.divider()
             this.row('联系我们 / 内容投诉', SUPPORT_EMAIL, RI.CHAT, this.onContact)
+          }
+            .backgroundColor(Theme.CARD)
+            .borderRadius(14)
+            .border({ width: 0.5, color: Theme.BORDER })
+            .width('100%')
+          Text('实验性功能')
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(Theme.SECONDARY)
+            .margin({ top: 22, bottom: 8, left: 4 })
+            .width('100%')
+          Column() {
+            this.row('写书', '给一个种子，让 AI 写成一本书', RI.QUILL_PEN, this.onBooks)
           }
             .backgroundColor(Theme.CARD)
             .borderRadius(14)
