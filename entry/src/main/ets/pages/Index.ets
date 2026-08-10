@@ -50,11 +50,15 @@ import { AsrDictation } from '../audio/AsrDictation';
 import { RealtimeInterviewer } from '../audio/RealtimeInterviewer';
 import { ArticleEditSession, EditAnchor, EditImage, StatusSession, LibraryCommandSession, CommandRef } from '../net/AgentSocket';
 import { AboutPage } from './AboutPage';
+import { BookWritingPage } from './BookWritingPage';
+import { FeedbackPage } from './FeedbackPage';
+import { HelpManualPage } from './HelpManualPage';
 import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
 import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { CommunityLikeState } from '../core/CommunityLikeState';
 import { CommunityLikePresentation } from '../core/CommunityLikePresentation';
+import { CommunitySearch, CommunitySearchLayout } from '../core/CommunitySearch';
 import { CommunityReplyUi } from '../core/CommunityReplyUi';
 import { CommunityShareUi } from '../core/CommunityShareUi';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
@@ -135,7 +139,9 @@ struct Index {
   @State private posts: CommunityPost[] = [];
   @State private communityRecommended: CommunityPost[] = [];
   @State private communityLatest: CommunityPost[] = [];
-  @State private communityFilter: string = 'recommended';
+  @State private communityFilter: string = 'latest';
+  @State private communitySearching: boolean = false;
+  @State private communitySearchQuery: string = '';
   @State private selectedTag: string = '';
   @State private selected?: Recording = undefined;
   @State private deletingRecordingName: string = '';
@@ -1033,9 +1039,11 @@ struct Index {
   }
 
   private updateCommunityFilter(): void {
-    if (this.communityFilter === 'latest') this.posts = this.communityLatest.slice();
-    else if (this.communityFilter === 'replies') this.posts = this.communityRecommended.filter((post: CommunityPost) => (post.replyTo ?? '').length > 0);
-    else this.posts = this.communityRecommended.slice();
+    let source: CommunityPost[];
+    if (this.communityFilter === 'latest') source = this.communityLatest.slice();
+    else if (this.communityFilter === 'replies') source = this.communityRecommended.filter((post: CommunityPost) => (post.replyTo ?? '').length > 0);
+    else source = this.communityRecommended.slice();
+    this.posts = CommunitySearch.filter(source, this.communitySearchQuery);
   }
 
   // Community detail is a nested route. Remove moderated content from every
@@ -1063,8 +1071,9 @@ struct Index {
       feed.recommended.filter((post: CommunityPost) => !blocked.includes(post.author)), this.communityRecommended);
     const latest: CommunityPost[] = this.mergeCommunityPresentation(
       feed.latest.filter((post: CommunityPost) => !blocked.includes(post.author)), this.communityLatest);
-    const visible: CommunityPost[] = this.communityFilter === 'latest' ? latest.slice() :
+    const source: CommunityPost[] = this.communityFilter === 'latest' ? latest.slice() :
       (this.communityFilter === 'replies' ? recommended.filter((post: CommunityPost) => (post.replyTo ?? '').length > 0) : recommended.slice());
+    const visible: CommunityPost[] = CommunitySearch.filter(source, this.communitySearchQuery);
     if (!this.sameCommunityCards(this.communityRecommended, recommended)) this.communityRecommended = recommended;
     if (!this.sameCommunityCards(this.communityLatest, latest)) this.communityLatest = latest;
     if (!this.sameCommunityCards(this.posts, visible)) this.posts = visible;
@@ -1116,6 +1125,17 @@ struct Index {
 
   private selectCommunityFilter(value: string): void {
     this.communityFilter = value; this.updateCommunityFilter();
+  }
+
+  private updateCommunitySearch(value: string): void {
+    this.communitySearchQuery = value;
+    this.updateCommunityFilter();
+  }
+
+  private closeCommunitySearch(): void {
+    this.communitySearching = false;
+    this.communitySearchQuery = '';
+    this.updateCommunityFilter();
   }
 
   private recordingStatusColor(recording: Recording): string {
@@ -2463,6 +2483,15 @@ struct Index {
         .width('100%')
       Row() { Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2) }
         .width('100%').padding({ left: 124 }).margin({ bottom: 1 })
+      if (this.communitySearching) {
+        Row({ space: 10 }) {
+          TextInput({ text: this.communitySearchQuery, placeholder: '搜索标题、作者或内容' })
+            .height(34).layoutWeight(1).fontSize(14).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
+            .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 0.5, color: Theme.BORDER })
+            .onChange((value: string) => this.updateCommunitySearch(value))
+          Text('取消').fontSize(14).fontColor(Theme.INK).onClick(() => this.closeCommunitySearch())
+        }.height(CommunitySearchLayout.toolbarHeight(true)).padding({ left: 14, right: 18 }).width('100%')
+      } else {
       Row({ space: 12 }) {
         Text('推荐').fontSize(15).fontWeight(this.communityFilter === 'recommended' ? FontWeight.Bold : FontWeight.Normal)
           .fontColor(this.communityFilter === 'recommended' ? Theme.INK : Theme.SECONDARY)
@@ -2477,7 +2506,15 @@ struct Index {
           .padding({ left: 4, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.selectCommunityFilter('replies'))
         Blank()
-      }.height(38).padding({ left: 14, right: 14 }).width('100%')
+        Row() {
+          RemixIcon({ glyph: RI.SEARCH, iconSize: 20, color: Theme.SECONDARY })
+        }
+          .width(40).height(40)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => this.communitySearching = true)
+      }.height(CommunitySearchLayout.toolbarHeight(false)).padding({ left: 14, right: 14 }).width('100%')
+      }
       if (this.posts.length === 0) {
         this.pageLoadingState()
         Blank()
@@ -4660,6 +4697,12 @@ struct Index {
     })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
     else if (page === 'usage') UsagePage({ onBack: () => this.navigateBack() })
+    else if (page === 'manual') HelpManualPage({ onBack: () => this.navigateBack() })
+    else if (page === 'feedback') FeedbackPage({ onBack: () => this.navigateBack() })
+    else if (page === 'books') BookWritingPage({
+      onBack: () => this.navigateBack(),
+      onOpenShelf: () => this.openExternalUrl('https://voicedrop.cn/books/')
+    })
     else if (page === 'about') AboutPage({
       onBack: () => this.navigateBack(),
       onPrivacy: () => this.navigateTo('privacy'),
@@ -4668,6 +4711,9 @@ struct Index {
         this.navigateTo('blocked');
       },
       onContact: () => this.openSupportEmail(),
+      onManual: () => this.navigateTo('manual'),
+      onFeedback: () => this.navigateTo('feedback'),
+      onBooks: () => this.navigateTo('books'),
       blockedAuthorCount: $blockedAuthorCount
     })
     else Column({ space: 8 }) {

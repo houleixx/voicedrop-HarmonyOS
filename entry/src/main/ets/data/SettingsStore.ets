@@ -33,6 +33,16 @@ class NameBody {
   name: string;
   constructor(name: string) { this.name = name; }
 }
+export class FeedbackBody {
+  text: string;
+  name: string;
+  version: string;
+  constructor(text: string, name: string, version: string) {
+    this.text = text.trim().substring(0, 2000);
+    this.name = name.trim();
+    this.version = version.trim();
+  }
+}
 class StyleHeadBody {
   head: number;
   constructor(head: number) { this.head = head; }
@@ -60,6 +70,12 @@ export class SettingsStore {
 
   async saveName(name: string): Promise<boolean> {
     return (await httpClient.putJson(`${Api.FILES}/style`, authStore.bearer(), new NameBody(name.trim()))).ok();
+  }
+
+  async sendFeedback(text: string, name: string = '', version: string = ''): Promise<boolean> {
+    const body: FeedbackBody = new FeedbackBody(text, name, version);
+    if (body.text.length === 0) return false;
+    return (await httpClient.postJson(`${Api.AGENT}/feedback`, authStore.bearer(), body)).ok();
   }
 
   async loadStyleHistory(): Promise<StyleHistory> {

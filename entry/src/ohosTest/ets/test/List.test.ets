@@ -26,6 +26,7 @@ import wechatAuthResponseTest from './WechatAuthResponse.test';
 import wechatLoginStateTest from './WechatLoginState.test';
 import communityShareUiTest from './CommunityShareUi.test';
 import xhsCardLayoutTest from './XhsCardLayout.test';
+import iosUpstreamFeaturesTest from './IosUpstreamFeatures.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -56,4 +57,5 @@ export default function testsuite() {
   wechatLoginStateTest();
   communityShareUiTest();
   xhsCardLayoutTest();
+  iosUpstreamFeaturesTest();
 }

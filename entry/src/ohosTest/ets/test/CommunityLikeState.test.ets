@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { CommunityLikeState } from '../../../main/ets/core/CommunityLikeState';
 import { CommunityLikePresentation } from '../../../main/ets/core/CommunityLikePresentation';
+import { CommunityPost } from '../../../main/ets/model/Models';
 
 export default function communityLikeStateTest() {
   describe('CommunityLikeState', () => {
@@ -34,8 +35,10 @@ export default function communityLikeStateTest() {
     });
 
     it('replacesTheVisibleCardWhenLikeChanges', 0, () => {
-      const before = { shareId: 'share-a', title: 'A', excerpt: '', author: 'A', likes: 3, liked: false };
-      const after = CommunityLikePresentation.apply([before], 'share-a', true)[0];
+      const before: CommunityPost = {
+        shareId: 'share-a', title: 'A', excerpt: '', author: 'A', likes: 3, replies: 0, liked: false
+      };
+      const after: CommunityPost = CommunityLikePresentation.apply([before], 'share-a', true)[0];
       expect(after.likes).assertEqual(4);
       expect(after.liked).assertTrue();
       expect(after === before).assertFalse();
