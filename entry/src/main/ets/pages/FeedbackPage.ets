@@ -30,8 +30,7 @@ export struct FeedbackPage {
     Column() {
       PageHeader({ title: '意见反馈', onBack: this.onBack })
       Column({ space: 14 }) {
-        Text('哪里不顺手？想要什么功能？写一句就行。').fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY).width('100%')
-        TextArea({ text: this.draft, placeholder: '写下你的建议（最多 2000 字）……' })
+        TextArea({ text: this.draft, placeholder: '哪里不顺手？想要什么功能？\n写一句就行。' })
           .height(230).fontSize(16).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
           .padding(16).backgroundColor(Theme.CARD).borderRadius(14).border({ width: 1, color: Theme.ACCENT })
           .enabled(!this.sent).onChange((value: string) => { this.draft = value.substring(0, 2000); this.error = ''; })

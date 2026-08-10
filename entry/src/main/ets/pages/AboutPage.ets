@@ -65,10 +65,15 @@ export struct AboutPage {
       Scroll() {
         Column() {
           Column() {
-            this.row('使用手册', '录音、文章、分享与常见问题', RI.FILE_TEXT, this.onManual)
+            this.row('使用手册', '录音、文章、分享与常见问题', RI.BOOK_READ, this.onManual)
             this.divider()
             this.row('意见反馈', '告诉我们哪里不顺手', RI.CHAT, this.onFeedback)
-            this.divider()
+          }
+            .backgroundColor(Theme.CARD)
+            .borderRadius(14)
+            .border({ width: 0.5, color: Theme.BORDER })
+            .width('100%')
+          Column() {
             this.row('隐私政策', '查看个人信息与权限处理说明', RI.FILE_TEXT, this.onPrivacy)
             this.divider()
             this.row('社区公约', '发布、举报与内容治理规则', RI.FLAG, () => {
@@ -87,6 +92,7 @@ export struct AboutPage {
             .borderRadius(14)
             .border({ width: 0.5, color: Theme.BORDER })
             .width('100%')
+            .margin({ top: 10 })
           Text('实验性功能')
             .fontSize(12)
             .fontWeight(FontWeight.Medium)
