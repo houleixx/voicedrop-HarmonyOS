@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { CommunitySearch, CommunitySearchLayout } from '../../../main/ets/core/CommunitySearch';
 import { ManualText } from '../../../main/ets/core/ManualText';
+import { ManualSectionSelection, ManualWebUi } from '../../../main/ets/core/ManualWebUi';
 import { BookSeedBody, BookWritingService } from '../../../main/ets/data/BookWritingService';
 import { FeedbackBody } from '../../../main/ets/data/SettingsStore';
 import { CommunityPost } from '../../../main/ets/model/Models';
@@ -35,6 +36,26 @@ export default function iosUpstreamFeaturesTest() {
       expect(text.includes('#')).assertFalse();
       expect(text.includes('重点')).assertTrue();
       expect(text.includes('https://voicedrop.cn')).assertTrue();
+    });
+
+    it('routesManualWebLinksAndBuildsChapterScripts', 0, () => {
+      expect(ManualWebUi.isManualUrl('https://voicedrop.cn/help/manual/#ch3')).assertTrue();
+      expect(ManualWebUi.isManualUrl('https://jianshuo.dev/voicedrop/help/manual/')).assertTrue();
+      expect(ManualWebUi.shouldOpenExternally('https://apps.apple.com/cn/app/id6781565141')).assertTrue();
+      expect(ManualWebUi.scrollScript(2).includes("getElementById('ch3')")).assertTrue();
+      expect(ManualWebUi.SECTION_LABELS.length).assertEqual(8);
+    });
+
+    it('keepsClickedManualChapterSelectedDuringSmoothScroll', 0, () => {
+      const selection: ManualSectionSelection = new ManualSectionSelection();
+      expect(selection.select(4)).assertEqual(4);
+      expect(selection.report(0)).assertEqual(4);
+      expect(selection.report(1)).assertEqual(4);
+      expect(selection.report(2)).assertEqual(4);
+      expect(selection.report(3)).assertEqual(4);
+      expect(selection.report(4)).assertEqual(4);
+      selection.releaseTarget();
+      expect(selection.report(3)).assertEqual(3);
     });
   });
 }

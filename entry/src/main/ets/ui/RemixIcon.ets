@@ -7,6 +7,8 @@ export class RemixIconGlyph {
   static readonly ARROW_GO_FORWARD: string = '\uEA5A';
   static readonly ARROW_LEFT: string = '\uEA64';
   static readonly ARROW_RIGHT: string = '\uEA6E';
+  static readonly BOOK_OPEN: string = '\uEADB';
+  static readonly BOOK_READ: string = '\uEADD';
   static readonly CHAT: string = '\uEB4F';
   static readonly CHECK: string = '\uEB7B';
   static readonly CLOSE: string = '\uEB99';

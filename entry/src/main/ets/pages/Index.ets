@@ -829,7 +829,7 @@ struct Index {
     try {
       await this.context.startAbility({ action: 'ohos.want.action.viewData',
         entities: ['entity.system.browsable'], uri: url });
-    } catch (_) { promptAction.showToast({ message: '无法打开更新发布页' }); }
+    } catch (_) { promptAction.showToast({ message: '无法打开这个链接' }); }
   }
 
   private async loadAppConfig(): Promise<void> {
@@ -4697,7 +4697,10 @@ struct Index {
     })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
     else if (page === 'usage') UsagePage({ onBack: () => this.navigateBack() })
-    else if (page === 'manual') HelpManualPage({ onBack: () => this.navigateBack() })
+    else if (page === 'manual') HelpManualPage({
+      onBack: () => this.navigateBack(),
+      onOpenExternal: (url: string) => this.openExternalUrl(url)
+    })
     else if (page === 'feedback') FeedbackPage({ onBack: () => this.navigateBack() })
     else if (page === 'books') BookWritingPage({
       onBack: () => this.navigateBack(),
