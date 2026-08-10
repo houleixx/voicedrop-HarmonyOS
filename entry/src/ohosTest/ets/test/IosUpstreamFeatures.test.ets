@@ -1,7 +1,11 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { CommunitySearch, CommunitySearchLayout } from '../../../main/ets/core/CommunitySearch';
-import { ManualText } from '../../../main/ets/core/ManualText';
-import { ManualSectionSelection, ManualWebUi } from '../../../main/ets/core/ManualWebUi';
+import {
+  ManualBlock,
+  ManualBlockKind,
+  ManualMarkdown,
+  ManualSectionSelection
+} from '../../../main/ets/core/ManualMarkdown';
 import { BookSeedBody, BookWritingService } from '../../../main/ets/data/BookWritingService';
 import { FeedbackBody } from '../../../main/ets/data/SettingsStore';
 import { CommunityPost } from '../../../main/ets/model/Models';
@@ -31,19 +35,28 @@ export default function iosUpstreamFeaturesTest() {
       expect(BookWritingService.message(401).includes('至少一篇文章')).assertTrue();
     });
 
-    it('rendersBundledMarkdownAsReadableText', 0, () => {
-      const text: string = ManualText.readable('# 手册\n\n**重点**与[链接](https://voicedrop.cn)');
-      expect(text.includes('#')).assertFalse();
-      expect(text.includes('重点')).assertTrue();
-      expect(text.includes('https://voicedrop.cn')).assertTrue();
+    it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {
+      const markdown: string = '# 手册\n\n## 第一章\n### 小节\n正文\n\n- 一项\n\n1. 一步'
+        + '\n\n| 状态 | 意思 |\n|---|---|\n| 完成 | 好 |\n\n```\ncode\n```';
+      const blocks: ManualBlock[] = ManualMarkdown.parse(markdown);
+      expect(blocks[0].kind).assertEqual(ManualBlockKind.TITLE);
+      expect(blocks[1].kind).assertEqual(ManualBlockKind.CHAPTER);
+      expect(blocks[2].kind).assertEqual(ManualBlockKind.SECTION);
+      expect(blocks[3].kind).assertEqual(ManualBlockKind.PARAGRAPH);
+      expect(blocks[4].kind).assertEqual(ManualBlockKind.BULLETS);
+      expect(blocks[5].kind).assertEqual(ManualBlockKind.NUMBERED);
+      expect(blocks[6].kind).assertEqual(ManualBlockKind.TABLE);
+      expect(blocks[7].kind).assertEqual(ManualBlockKind.CODE);
+      expect(ManualMarkdown.chapterBlockIndexes(blocks).length).assertEqual(1);
+      expect(ManualMarkdown.SECTION_LABELS.length).assertEqual(8);
+      expect(ManualMarkdown.ASSET).assertEqual('help_manual.md');
     });
 
-    it('routesManualWebLinksAndBuildsChapterScripts', 0, () => {
-      expect(ManualWebUi.isManualUrl('https://voicedrop.cn/help/manual/#ch3')).assertTrue();
-      expect(ManualWebUi.isManualUrl('https://jianshuo.dev/voicedrop/help/manual/')).assertTrue();
-      expect(ManualWebUi.shouldOpenExternally('https://apps.apple.com/cn/app/id6781565141')).assertTrue();
-      expect(ManualWebUi.scrollScript(2).includes("getElementById('ch3')")).assertTrue();
-      expect(ManualWebUi.SECTION_LABELS.length).assertEqual(8);
+    it('parsesManualInlineBoldCodeAndLinks', 0, () => {
+      const parts = ManualMarkdown.inline('**重点** `code` [链接](https://voicedrop.cn)');
+      expect(parts[0].bold).assertTrue();
+      expect(parts[2].code).assertTrue();
+      expect(parts[4].url).assertEqual('https://voicedrop.cn');
     });
 
     it('keepsClickedManualChapterSelectedDuringSmoothScroll', 0, () => {
