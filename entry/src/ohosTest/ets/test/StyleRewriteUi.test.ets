@@ -42,5 +42,20 @@ export default function styleRewriteUiTest() {
       expect(StyleRewriteUi.actionLabel(2, false)).assertEqual('用 v2 重写本文');
       expect(StyleRewriteUi.actionLabel(1, true)).assertEqual('切换到 v1 风格');
     });
+
+    it('dimsTheSystemBarsWithTheBlockingRewriteOverlay', 0, () => {
+      expect(StyleRewriteUi.systemBarColor(true)).assertEqual('#C8C5BF');
+      expect(StyleRewriteUi.systemBarColor(false)).assertEqual('#FAF6EF');
+    });
+
+    it('retriesARewriteArticleThatIsTemporarilyUnavailable', 0, () => {
+      expect(StyleRewriteUi.shouldRetryArticleLoad(false, 0)).assertTrue();
+      expect(StyleRewriteUi.shouldRetryArticleLoad(false, 1)).assertTrue();
+      expect(StyleRewriteUi.shouldRetryArticleLoad(false, 2)).assertFalse();
+      expect(StyleRewriteUi.shouldRetryArticleLoad(true, 0)).assertFalse();
+      expect(StyleRewriteUi.articleReloadDelay(0)).assertEqual(0);
+      expect(StyleRewriteUi.articleReloadDelay(1)).assertEqual(150);
+      expect(StyleRewriteUi.articleReloadDelay(2)).assertEqual(350);
+    });
   });
 }

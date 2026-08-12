@@ -1,15 +1,11 @@
 import { Api } from '../core/Api';
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
+import { WechatAuthorizationPage, WechatBindStatus, WechatBinding } from '../core/WechatBinding';
 
 export class StyleSettings {
   style?: string;
   name?: string;
-}
-export class WechatSettings {
-  appid?: string;
-  secret?: string;
-  enabled?: boolean;
 }
 export class AppConfig {
   autoShareCommunity?: boolean;
@@ -51,12 +47,7 @@ class AppConfigBody {
   autoShareCommunity: boolean;
   constructor(autoShareCommunity: boolean) { this.autoShareCommunity = autoShareCommunity; }
 }
-class WechatCredentialBody {
-  appid: string;
-  secret: string;
-  constructor(appid: string, secret: string) { this.appid = appid; this.secret = secret; }
-}
-interface WechatValidationWire { ok?: boolean; errcode?: number; errmsg?: string; }
+class EmptyWechatBody {}
 
 export class SettingsStore {
   async loadStyle(): Promise<StyleSettings> {
@@ -90,13 +81,39 @@ export class SettingsStore {
     return (await httpClient.patchJson(`${Api.FILES}/style/head`, authStore.bearer(), new StyleHeadBody(head))).ok();
   }
 
-  async loadWechat(): Promise<WechatSettings> {
-    const response: HttpResponse = await httpClient.get(`${Api.FILES}/download/WECHAT.json`, authStore.bearer());
-    return response.ok() ? JSON.parse(response.text) as WechatSettings : new WechatSettings();
+  async wechatBindStatus(): Promise<WechatBindStatus> {
+    const requestScope: string = authStore.storageScope();
+    const response: HttpResponse = await httpClient.get(`${Api.FILES}/wechat/bind-status`, authStore.bearer());
+    if (!response.ok()) throw new Error(`wechat bind status HTTP ${response.code}`);
+    if (requestScope !== authStore.storageScope()) throw new Error('wechat bind status account changed');
+    const status: WechatBindStatus = WechatBinding.bindStatus(response.code, response.text);
+    authStore.storeWechatBindStatusCache(WechatBinding.bindStatusCacheJson(status));
+    return status;
   }
 
-  async saveWechat(settings: WechatSettings): Promise<boolean> {
-    return (await httpClient.putJson(`${Api.FILES}/upload/WECHAT.json`, authStore.bearer(), settings)).ok();
+  cachedWechatBindStatus(): WechatBindStatus | undefined {
+    return WechatBinding.bindStatusCache(authStore.wechatBindStatusCache());
+  }
+
+  async createWechatAuthorization(): Promise<string> {
+    const response: HttpResponse = await httpClient.postJson(`${Api.FILES}/wechat/authorization`, authStore.bearer(),
+      new EmptyWechatBody());
+    return WechatBinding.authorizationUrl(response.code, response.text);
+  }
+
+  async createWechatAuthorizationPage(): Promise<WechatAuthorizationPage> {
+    const scanUrl: string = await this.createWechatAuthorization();
+    if (scanUrl.length === 0) return new WechatAuthorizationPage();
+    const response: HttpResponse = await httpClient.get(scanUrl);
+    if (!response.ok()) return new WechatAuthorizationPage();
+    return WechatBinding.authorizationPage(scanUrl, response.text);
+  }
+
+  async unbindWechat(): Promise<boolean> {
+    const success: boolean =
+      (await httpClient.postJson(`${Api.FILES}/wechat/unbind`, authStore.bearer(), new EmptyWechatBody())).ok();
+    if (success) authStore.storeWechatBindStatusCache(WechatBinding.bindStatusCacheJson(new WechatBindStatus()));
+    return success;
   }
 
   async loadConfig(): Promise<AppConfig> {
@@ -109,27 +126,6 @@ export class SettingsStore {
       new AppConfigBody(autoShareCommunity))).ok();
   }
 
-  wechatCredentialError(appid: string, secret: string): string {
-    if (!/^wx[0-9A-Za-z]{16}$/.test(appid.trim())) return 'AppID 格式不对（应以 wx 开头，共 18 位）';
-    if (!/^[0-9a-f]{32}$/.test(secret.trim())) return 'AppSecret 格式不对（应为 32 位小写十六进制）';
-    return '';
-  }
-
-  async validateWechat(appid: string, secret: string): Promise<string> {
-    try {
-      const response: HttpResponse = await httpClient.postJson(`${Api.FILES}/wechat-validate`, authStore.bearer(),
-        new WechatCredentialBody(appid.trim(), secret.trim()));
-      if (!response.ok()) return '暂时连不上验证服务，请稍后再试（配置未保存）';
-      const result: WechatValidationWire = JSON.parse(response.text) as WechatValidationWire;
-      if (result.ok === true) return '';
-      if (result.errcode === 40164) return '服务器 IP 还没生效：请把服务端 IP 加入公众号后台的 IP 白名单，保存后等一两分钟再试';
-      if (result.errcode === 40013) return 'AppID 无效，找不到这个公众号';
-      if (result.errcode === 40125) return 'AppSecret 无效';
-      if (result.errcode === 41002) return '缺少 AppID';
-      if (result.errcode === 41004) return '缺少 AppSecret';
-      return `验证失败：${result.errmsg ?? '未知错误'}`;
-    } catch (_) { return '暂时连不上验证服务，请稍后再试（配置未保存）'; }
-  }
 }
 
 export const settingsStore: SettingsStore = new SettingsStore();

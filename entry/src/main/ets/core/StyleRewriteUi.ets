@@ -1,6 +1,8 @@
 import { ArticleBody } from './ArticleBody';
 
 export class StyleRewriteUi {
+  static readonly ARTICLE_RELOAD_ATTEMPTS: number = 3;
+
   static articleStyleVersion(style: number | undefined, body: string): number | undefined {
     return style ?? ArticleBody.styleVersion(body);
   }
@@ -39,5 +41,18 @@ export class StyleRewriteUi {
   static actionLabel(styleVersion: number, generated: boolean): string {
     if (styleVersion < 0) return '选一个版本';
     return generated ? `切换到 v${styleVersion} 风格` : `用 v${styleVersion} 重写本文`;
+  }
+
+  static systemBarColor(blocking: boolean): string {
+    return blocking ? '#C8C5BF' : '#FAF6EF';
+  }
+
+  static shouldRetryArticleLoad(available: boolean, attempt: number): boolean {
+    return !available && attempt + 1 < StyleRewriteUi.ARTICLE_RELOAD_ATTEMPTS;
+  }
+
+  static articleReloadDelay(attempt: number): number {
+    if (attempt <= 0) return 0;
+    return attempt === 1 ? 150 : 350;
   }
 }
