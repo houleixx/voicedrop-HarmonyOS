@@ -1,6 +1,6 @@
 import { bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
-import { ColorMetrics, FrameNode, LengthMetrics, promptAction } from '@kit.ArkUI';
+import { ColorMetrics, FrameNode, LengthMetrics, promptAction, window } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
@@ -30,7 +30,7 @@ import { appPreferences } from '../data/AppPreferences';
 import { umengAnalytics } from '../data/UmengAnalytics';
 import { libraryStore, ShareLinkTarget, XhsPack } from '../data/LibraryStore';
 import { communityStore, CommunityShareResult, CommunityFeed, CommunityFeedState, CommunityFeedResult } from '../data/CommunityStore';
-import { settingsStore, StyleSettings, StyleHistory, StyleVersion, WechatSettings, AppConfig } from '../data/SettingsStore';
+import { settingsStore, StyleSettings, StyleHistory, StyleVersion, AppConfig } from '../data/SettingsStore';
 import { CapturedPhoto, photoService, UploadedPhoto } from '../data/PhotoService';
 import { usageStore, UsageBalance, UsageSummary, UsageSummaryRow, UsageEntry, UsageLedgerPage } from '../data/UsageStore';
 import { promptStore } from '../data/PromptStore';
@@ -110,6 +110,7 @@ interface EditSocketMessage {
   queue?: ArticleEditQueueState[];
 }
 interface PendingCommunityShareValue { articleKey: string; replyTo?: string; createdAt?: number; }
+interface WechatPublishWire { created?: number; updated?: number; }
 const RECORDING_METER_INTERVAL_MS: number = 100;
 const PARAGRAPH_EDIT_INPUT_ID: string = 'paragraph-inline-edit-input';
 
@@ -178,6 +179,7 @@ struct Index {
   @State private playbackLoading: boolean = false;
   @State private insertingPhotos: boolean = false;
   @State private xhsPreparing: boolean = false;
+  @State private wechatPublishing: boolean = false;
   @State private playbackProgress: number = 0;
   @State private playbackDuration: number = 0;
   @State private history: ArticleHistory = new ArticleHistory();
@@ -1308,6 +1310,7 @@ struct Index {
     if (generated) { await this.selectHistoryVersion(generated); promptAction.showToast({ message: `已切换到 v${styleVersion} 文风` }); return; }
     this.restyleTargetStyleVersion = styleVersion;
     this.restyleFinishing = false; this.restylePreviewActive = true;
+    await this.setRestyleSystemBars(true);
     try {
       const result: RestyleResult = await libraryStore.restyle(recording, styleVersion);
       if (this.restylePreviewActive) await this.finishRestyle(recording, result.ok, result.message());
@@ -1324,11 +1327,12 @@ struct Index {
       this.restylePreviewActive = false;
       this.restyleFinishing = false;
       this.restyleTargetStyleVersion = -1;
+      await this.setRestyleSystemBars(false);
       promptAction.showToast({ message: failureMessage });
       return;
     }
     try {
-      const updated: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
+      const updated: ArticleDoc | undefined = await this.reloadRestyledArticle(recording);
       if (this.selected?.stem() !== recording.stem()) return;
       if (updated) {
         if (this.restyleTargetStyleVersion >= 0) {
@@ -1351,7 +1355,42 @@ struct Index {
       this.restylePreviewActive = false;
       this.restyleFinishing = false;
       this.restyleTargetStyleVersion = -1;
+      await this.setRestyleSystemBars(false);
     }
+  }
+
+  private async reloadRestyledArticle(recording: Recording): Promise<ArticleDoc | undefined> {
+    let lastErrorMessage: string = '';
+    for (let attempt: number = 0; attempt < StyleRewriteUi.ARTICLE_RELOAD_ATTEMPTS; attempt++) {
+      const delay: number = StyleRewriteUi.articleReloadDelay(attempt);
+      if (delay > 0) await new Promise<void>((resolve: () => void) => setTimeout(resolve, delay));
+      try {
+        const article: ArticleDoc | undefined = await libraryStore.fetchArticle(recording);
+        if (article) return article;
+        if (!StyleRewriteUi.shouldRetryArticleLoad(false, attempt)) return undefined;
+      } catch (error) {
+        lastErrorMessage = ClientReliability.errorMessage(error as Object);
+        if (!StyleRewriteUi.shouldRetryArticleLoad(false, attempt)) throw new Error(lastErrorMessage);
+      }
+    }
+    if (lastErrorMessage.length > 0) throw new Error(lastErrorMessage);
+    return undefined;
+  }
+
+  private async setRestyleSystemBars(blocking: boolean): Promise<void> {
+    if (!this.context) return;
+    try {
+      const mainWindow: window.Window = await window.getLastWindow(this.context);
+      const color: string = StyleRewriteUi.systemBarColor(blocking);
+      await mainWindow.setWindowSystemBarProperties({
+        statusBarColor: color,
+        statusBarContentColor: '#2A2521',
+        isStatusBarLightIcon: false,
+        navigationBarColor: color,
+        navigationBarContentColor: '#2A2521',
+        isNavigationBarLightIcon: false
+      });
+    } catch (_) {}
   }
 
   private updateRecordingMeter(): void {
@@ -4552,18 +4591,36 @@ struct Index {
   }
 
   private async publishWechat(): Promise<void> {
-    if (!this.selected) return;
+    if (!this.selected || this.wechatPublishing) return;
+    this.wechatPublishing = true;
     try {
-      promptAction.showToast({ message: '正在发布到公众号草稿箱…' });
+      if (!(await settingsStore.wechatBindStatus()).connected) {
+        promptAction.showToast({ message: '请先连接微信公众号' });
+        this.navigateTo('wechat');
+        return;
+      }
       const response = await libraryStore.publishWechat(this.selected);
       if (response.code === 409) {
         promptAction.showToast({ message: '请先连接微信公众号' });
         this.navigateTo('wechat');
+      } else if (response.ok()) {
+        const updated: ArticleDoc | undefined = await libraryStore.fetchArticle(this.selected);
+        if (updated) this.article = updated;
+        let created: number = 0;
+        let changed: number = 0;
+        try {
+          const result: WechatPublishWire = JSON.parse(response.text) as WechatPublishWire;
+          created = result.created ?? 0;
+          changed = result.updated ?? 0;
+        } catch (_) {}
+        promptAction.showToast({ message: created === 0 && changed > 0 ? '已更新草稿' : '已到草稿箱' });
       } else {
-        promptAction.showToast({ message: response.ok() ? '已发送到公众号草稿箱' : `发布失败 HTTP ${response.code}` });
+        promptAction.showToast({ message: `发布失败 HTTP ${response.code}` });
       }
     } catch (error) {
       promptAction.showToast({ message: `发布公众号失败：${ClientReliability.errorMessage(error as Object)}` });
+    } finally {
+      this.wechatPublishing = false;
     }
   }
 
@@ -4630,7 +4687,10 @@ struct Index {
 
   @Builder
   private wechatPage() {
-    WechatSettingsPage({ onBack: () => this.navigateBack() })
+    WechatSettingsPage({
+      onBack: () => this.navigateBack(),
+      foregroundSequence: this.foregroundSequence
+    })
   }
 
   @Builder
@@ -4716,7 +4776,6 @@ struct Index {
       onContact: () => this.openSupportEmail(),
       onManual: () => this.navigateTo('manual'),
       onFeedback: () => this.navigateTo('feedback'),
-      onBooks: () => this.navigateTo('books'),
       blockedAuthorCount: $blockedAuthorCount
     })
     else Column({ space: 8 }) {
@@ -4860,6 +4919,14 @@ struct Index {
           }.padding({ left: 18, right: 18, top: 18, bottom: 28 }).backgroundColor(Color.White)
             .borderRadius({ topLeft: 22, topRight: 22 }).width('100%')
         }.width('100%').height('100%').backgroundColor('#55000000')
+      }
+      if (this.wechatPublishing) {
+        Column({ space: 12 }) {
+          LoadingProgress().width(30).height(30).color(Theme.WHITE)
+          Text('正在发布…').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.WHITE)
+        }
+          .padding({ left: 28, right: 28, top: 20, bottom: 20 })
+          .backgroundColor('#CC2A2521').borderRadius(14).zIndex(220)
       }
       if (this.showStyleRewrite) {
         Column() {

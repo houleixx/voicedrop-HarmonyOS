@@ -101,9 +101,15 @@ export class AuthStore {
   /** Last successful home-list snapshots. Keys are account-scoped, never raw tokens. */
   libraryListCache(): string { return String(this.store?.getSync(this.homeCacheKey('libraryList'), '') ?? ''); }
   communityFeedCache(): string { return String(this.store?.getSync(this.homeCacheKey('communityFeed'), '') ?? ''); }
+  wechatBindStatusCache(): string {
+    return String(this.store?.getSync(this.homeCacheKey('wechatBindStatus'), '') ?? '');
+  }
 
   storeLibraryListCache(json: string): void { this.store?.putSync(this.homeCacheKey('libraryList'), json); this.store?.flush(); }
   storeCommunityFeedCache(json: string): void { this.store?.putSync(this.homeCacheKey('communityFeed'), json); this.store?.flush(); }
+  storeWechatBindStatusCache(json: string): void {
+    this.store?.putSync(this.homeCacheKey('wechatBindStatus'), json); this.store?.flush();
+  }
   clearLibraryListCache(): void { this.store?.deleteSync(this.homeCacheKey('libraryList')); this.store?.flush(); }
   clearCommunityFeedCache(): void { this.store?.deleteSync(this.homeCacheKey('communityFeed')); this.store?.flush(); }
 

@@ -15,7 +15,6 @@ export struct AboutPage {
   onContact: () => void = () => {};
   onManual: () => void = () => {};
   onFeedback: () => void = () => {};
-  onBooks: () => void = () => {};
   @Link blockedAuthorCount: number;
 
   @Builder
@@ -93,19 +92,6 @@ export struct AboutPage {
             .border({ width: 0.5, color: Theme.BORDER })
             .width('100%')
             .margin({ top: 10 })
-          Text('实验性功能')
-            .fontSize(12)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(Theme.SECONDARY)
-            .margin({ top: 22, bottom: 8, left: 4 })
-            .width('100%')
-          Column() {
-            this.row('写书', '给一个种子，让 AI 写成一本书', RI.QUILL_PEN, this.onBooks)
-          }
-            .backgroundColor(Theme.CARD)
-            .borderRadius(14)
-            .border({ width: 0.5, color: Theme.BORDER })
-            .width('100%')
         }
           .padding({ left: 16, right: 16, top: 10, bottom: 32 })
           .width('100%')

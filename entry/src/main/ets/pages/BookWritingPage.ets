@@ -1,7 +1,7 @@
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
-import { bookWritingService, BookWritingService } from '../data/BookWritingService';
+import { bookWritingService, BookWritingResult } from '../data/BookWritingService';
 
 @Component
 export struct BookWritingPage {
@@ -17,10 +17,10 @@ export struct BookWritingPage {
     const value: string = this.seed.trim().substring(0, 20000);
     if (value.length === 0 || this.sending || this.submitted) return;
     this.sending = true; this.message = ''; this.error = false;
-    let code: number = 0;
-    try { code = await bookWritingService.start(value); } catch (_) {}
-    this.sending = false; this.submitted = code === 202; this.error = code !== 202;
-    this.message = BookWritingService.message(code);
+    let result: BookWritingResult = new BookWritingResult(0, false, '没连上服务器，请检查网络后重试。');
+    try { result = await bookWritingService.start(value); } catch (_) {}
+    this.sending = false; this.submitted = result.accepted; this.error = !result.accepted;
+    this.message = result.message;
   }
 
   build() {
@@ -28,7 +28,7 @@ export struct BookWritingPage {
       PageHeader({ title: '写书', onBack: this.onBack })
       Scroll() {
         Column({ space: 14 }) {
-          Text('给一个词、一句话，或贴一整篇文章。提交后可以关闭 App，服务器会继续写，通常 10–30 分钟后出现在公开书架。')
+          Text('给一个词、一句话，或贴一整篇文章。每本书消耗 320 算力；提交后可以关闭 App，服务器会继续写，通常 10–30 分钟后出现在公开书架。')
             .fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY).width('100%')
           Row() {
             Row({ space: 8 }) {

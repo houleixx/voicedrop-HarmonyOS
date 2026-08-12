@@ -32,7 +32,13 @@ export default function iosUpstreamFeaturesTest() {
       expect(new FeedbackBody(longText, ' 名字 ', ' HarmonyOS ').text.length).assertEqual(2000);
       expect(new BookSeedBody(longText).seed.length).assertEqual(20000);
       expect(BookWritingService.message(202).includes('开始写了')).assertTrue();
-      expect(BookWritingService.message(401).includes('至少一篇文章')).assertTrue();
+      expect(BookWritingService.message(401).includes('身份校验')).assertTrue();
+      expect(BookWritingService.message(401).includes('文章')).assertFalse();
+      const insufficient = BookWritingService.result(402,
+        '{"error":"no-credit","need_suanli":320,"suanli":12.5}');
+      expect(insufficient.accepted).assertFalse();
+      expect(insufficient.message.includes('要 320 算力')).assertTrue();
+      expect(insufficient.message.includes('现在有 12.5')).assertTrue();
     });
 
     it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {
