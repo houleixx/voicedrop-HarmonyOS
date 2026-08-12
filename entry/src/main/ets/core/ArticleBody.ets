@@ -16,14 +16,63 @@ interface ArticleTextLineMatch {
   lineCount: number;
 }
 
+export type MarkdownBlockKind = 'h1' | 'h2' | 'h3' | 'bullet' | 'ordered' | 'quote' | 'divider' | 'plain';
+
 export class ArticleBody {
+  static markdownBlockKind(text: string): MarkdownBlockKind {
+    const line: string = text.trim();
+    const heading: RegExpMatchArray | null = line.match(/^(#{1,6})[ \t]+.*$/);
+    if (heading) {
+      if (heading[1].length === 1) return 'h1';
+      if (heading[1].length === 2) return 'h2';
+      return 'h3';
+    }
+    if (line.startsWith('#')) return 'plain';
+
+    const solid: string = line.replace(/ /g, '');
+    if (solid.length >= 3 && /^(-+|\*+|_+)$/.test(solid)) return 'divider';
+    if (/^[-*+][ \t]+.*$/.test(line)) return 'bullet';
+
+    const ordered: RegExpMatchArray | null = line.match(/^(\d{1,3})([.)、])([ \t]*)(.*)$/);
+    if (ordered && ((ordered[3].length > 0) ||
+      (ordered[2] === '、' && ordered[4].length > 0))) return 'ordered';
+    if (line.startsWith('>')) return 'quote';
+    return 'plain';
+  }
+
   static markdownHeadingLevel(text: string): number {
-    const match: RegExpMatchArray | null = text.trim().match(/^(#{1,3})\s+\S/);
-    return match ? match[1].length : 0;
+    const kind: MarkdownBlockKind = ArticleBody.markdownBlockKind(text);
+    if (kind === 'h1') return 1;
+    if (kind === 'h2') return 2;
+    return kind === 'h3' ? 3 : 0;
   }
 
   static markdownDisplayText(text: string): string {
-    return text.trim().replace(/^#{1,3}\s+/, '');
+    const line: string = text.trim();
+    const kind: MarkdownBlockKind = ArticleBody.markdownBlockKind(line);
+    if (kind === 'h1' || kind === 'h2' || kind === 'h3') return line.replace(/^#{1,6}[ \t]+/, '').trim();
+    if (kind === 'divider') return '';
+    if (kind === 'bullet') return line.replace(/^[-*+][ \t]+/, '').trim();
+    if (kind === 'ordered') return line.replace(/^\d{1,3}[.)、][ \t]*/, '').trim();
+    if (kind === 'quote') {
+      let content: string = line;
+      while (content.startsWith('>')) content = content.substring(1).replace(/^ +/, '');
+      return content.trim();
+    }
+    return line;
+  }
+
+  static markdownOrderedMarker(text: string): string {
+    const match: RegExpMatchArray | null = text.trim().match(/^(\d{1,3})[.)、]/);
+    return ArticleBody.markdownBlockKind(text) === 'ordered' && match ? match[1] : '';
+  }
+
+  static markdownRenderedText(text: string): string {
+    const kind: MarkdownBlockKind = ArticleBody.markdownBlockKind(text);
+    const content: string = ArticleBody.markdownDisplayText(text);
+    if (kind === 'bullet') return `•  ${content}`;
+    if (kind === 'ordered') return `${ArticleBody.markdownOrderedMarker(text)}.  ${content}`;
+    return content;
   }
 
   static blocks(body: string): ArticleBlock[] {

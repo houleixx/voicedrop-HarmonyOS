@@ -94,7 +94,7 @@ struct NameEditorDialog {
   }
 }
 
-export type SettingsTarget = 'account' | 'usage' | 'style' | 'prompts' | 'wechat' | 'books' | 'about';
+export type SettingsTarget = 'account' | 'usage' | 'style' | 'prompts' | 'wechat' | 'about';
 
 @Component
 export struct SettingsPage {
@@ -278,11 +278,6 @@ export struct SettingsPage {
                 .selectedColor(Theme.ACCENT).onChange(this.onAutoShareChange)
             }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
               .alignItems(VerticalAlign.Center).width('100%')
-          }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
-          this.section('实验功能')
-          Column() {
-            this.row('写书', '每本 320 算力 · 一颗种子长成一本书', 'books', RI.BOOK_OPEN,
-              Theme.TILE_NEUTRAL, Theme.SECONDARY)
           }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')
           this.section('其他')
           Column() {

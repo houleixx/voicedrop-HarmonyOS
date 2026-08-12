@@ -1,6 +1,7 @@
 /** Shared visual language mirrored from the Android client. */
 export class VoiceDropTheme {
   static readonly BG: string = '#FAF6EF';
+  static readonly BOOK_READER_BG: string = '#FBF6EB';
   static readonly COMMUNITY_BG: string = '#F3EFE7';
   static readonly CARD: string = '#FFFFFF';
   static readonly BORDER: string = '#ECE3D5';

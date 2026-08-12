@@ -43,6 +43,13 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
+  bookShelfCache(): string { return String(this.store?.getSync('booksShelfCache', '') ?? ''); }
+
+  async saveBookShelfCache(value: string): Promise<void> {
+    this.store?.putSync('booksShelfCache', value);
+    await this.store?.flush();
+  }
+
   referralDone(): boolean { return Boolean(this.store?.getSync('referralDone', false) ?? false); }
 
   referralWithinWindow(): boolean {

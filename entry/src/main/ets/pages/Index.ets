@@ -51,6 +51,8 @@ import { RealtimeInterviewer } from '../audio/RealtimeInterviewer';
 import { ArticleEditSession, EditAnchor, EditImage, StatusSession, LibraryCommandSession, CommandRef } from '../net/AgentSocket';
 import { AboutPage } from './AboutPage';
 import { BookWritingPage } from './BookWritingPage';
+import { BooksShelfPage, BookReaderPage } from './BooksShelfPage';
+import { ShelfBook } from '../data/BooksService';
 import { FeedbackPage } from './FeedbackPage';
 import { HelpManualPage } from './HelpManualPage';
 import { AccountPage } from './AccountPage';
@@ -135,6 +137,7 @@ struct Index {
   @StorageLink('wechatSequence') @Watch('onWechatSequence') private wechatSequence: number = 0;
   @StorageLink('foregroundSequence') @Watch('onForegroundSequence') private foregroundSequence: number = 0;
   @State private tab: number = 0;
+  @State private selectedBook: ShelfBook = new ShelfBook();
   @State private recordings: Recording[] = [];
   @State private deletedRecordingNames: string[] = [];
   @State private posts: CommunityPost[] = [];
@@ -332,7 +335,19 @@ struct Index {
     return paths.length > 0 && paths[paths.length - 1] === 'communityDetail';
   }
 
+  private updateStatusBarColor(color: string): void {
+    if (!this.context) return;
+    window.getLastWindow(this.context).then((mainWindow: window.Window) => {
+      mainWindow.setWindowSystemBarProperties({
+        statusBarColor: color,
+        statusBarContentColor: Theme.INK,
+        isStatusBarLightIcon: false
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+
   private handleDestinationHidden(routeName: string): void {
+    if (routeName === 'bookReader') this.updateStatusBarColor(Theme.BG);
     if (routeName === 'blocked') {
       // Wait for NavPathStack to finish popping the blocked page before
       // replacing the cached About page with one bound to the latest count.
@@ -694,6 +709,7 @@ struct Index {
     }
     if (!route || route === 'recordings' || route === 'home') { this.navigateHome(); this.tab = 0; return; }
     if (route === 'community') { this.navigateHome(); this.tab = 1; await this.refreshCommunity(); return; }
+    if (route === 'books' || route === 'library') { this.navigateHome(); this.tab = 2; return; }
     if (route === 'settings' || route === 'setting') { this.navigateTo('settings'); return; }
     if (route === 'usage' || route === 'billing') { this.navigateTo('usage'); return; }
     if (route === 'prompt' || route === 'prompt-import') {
@@ -1659,13 +1675,14 @@ struct Index {
       Row() {
         Image($rawfile('voicedrop-brand-waveform.svg'))
           .width(19.5).height(16).objectFit(ImageFit.Fill)
-        Text(title).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ left: 4 })
+        Text(title).fontSize(14).fontWeight(FontWeight.Medium).letterSpacing(1)
+          .fontColor(Theme.INK).margin({ left: 8 })
         Blank()
         Button({ type: ButtonType.Normal }) { RemixIcon({ glyph: RI.SETTINGS, iconSize: 21, color: Theme.SECONDARY }) }
           .backgroundColor(Theme.CARD).width(40).height(40)
           .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11).clip(true)
           .onClick(() => this.navigateTo('settings'))
-      }.height(52).width('100%').padding({ left: 18, right: 12, top: 8 })
+      }.height(52).width('100%').padding({ left: 22, right: 18, top: 6, bottom: 10 })
     }
   }
 
@@ -1787,42 +1804,56 @@ struct Index {
   }
 
   @Builder
+  private homeTabs() {
+    Scroll() {
+      Row({ space: 20 }) {
+        Column({ space: 5 }) {
+          Text('我的录音').fontSize(20).fontWeight(FontWeight.Medium)
+            .fontColor(this.tab === 0 && this.selectedTag.length === 0 ? Theme.INK : '#B8AE9E')
+          Blank().width(78).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
+            .opacity(this.tab === 0 && this.selectedTag.length === 0 ? 1 : 0)
+        }.onClick(() => { this.selectedTag = ''; this.tab = 0; })
+        Column({ space: 5 }) {
+          Text('VD社区').fontSize(20).fontWeight(FontWeight.Medium)
+            .fontColor(this.tab === 1 ? Theme.INK : '#B8AE9E')
+          Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
+            .opacity(this.tab === 1 ? 1 : 0)
+        }.onClick(() => {
+          this.selectedTag = '';
+          this.tab = 1;
+          this.refreshCommunity(false).catch(() => {});
+        })
+        Column({ space: 5 }) {
+          Text('写书').fontSize(20).fontWeight(FontWeight.Medium)
+            .fontColor(this.tab === 2 ? Theme.INK : '#B8AE9E')
+          Blank().width(41).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
+            .opacity(this.tab === 2 ? 1 : 0)
+        }.onClick(() => { this.selectedTag = ''; this.tab = 2; })
+        ForEach(this.homeTags(), (tag: string) => {
+          Text(tag)
+            .fontSize(20).fontWeight(FontWeight.Medium)
+            .fontColor(this.tab === 0 && this.selectedTag === tag ? Theme.INK : '#B8AE9E')
+            .maxLines(1)
+            .padding({ bottom: 8 })
+            .onClick(() => { this.selectedTag = tag; this.tab = 0; })
+        }, (tag: string) => tag)
+      }
+        .constraintSize({ minWidth: '100%' })
+        .justifyContent(FlexAlign.Start)
+        .padding({ left: 22, right: 22 })
+    }
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .width('100%')
+      .margin({ bottom: 10 })
+  }
+
+  @Builder
   private libraryPage() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
       this.topBar('VoiceDrop 口述')
-      Scroll() {
-        Row() {
-          Text('我的录音')
-            .fontSize(20).fontWeight(FontWeight.Bold)
-            .fontColor(this.selectedTag.length === 0 ? Theme.INK : Theme.SECONDARY)
-            .padding({ left: 0, right: 14, top: 2, bottom: 6 })
-            .onClick(() => this.selectedTag = '')
-          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
-            .padding({ left: 14, right: 14, top: 2, bottom: 6 }).onClick(() => {
-              this.selectedTag = '';
-              this.tab = 1;
-              this.refreshCommunity(false).catch(() => {});
-            })
-          ForEach(this.homeTags(), (tag: string) => {
-            Text(tag)
-              .fontSize(20).fontWeight(FontWeight.Bold)
-              .fontColor(this.selectedTag === tag ? Theme.INK : Theme.SECONDARY)
-              .maxLines(1)
-              .padding({ left: 14, right: 14, top: 2, bottom: 6 })
-              .onClick(() => this.selectedTag = tag)
-          }, (tag: string) => tag)
-        }
-          .constraintSize({ minWidth: '100%' })
-          .justifyContent(FlexAlign.Start)
-          .padding({ left: 18, right: 18 })
-      }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .width('100%')
-      Row() { Blank().width(78).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2) }
-        .width('100%').padding({ left: 18 }).margin({ bottom: 10 })
-        .opacity(this.selectedTag.length === 0 ? 1 : 0)
+      this.homeTabs()
       if (this.loading) {
         this.pageLoadingState()
         Blank()
@@ -2492,36 +2523,7 @@ struct Index {
   private communityPage() {
     Column() {
       this.topBar('VoiceDrop 口述')
-      Scroll() {
-        Row() {
-          Text('我的录音').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
-            .padding({ left: 0, right: 14, top: 2, bottom: 6 }).onClick(() => {
-              this.selectedTag = '';
-              this.tab = 0;
-            })
-          Text('VD社区').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-            .padding({ left: 14, right: 14, top: 2, bottom: 6 })
-          ForEach(this.homeTags(), (tag: string) => {
-            Text(tag)
-              .fontSize(20).fontWeight(FontWeight.Bold)
-              .fontColor(Theme.SECONDARY)
-              .maxLines(1)
-              .padding({ left: 14, right: 14, top: 2, bottom: 6 })
-              .onClick(() => {
-                this.selectedTag = tag;
-                this.tab = 0;
-              })
-          }, (tag: string) => tag)
-        }
-          .constraintSize({ minWidth: '100%' })
-          .justifyContent(FlexAlign.Start)
-          .padding({ left: 18, right: 18 })
-      }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .width('100%')
-      Row() { Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2) }
-        .width('100%').padding({ left: 124 }).margin({ bottom: 1 })
+      this.homeTabs()
       if (this.communitySearching) {
         Row({ space: 10 }) {
           TextInput({ text: this.communitySearchQuery, placeholder: '搜索标题、作者或内容' })
@@ -2592,7 +2594,7 @@ struct Index {
       .height('100%')
       .justifyContent(FlexAlign.Start)
       .alignItems(HorizontalAlign.Start)
-      .backgroundColor(Theme.COMMUNITY_BG)
+      .backgroundColor(Theme.BG)
   }
 
   private async openCommunityPost(post: CommunityPost): Promise<void> {
@@ -2908,12 +2910,32 @@ struct Index {
           }
             .width('100%')
             .padding({ left: 4, right: 4 })
+        } else if (ArticleBody.markdownBlockKind(block.value) === 'divider') {
+          Stack({ alignContent: Alignment.TopStart }) {
+            Divider().strokeWidth(1).color(Theme.BORDER).margin({ top: 10, bottom: 10 })
+            if (this.showArticleLines) {
+              Text(`${lineNumber}`)
+                .fontSize(11).lineHeight(28).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+                .width(20).textAlign(TextAlign.End).position({ x: -24, y: 0 })
+            }
+          }
+            .width('100%').clip(false)
+            .gesture(LongPressGesture().onAction((event: GestureEvent) => {
+              if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
+            }))
         } else if (ArticleBody.markdownHeadingLevel(block.value) > 0) {
           this.articleHeadingBlock(block, true, blockIndex, lineNumber)
         } else {
           Stack({ alignContent: Alignment.TopStart }) {
-            Text(block.value).fontSize(16).lineHeight(28).fontColor(Theme.INK)
-              .width('100%').padding({ bottom: 8 }).copyOption(CopyOptions.LocalDevice)
+            Text(ArticleBody.markdownRenderedText(block.value)).fontSize(16).lineHeight(28)
+              .fontColor(ArticleBody.markdownBlockKind(block.value) === 'quote' ? Theme.SECONDARY : Theme.INK)
+              .width('100%')
+              .padding({ left: ArticleBody.markdownBlockKind(block.value) === 'quote' ? 13 : 0, bottom: 8 })
+              .border({
+                width: { left: ArticleBody.markdownBlockKind(block.value) === 'quote' ? 3 : 0 },
+                color: '#73D8593B', radius: 2
+              })
+              .copyOption(CopyOptions.LocalDevice)
             if (this.showArticleLines) {
               Text(`${lineNumber}`)
                 .fontSize(11).lineHeight(28).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
@@ -2925,15 +2947,21 @@ struct Index {
               if (!this.paragraphEditing) this.openPromptMenu(block, blockIndex, lineNumber, event);
             }))
         }
+      } else if (ArticleBody.markdownBlockKind(block.value) === 'divider') {
+        Divider().strokeWidth(1).color(Theme.BORDER).margin({ top: 10, bottom: 10 })
       } else if (ArticleBody.markdownHeadingLevel(block.value) > 0) {
         this.articleHeadingBlock(block, false, blockIndex, lineNumber)
       } else {
-        Text(block.value)
+        Text(ArticleBody.markdownRenderedText(block.value))
           .fontSize(16)
           .lineHeight(28)
-          .fontColor(Theme.INK)
+          .fontColor(ArticleBody.markdownBlockKind(block.value) === 'quote' ? Theme.SECONDARY : Theme.INK)
           .width('100%')
-          .padding({ bottom: 8 })
+          .padding({ left: ArticleBody.markdownBlockKind(block.value) === 'quote' ? 13 : 0, bottom: 8 })
+          .border({
+            width: { left: ArticleBody.markdownBlockKind(block.value) === 'quote' ? 3 : 0 },
+            color: '#73D8593B', radius: 2
+          })
           .copyOption(CopyOptions.LocalDevice)
       }
     }
@@ -4764,8 +4792,10 @@ struct Index {
     else if (page === 'feedback') FeedbackPage({ onBack: () => this.navigateBack() })
     else if (page === 'books') BookWritingPage({
       onBack: () => this.navigateBack(),
-      onOpenShelf: () => this.openExternalUrl('https://voicedrop.cn/books/')
+      onOpenShelf: () => { this.navigateBack(); this.tab = 2; },
+      onInvite: () => this.shareInvite()
     })
+    else if (page === 'bookReader') BookReaderPage({ book: this.selectedBook, onBack: () => this.navigateBack() })
     else if (page === 'about') AboutPage({
       onBack: () => this.navigateBack(),
       onPrivacy: () => this.navigateTo('privacy'),
@@ -4795,18 +4825,29 @@ struct Index {
         .justifyContent(FlexAlign.Start)
         .alignItems(HorizontalAlign.Start)
         .padding({ top: this.safeAreaTop() })
-        .backgroundColor(Theme.BG)
+        .backgroundColor(routeName === 'bookReader' ? Theme.BOOK_READER_BG : Theme.BG)
     }
       .hideTitleBar(true)
       // Keep NavDestination's default back handling so the system back gesture
       // and the page header both pop the same native stack.
+      .onShown(() => {
+        if (routeName === 'bookReader') this.updateStatusBarColor(Theme.BOOK_READER_BG);
+      })
       .onHidden(() => this.handleDestinationHidden(routeName))
   }
 
   @Builder
   private homeRoot() {
     if (this.tab === 0) this.libraryPage()
-    else this.communityPage()
+    else if (this.tab === 1) this.communityPage()
+    else Column() {
+      this.topBar('VoiceDrop 口述')
+      this.homeTabs()
+      BooksShelfPage({
+        onWrite: () => this.navigateTo('books'),
+        onRead: (book: ShelfBook) => { this.selectedBook = book; this.navigateTo('bookReader'); }
+      }).layoutWeight(1)
+    }.width('100%').height('100%')
   }
 
   build() {
@@ -4820,7 +4861,7 @@ struct Index {
           .justifyContent(FlexAlign.Start)
           .alignItems(HorizontalAlign.Start)
           .padding({ top: this.safeAreaTop() })
-          .backgroundColor(this.tab === 1 ? Theme.COMMUNITY_BG : Theme.BG)
+          .backgroundColor(Theme.BG)
       }
         .width('100%')
         .height('100%')
