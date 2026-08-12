@@ -28,6 +28,28 @@ export default function articleBodyTest() {
       expect(ArticleBody.markdownDisplayText('正文里的 # 号')).assertEqual('正文里的 # 号');
     });
 
+    it('classifiesAllSupportedBlockMarkdownWithoutShowingMarkers', 0, () => {
+      expect(ArticleBody.markdownBlockKind('# 一级')).assertEqual('h1');
+      expect(ArticleBody.markdownBlockKind('## 二级')).assertEqual('h2');
+      expect(ArticleBody.markdownBlockKind('###### 六级')).assertEqual('h3');
+      expect(ArticleBody.markdownBlockKind('- 条目')).assertEqual('bullet');
+      expect(ArticleBody.markdownBlockKind('12) 条目')).assertEqual('ordered');
+      expect(ArticleBody.markdownBlockKind('>> 引用')).assertEqual('quote');
+      expect(ArticleBody.markdownBlockKind('- - -')).assertEqual('divider');
+      expect(ArticleBody.markdownDisplayText('- 条目')).assertEqual('条目');
+      expect(ArticleBody.markdownDisplayText('12) 条目')).assertEqual('条目');
+      expect(ArticleBody.markdownDisplayText('>> 引用')).assertEqual('引用');
+    });
+
+    it('doesNotMisclassifyCommonMarkdownLookalikes', 0, () => {
+      const samples: string[] = ['#话题', '####### 太深', '-负号', '2026. 年份', '1.5 倍速', '-*-'];
+      let kinds: string = '';
+      samples.forEach((value: string) => {
+        kinds += `${kinds.length > 0 ? ',' : ''}${ArticleBody.markdownBlockKind(value)}`;
+      });
+      expect(kinds).assertEqual('plain,plain,plain,plain,plain,plain');
+    });
+
     it('findsTheFirstPhotoAcrossArticlesLikeAndroidRecordingRows', 0, () => {
       const key: string | undefined = ArticleBody.firstArticlePhotoKey([
         { title: '没有图片', body: '只有正文' },

@@ -7,6 +7,7 @@ interface InviteLinkWire {
   name?: string;
   suanliInviter?: number;
   suanliFriend?: number;
+  suanliFeedAuthor?: number;
 }
 interface ClaimWire { attributed?: boolean; reason?: string; }
 class ClaimBody {
@@ -20,8 +21,10 @@ export class InviteLink {
   name: string;
   suanliInviter: number;
   suanliFriend: number;
-  constructor(url: string, name: string, suanliInviter: number, suanliFriend: number) {
+  suanliFeedAuthor: number;
+  constructor(url: string, name: string, suanliInviter: number, suanliFriend: number, suanliFeedAuthor: number = 0) {
     this.url = url; this.name = name; this.suanliInviter = suanliInviter; this.suanliFriend = suanliFriend;
+    this.suanliFeedAuthor = suanliFeedAuthor;
   }
 }
 
@@ -33,7 +36,7 @@ export class ReferralService {
       const wire: InviteLinkWire = JSON.parse(response.text) as InviteLinkWire;
       const url: string = (wire.url ?? '').trim();
       return url.length > 0 ? new InviteLink(url, (wire.name ?? '').trim(),
-        wire.suanliInviter ?? 0, wire.suanliFriend ?? 0) : undefined;
+        wire.suanliInviter ?? 0, wire.suanliFriend ?? 0, wire.suanliFeedAuthor ?? 0) : undefined;
     } catch (_) { return undefined; }
   }
 

@@ -7,6 +7,7 @@ import {
   ManualSectionSelection
 } from '../../../main/ets/core/ManualMarkdown';
 import { BookSeedBody, BookWritingService } from '../../../main/ets/data/BookWritingService';
+import { BooksService } from '../../../main/ets/data/BooksService';
 import { FeedbackBody } from '../../../main/ets/data/SettingsStore';
 import { CommunityPost } from '../../../main/ets/model/Models';
 
@@ -39,6 +40,19 @@ export default function iosUpstreamFeaturesTest() {
       expect(insufficient.accepted).assertFalse();
       expect(insufficient.message.includes('要 320 算力')).assertTrue();
       expect(insufficient.message.includes('现在有 12.5')).assertTrue();
+      expect(BookWritingService.shouldLoadInvite(undefined)).assertFalse();
+      expect(BookWritingService.shouldLoadInvite(320)).assertFalse();
+      expect(BookWritingService.shouldLoadInvite(500)).assertFalse();
+      expect(BookWritingService.shouldLoadInvite(319.9)).assertTrue();
+      expect(BookWritingService.shortfall(319.9)).assertEqual(1);
+    });
+
+    it('parsesCurrentIosBookShelfContract', 0, () => {
+      const books = new BooksService().parse('{"books":[{"slug":"a-book","main":"主标题","sub":"副标题","cover":true,"chapters":7},{}]}');
+      expect(books.length).assertEqual(1);
+      expect(books[0].main).assertEqual('主标题');
+      expect(books[0].chapters).assertEqual(7);
+      expect(books[0].readerUrl()).assertEqual('https://voicedrop.cn/books/a-book/');
     });
 
     it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {
