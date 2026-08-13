@@ -1729,10 +1729,29 @@ struct Index {
     return `recording-swipe-${recordingName}`;
   }
 
-  private recordingCoverFullKey(recording: Recording): string {
-    const key: string = recording.coverPhotoKey.trim().replace(/^\/+/, '');
+  private recordingPhotoFullKey(relativeKey: string): string {
+    const key: string = relativeKey.trim().replace(/^\/+/, '');
     if (key.length === 0 || key.startsWith('users/')) return key;
     return `${authStore.storageScope()}${key}`;
+  }
+
+  private recordingDedicatedCoverFullKey(recording: Recording): string {
+    return recording.hasArticles ? this.recordingPhotoFullKey(recording.coverJpgKey()) : '';
+  }
+
+  private recordingFallbackCoverFullKey(recording: Recording): string {
+    return this.recordingPhotoFullKey(recording.coverPhotoKey);
+  }
+
+  private recordingCoverFullKey(recording: Recording): string {
+    const dedicated: string = this.recordingDedicatedCoverFullKey(recording);
+    if (dedicated.length > 0 && !this.recordingPhotoFailureKeys.includes(dedicated)) return dedicated;
+    return this.recordingFallbackCoverFullKey(recording);
+  }
+
+  private recordingUsesDedicatedCover(recording: Recording): boolean {
+    const dedicated: string = this.recordingDedicatedCoverFullKey(recording);
+    return dedicated.length > 0 && this.recordingCoverFullKey(recording) === dedicated;
   }
 
   private recordingCoverSource(fullKey: string): string {
@@ -1766,9 +1785,11 @@ struct Index {
       if (this.recordingCoverFullKey(recording).length > 0 &&
         !this.recordingPhotoFailureKeys.includes(this.recordingCoverFullKey(recording))) {
         Image(this.recordingCoverSource(this.recordingCoverFullKey(recording)))
-          .width(44).height(44)
+          .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
+          .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
           .objectFit(ImageFit.Cover)
-          .borderRadius(14)
+          .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
+          .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
           .clip(true)
           .onError(() => this.fallbackRecordingCover(this.recordingCoverFullKey(recording)))
       }
@@ -1778,7 +1799,7 @@ struct Index {
           .width(24).height(24).textAlign(TextAlign.Center)
           .backgroundColor(Theme.ACCENT_STRONG).borderRadius(12)
       }
-    }.width(44).height(44).margin({ right: 14 })
+    }.width(44).height(this.recordingUsesDedicatedCover(recording) ? 60 : 44).margin({ right: 14 })
   }
 
   @Builder

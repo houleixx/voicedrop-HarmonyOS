@@ -1,7 +1,13 @@
 import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
+import { systemShare } from '@kit.ShareKit';
 import { BooksService, ShelfBook, booksService } from '../data/BooksService';
+import { WechatCommunityShare } from '../data/WechatCommunityShare';
+import { WechatBookShareTarget } from '../core/WechatBookShare';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { PageHeader } from '../ui/PageHeader';
+import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 
 @Component
 export struct BooksShelfPage {
@@ -162,35 +168,105 @@ export struct BookReaderPage {
   book: ShelfBook = new ShelfBook();
   onBack: () => void = () => {};
   @State private loading: boolean = true;
+  @State private showShareMenu: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
-  build() { Column() {
-    PageHeader({ title: this.book.main, onBack: this.onBack }).backgroundColor(Theme.BOOK_READER_BG)
-    Stack({ alignContent: Alignment.Top }) {
-      Web({ src: this.book.readerUrl(), controller: this.controller })
-        .width('100%').height('100%')
-        .javaScriptAccess(true).domStorageAccess(true).fileAccess(false).mixedMode(MixedMode.None)
-        .onPageBegin(() => this.loading = true)
-        .onPageEnd(() => this.loading = false)
-        .onErrorReceive((event: OnErrorReceiveEvent): void => {
-          if (event.request.isMainFrame()) this.loading = false;
-        })
-      if (this.loading) {
-        Column() {
-          Column({ space: 14 }) {
-            LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
-            Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
-          }
-            .height(180)
-            .margin({ top: 50 })
-            .width('100%')
-            .justifyContent(FlexAlign.Center)
-            .alignItems(HorizontalAlign.Center)
-          Blank()
-        }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
-      }
+  private async shareBook(target: WechatBookShareTarget): Promise<void> {
+    this.showShareMenu = false;
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      if (this.book.cover) promptAction.showToast({ message: '正在准备微信分享…' });
+      const message: string = await WechatCommunityShare.sendBook(context, this.book, target);
+      promptAction.showToast({ message: message });
+    } catch (error) {
+      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
     }
-      .layoutWeight(1)
-      .width('100%')
-      .backgroundColor(Theme.BOOK_READER_BG)
-  }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG) }
+  }
+  private async shareBookWithSystem(): Promise<void> {
+    this.showShareMenu = false;
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const record: systemShare.SharedRecord = {
+        utd: 'general.plain-text',
+        content: this.book.shareText(),
+        title: this.book.title || this.book.main || 'VoiceDrop 书籍'
+      };
+      const data: systemShare.SharedData = new systemShare.SharedData(record);
+      await new systemShare.ShareController(data).show(context, {
+        previewMode: systemShare.SharePreviewMode.DEFAULT
+      });
+    } catch (_) {
+      promptAction.showToast({ message: '无法打开系统分享面板' });
+    }
+  }
+  @Builder private shareMenuRow(label: string, glyph: string, target: WechatBookShareTarget) {
+    Row() {
+      Text(label).fontSize(14).fontColor(Theme.INK).layoutWeight(1)
+      RemixIcon({ glyph: glyph, iconSize: 20, color: Theme.INK })
+    }
+      .height(44).padding({ left: 14, right: 12 }).width('100%')
+      .onClick(() => this.shareBook(target))
+  }
+  @Builder private shareMenu() {
+    Column() {
+      this.shareMenuRow('微信好友', RI.WECHAT, 'friend')
+      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
+      this.shareMenuRow('朋友圈', RI.TEAM, 'timeline')
+      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
+      Row() {
+        Text('分享').fontSize(14).fontColor(Theme.INK).layoutWeight(1)
+        RemixIcon({ glyph: RI.SHARE_FORWARD, iconSize: 20, color: Theme.INK })
+      }
+        .height(44).padding({ left: 14, right: 12 }).width('100%')
+        .onClick(() => this.shareBookWithSystem())
+    }
+      .padding({ top: 1, bottom: 1 }).width(188)
+      .backgroundColor('#FCFFFFFF')
+      .border({ width: 1, color: '#ECE7DE', radius: 14 })
+      .borderRadius(14).clip(true)
+      .shadow({ radius: 12, color: '#2B2A2529', offsetX: 0, offsetY: 5 })
+  }
+  build() {
+    Stack({ alignContent: Alignment.TopEnd }) {
+      Column() {
+        PageHeader({
+          title: this.book.main,
+          actionGlyph: RI.SHARE_FORWARD,
+          actionLabel: '分享',
+          actionFilled: false,
+          onBack: () => {
+            if (this.showShareMenu) this.showShareMenu = false;
+            else this.onBack();
+          },
+          onAction: () => this.showShareMenu = !this.showShareMenu
+        }).backgroundColor(Theme.BOOK_READER_BG)
+        Stack({ alignContent: Alignment.Top }) {
+          Web({ src: this.book.readerUrl(), controller: this.controller })
+            .width('100%').height('100%')
+            .javaScriptAccess(true).domStorageAccess(true).fileAccess(false).mixedMode(MixedMode.None)
+            .onPageBegin(() => this.loading = true)
+            .onPageEnd(() => this.loading = false)
+            .onErrorReceive((event: OnErrorReceiveEvent): void => {
+              if (event.request.isMainFrame()) this.loading = false;
+            })
+          if (this.loading) {
+            Column() {
+              Column({ space: 14 }) {
+                LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
+                Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
+              }
+                .height(180).margin({ top: 50 }).width('100%')
+                .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+              Blank()
+            }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
+          }
+        }.layoutWeight(1).width('100%').backgroundColor(Theme.BOOK_READER_BG)
+      }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
+      if (this.showShareMenu) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column().width('100%').height('100%').onClick(() => this.showShareMenu = false)
+          Column() { this.shareMenu() }.margin({ top: 60, right: 10 }).zIndex(1)
+        }.width('100%').height('100%').zIndex(10)
+      }
+    }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
+  }
 }

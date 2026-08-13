@@ -30,7 +30,8 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
       return;
     }
     let message: string = '';
-    if ((response.transaction ?? '').startsWith('voicedrop-community-share-')) {
+    if ((response.transaction ?? '').startsWith('voicedrop-community-share-') ||
+      (response.transaction ?? '').startsWith('voicedrop-book-share-')) {
       if (response.errCode === ErrCode.ERR_USER_CANCEL) message = '已取消微信分享';
       else if (response.errCode !== ErrCode.ERR_OK) message = response.errStr?.trim() || '微信分享失败';
       else return;
