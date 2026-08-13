@@ -48,11 +48,14 @@ export default function iosUpstreamFeaturesTest() {
     });
 
     it('parsesCurrentIosBookShelfContract', 0, () => {
-      const books = new BooksService().parse('{"books":[{"slug":"a-book","main":"主标题","sub":"副标题","cover":true,"chapters":7},{}]}');
+      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"书名","main":"主标题","sub":"副标题","cover":true,"chapters":7,"author":"作者","createdAt":123},{}]}');
       expect(books.length).assertEqual(1);
       expect(books[0].main).assertEqual('主标题');
       expect(books[0].chapters).assertEqual(7);
+      expect(books[0].author).assertEqual('作者');
+      expect(books[0].createdAt).assertEqual(123);
       expect(books[0].readerUrl()).assertEqual('https://voicedrop.cn/books/a-book/');
+      expect(books[0].shareText()).assertEqual('《书名》 — 作者\nhttps://voicedrop.cn/books/a-book/');
     });
 
     it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {

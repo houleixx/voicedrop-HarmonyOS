@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { RecordingName } from '../../../main/ets/core/RecordingName';
+import { Recording } from '../../../main/ets/model/Models';
 
 export default function recordingNameTest() {
   describe('RecordingName', () => {
@@ -11,6 +12,16 @@ export default function recordingNameTest() {
     it('clampsNegativePhotoOffsets', 0, () => {
       expect(RecordingName.photoKey('2026-07-26-102030', -5, 'abc'))
         .assertEqual('photos/2026-07-26-102030/0-abc.jpg');
+    });
+
+    it('createsDedicatedArticleCoverKeys', 0, () => {
+      expect(RecordingName.coverKey('2026-08-13-091500'))
+        .assertEqual('photos/2026-08-13-091500/cover.jpg');
+      const recording: Recording = new Recording({
+        name: 'VoiceDrop-2026-08-13-091500-3m20s-Wed-Morning-Shanghai.m4a',
+        hasArticles: true
+      });
+      expect(recording.coverJpgKey()).assertEqual('photos/2026-08-13-091500/cover.jpg');
     });
 
     it('formatsRecordingDateAndTimeForLibraryRows', 0, () => {

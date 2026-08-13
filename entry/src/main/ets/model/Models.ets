@@ -44,6 +44,10 @@ export class Recording {
   }
 
   stem(): string { return RecordingName.stem(this.name); }
+  coverJpgKey(): string {
+    const parsed = RecordingName.parse(this.name);
+    return parsed ? RecordingName.coverKey(parsed.sessionTs) : '';
+  }
   articleKey(): string { return `articles/${this.stem()}.json`; }
   srtKey(): string { return `articles/${this.stem()}.srt`; }
   emptyKey(): string { return `articles/${this.stem()}.empty`; }

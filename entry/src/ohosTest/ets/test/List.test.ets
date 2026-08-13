@@ -28,6 +28,7 @@ import communityShareUiTest from './CommunityShareUi.test';
 import xhsCardLayoutTest from './XhsCardLayout.test';
 import iosUpstreamFeaturesTest from './IosUpstreamFeatures.test';
 import wechatBindingTest from './WechatBinding.test';
+import wechatBookShareTest from './WechatBookShare.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -60,4 +61,5 @@ export default function testsuite() {
   xhsCardLayoutTest();
   iosUpstreamFeaturesTest();
   wechatBindingTest();
+  wechatBookShareTest();
 }

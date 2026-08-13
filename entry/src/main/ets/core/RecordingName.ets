@@ -31,6 +31,10 @@ export class RecordingName {
     return `photos/${sessionTimestamp}/${Math.max(0, Math.floor(offsetSeconds))}-${tag}.jpg`;
   }
 
+  static coverKey(sessionTimestamp: string): string {
+    return `photos/${sessionTimestamp}/cover.jpg`;
+  }
+
   static parse(name: string): ParsedRecordingName | undefined {
     const stem: string = RecordingName.stem(name);
     const match: RegExpMatchArray | null = stem.match(/^VoiceDrop-(\d{4}-\d{2}-\d{2}-\d{6})-(\d+m\d+s)-([A-Za-z]+)-([A-Za-z]+)(?:-(.+))?$/);
