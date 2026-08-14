@@ -104,6 +104,7 @@ export struct SettingsPage {
   onAutoShareChange: (value: boolean) => void = () => {};
   onExport: () => void = () => {};
   wechatAuthenticated: boolean = false;
+  accountShortCode: string = '';
   autoShareCommunity: boolean = false;
   savingAutoShare: boolean = false;
   preparingInvite: boolean = false;
@@ -168,13 +169,16 @@ export struct SettingsPage {
 
   @Builder
   private row(title: string, subtitle: string, target: SettingsTarget, glyph: string,
-    tileColor: string, iconColor: string) {
+    tileColor: string, iconColor: string, trailingText: string = '') {
     Row({ space: 12 }) {
       this.settingIcon(glyph, tileColor, iconColor)
       Column({ space: 2 }) {
         Text(title).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
         Text(subtitle).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+      if (trailingText.length > 0) {
+        Text(trailingText).fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
+      }
       RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
     }
       .constraintSize({ minHeight: 68 })
@@ -237,8 +241,8 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 10 }) {
           Column() {
-            this.row('账户', this.wechatAuthenticated ? '已登录微信账号' : '无需登录 · 匿名 ID 已保存在本机',
-              'account', RI.USER, Theme.INK, Theme.WHITE)
+            this.row('账户', this.wechatAuthenticated ? '已登录微信账号' : '匿名 ID 保存在本机',
+              'account', RI.USER, Theme.INK, Theme.WHITE, this.accountShortCode)
             this.divider()
             this.row('算力', '余额与消耗明细', 'usage', RI.FLASHLIGHT, Theme.AMBER_BG, Theme.AMBER)
           }.backgroundColor(Theme.CARD).borderRadius(14).border({ width: 0.5, color: Theme.BORDER }).width('100%')

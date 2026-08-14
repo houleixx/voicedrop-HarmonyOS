@@ -14,6 +14,16 @@ export default function accountIdentityTest() {
       expect(AccountIdentity.maskedToken('anon_short')).assertEqual('anon_short');
     });
 
+    it('usesTheFirstSixAnonymousIdCharactersForDeviceLinking', 0, () => {
+      expect(AccountIdentity.shortCodeFromAccountId('anon-7d6eeb1a3887c808')).assertEqual('7D6EEB');
+      expect(AccountIdentity.shortCodeFromAccountId('wechat-current')).assertEqual('');
+    });
+
+    it('hidesTheAnonymousShortCodeWhileWechatIsAuthenticated', 0, () => {
+      expect(AccountIdentity.visibleShortCode('anon-7d6eeb1a3887c808', false)).assertEqual('7D6EEB');
+      expect(AccountIdentity.visibleShortCode('anon-7d6eeb1a3887c808', true)).assertEqual('');
+    });
+
     it('keepsBothEndsOfLongAccountValuesVisibleLikeAndroid', 0, () => {
       expect(AccountIdentity.valueEllipsisMode).assertEqual(EllipsisMode.CENTER);
     });
