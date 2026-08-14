@@ -48,14 +48,25 @@ export default function iosUpstreamFeaturesTest() {
     });
 
     it('parsesCurrentIosBookShelfContract', 0, () => {
-      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"书名","main":"主标题","sub":"副标题","cover":true,"chapters":7,"author":"作者","createdAt":123},{}]}');
+      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"主标题：副标题","main":"主标题","sub":"副标题","cover":true,"chapters":7,"author":"作者","createdAt":123},{}]}');
       expect(books.length).assertEqual(1);
       expect(books[0].main).assertEqual('主标题');
       expect(books[0].chapters).assertEqual(7);
       expect(books[0].author).assertEqual('作者');
       expect(books[0].createdAt).assertEqual(123);
       expect(books[0].readerUrl()).assertEqual('https://voicedrop.cn/books/a-book/');
-      expect(books[0].shareText()).assertEqual('《书名》 — 作者\nhttps://voicedrop.cn/books/a-book/');
+      expect(books[0].shareText()).assertEqual('《主标题：副标题》 — 作者\nhttps://voicedrop.cn/books/a-book/');
+    });
+
+    it('keepsServerBookOrderAndAcceptsLegacyCacheWithoutCreatedAt', 0, () => {
+      const books = new BooksService().parse('{"books":[' +
+        '{"slug":"new-book","title":"新书","main":"新书","createdAt":200},' +
+        '{"slug":"legacy-book","title":"旧书","main":"旧书"}]}');
+      expect(books.length).assertEqual(2);
+      expect(books[0].slug).assertEqual('new-book');
+      expect(books[0].createdAt).assertEqual(200);
+      expect(books[1].slug).assertEqual('legacy-book');
+      expect(books[1].createdAt).assertEqual(0);
     });
 
     it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {
