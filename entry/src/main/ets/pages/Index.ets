@@ -15,6 +15,7 @@ import {
 import { ArticlePhotoInsert } from '../core/ArticlePhotoInsert';
 import { ArticleVersionNavigation } from '../core/ArticleVersionNavigation';
 import { Api } from '../core/Api';
+import { AccountIdentity } from '../core/AccountIdentity';
 import { PhotoLoadIntent, PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
 import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureAction, LibraryCommandTarget, LibraryCommandTone, LibraryCommandUi } from '../core/LibraryCommandUi';
 import { PromptNode, PromptTree } from '../core/PromptTree';
@@ -4788,6 +4789,7 @@ struct Index {
       onAutoShareChange: (value: boolean) => this.setAutoShareCommunity(value),
       onExport: () => this.exportAllData(),
       wechatAuthenticated: authStore.isWechatAuthenticated(),
+      accountShortCode: AccountIdentity.visibleShortCode(authStore.anonId(), authStore.isWechatAuthenticated()),
       autoShareCommunity: this.autoShareCommunity,
       savingAutoShare: this.savingAutoShare,
       preparingInvite: this.preparingInvite,
