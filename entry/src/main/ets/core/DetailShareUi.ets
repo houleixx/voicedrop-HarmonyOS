@@ -2,6 +2,9 @@ export type DetailShareSurface = 'recording' | 'community' | 'book';
 
 /** Stable user-visible channel contract shared by the three detail surfaces. */
 export class DetailShareUi {
+  static readonly MENU_TOP_OFFSET: number = 64;
+  static readonly MENU_RIGHT_INSET: number = 12;
+
   static bookMenuIds(): string[] {
     return ['revise', 'share'];
   }
