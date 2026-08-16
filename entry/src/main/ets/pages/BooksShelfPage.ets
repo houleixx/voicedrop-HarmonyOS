@@ -319,7 +319,10 @@ export struct BookReaderPage {
       if (this.showMoreMenu) {
         Stack({ alignContent: Alignment.TopEnd }) {
           Column().width('100%').height('100%').onClick(() => this.showMoreMenu = false)
-          Column() { this.bookMoreMenu() }.margin({ top: this.safeAreaTop() + 64, right: 12 }).zIndex(1)
+          Column() { this.bookMoreMenu() }.margin({
+            top: this.safeAreaTop() + DetailShareUi.MENU_TOP_OFFSET,
+            right: DetailShareUi.MENU_RIGHT_INSET
+          }).zIndex(1)
         }.width('100%').height('100%').zIndex(9)
       }
       if (this.showShareSheet) {

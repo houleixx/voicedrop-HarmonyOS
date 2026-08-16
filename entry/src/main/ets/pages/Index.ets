@@ -5023,7 +5023,10 @@ struct Index {
           Column() {
             this.detailMoreMenu()
           }
-            .margin({ top: this.safeAreaTop() + 68, right: 10 })
+            .margin({
+              top: this.safeAreaTop() + DetailShareUi.MENU_TOP_OFFSET,
+              right: DetailShareUi.MENU_RIGHT_INSET
+            })
             .zIndex(1)
         }
           .width('100%')

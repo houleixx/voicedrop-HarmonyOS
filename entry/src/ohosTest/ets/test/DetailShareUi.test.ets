@@ -24,5 +24,10 @@ export default function detailShareUiTest() {
     it('keepsBookMoreMenuAtTwoTopLevelActions', 0, () => {
       expect(DetailShareUi.bookMenuIds().join(',')).assertEqual('revise,share');
     });
+
+    it('keepsDetailMenusOnOneSharedAnchor', 0, () => {
+      expect(DetailShareUi.MENU_TOP_OFFSET).assertEqual(64);
+      expect(DetailShareUi.MENU_RIGHT_INSET).assertEqual(12);
+    });
   });
 }
