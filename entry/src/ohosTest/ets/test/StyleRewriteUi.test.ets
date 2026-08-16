@@ -43,9 +43,9 @@ export default function styleRewriteUiTest() {
       expect(StyleRewriteUi.actionLabel(1, true)).assertEqual('切换到 v1 风格');
     });
 
-    it('dimsTheSystemBarsWithTheBlockingRewriteOverlay', 0, () => {
-      expect(StyleRewriteUi.systemBarColor(true)).assertEqual('#C8C5BF');
-      expect(StyleRewriteUi.systemBarColor(false)).assertEqual('#FAF6EF');
+    it('dimsOnlyTheNavigationBarWithTheBlockingRewriteOverlay', 0, () => {
+      expect(StyleRewriteUi.navigationBarColor(true)).assertEqual('#C8C5BF');
+      expect(StyleRewriteUi.navigationBarColor(false)).assertEqual('#FAF6EF');
     });
 
     it('retriesARewriteArticleThatIsTemporarilyUnavailable', 0, () => {

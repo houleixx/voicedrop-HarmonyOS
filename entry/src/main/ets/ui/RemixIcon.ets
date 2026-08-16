@@ -9,10 +9,12 @@ export class RemixIconGlyph {
   static readonly ARROW_RIGHT: string = '\uEA6E';
   static readonly BOOK_OPEN: string = '\uEADB';
   static readonly BOOK_READ: string = '\uEADD';
+  static readonly CAMERA_LENS: string = '\uEB30';
   static readonly CHAT: string = '\uEB4F';
   static readonly CHECK: string = '\uEB7B';
   static readonly CLOSE: string = '\uEB99';
   static readonly DELETE: string = '\uEC26';
+  static readonly DELETE_BIN_LINE: string = '\uEC2A';
   static readonly DOWNLOAD: string = '\uEC54';
   static readonly EDIT: string = '\uEC80';
   static readonly FILE_COPY: string = '\uECD5';
