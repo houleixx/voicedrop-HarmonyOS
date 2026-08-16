@@ -283,6 +283,7 @@ export struct BookReaderPage {
           actionGlyph: RI.MORE,
           actionLabel: '更多',
           actionFilled: false,
+          rightInset: DetailShareUi.MENU_RIGHT_INSET,
           onBack: () => {
             if (this.showMoreMenu) this.showMoreMenu = false;
             else if (this.showShareSheet) this.showShareSheet = false;

@@ -8,6 +8,7 @@ export struct PageHeader {
   @Prop actionGlyph: string = '';
   @Prop actionLabel: string = '';
   @Prop actionFilled: boolean = true;
+  @Prop rightInset: number = 16;
   onBack: () => void = () => {};
   onAction: () => void = () => {};
 
@@ -61,7 +62,7 @@ export struct PageHeader {
         }
       }
         .width('100%')
-        .padding({ left: 16, right: 16 })
+        .padding({ left: 16, right: this.rightInset })
     }
       .height(56)
       .width('100%')

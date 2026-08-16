@@ -26,6 +26,8 @@ export default function detailShareUiTest() {
     });
 
     it('keepsDetailMenusOnOneSharedAnchor', 0, () => {
+      expect(DetailShareUi.DETAIL_HEADER_HEIGHT).assertEqual(56);
+      expect(DetailShareUi.MENU_TOP_GAP).assertEqual(8);
       expect(DetailShareUi.MENU_TOP_OFFSET).assertEqual(64);
       expect(DetailShareUi.MENU_RIGHT_INSET).assertEqual(12);
     });

@@ -3371,7 +3371,10 @@ struct Index {
     Row() {
       this.detailBackButton()
       Blank()
-    }.height(56).padding({ left: 16, right: 12, top: 8, bottom: 0 }).width('100%')
+    }
+      .height(DetailShareUi.DETAIL_HEADER_HEIGHT)
+      .padding({ left: 16, right: DetailShareUi.MENU_RIGHT_INSET })
+      .width('100%')
   }
 
   @Builder
@@ -3448,7 +3451,10 @@ struct Index {
             .onClick(() => this.showDetailMenu = !this.showDetailMenu)
         }
       }
-    }.height(56).padding({ left: 16, right: 12, top: 8, bottom: 0 }).width('100%')
+    }
+      .height(DetailShareUi.DETAIL_HEADER_HEIGHT)
+      .padding({ left: 16, right: DetailShareUi.MENU_RIGHT_INSET })
+      .width('100%')
   }
 
   @Builder
@@ -4378,12 +4384,12 @@ struct Index {
             .opacity(this.communityDetailLoading ? 0.45 : 1)
             .onClick(() => this.showCommunityMenu = !this.showCommunityMenu)
         }
-          .width(56).height(48)
+          .width(40).height(40)
       }
     }
-      .height(CommunityReplyUi.headerHeight(this.communityReplyRecording))
+      .height(DetailShareUi.DETAIL_HEADER_HEIGHT)
       .width('100%')
-      .padding({ left: 16, right: 5, top: 8, bottom: 0 })
+      .padding({ left: 16, right: DetailShareUi.MENU_RIGHT_INSET })
   }
 
   @Builder
