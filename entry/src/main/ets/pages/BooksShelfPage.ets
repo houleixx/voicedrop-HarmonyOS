@@ -1,13 +1,17 @@
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { systemShare } from '@kit.ShareKit';
 import { BooksService, ShelfBook, booksService } from '../data/BooksService';
 import { WechatCommunityShare } from '../data/WechatCommunityShare';
 import { WechatBookShareTarget } from '../core/WechatBookShare';
+import { DetailShareUi } from '../core/DetailShareUi';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
+import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
+import { BookRevisePage } from './BookRevisePage';
 
 @Component
 export struct BooksShelfPage {
@@ -165,13 +169,17 @@ export struct BooksShelfPage {
 
 @Component
 export struct BookReaderPage {
+  @StorageLink('safeAreaTopPx') private safeAreaTopPx: number = 0;
+  @StorageLink('safeAreaBottomPx') private safeAreaBottomPx: number = 0;
   book: ShelfBook = new ShelfBook();
   onBack: () => void = () => {};
   @State private loading: boolean = true;
-  @State private showShareMenu: boolean = false;
+  @State private showMoreMenu: boolean = false;
+  @State private showShareSheet: boolean = false;
+  @State private showRevise: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
   private async shareBook(target: WechatBookShareTarget): Promise<void> {
-    this.showShareMenu = false;
+    this.showShareSheet = false;
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       if (this.book.cover) promptAction.showToast({ message: '正在准备微信分享…' });
@@ -182,7 +190,7 @@ export struct BookReaderPage {
     }
   }
   private async shareBookWithSystem(): Promise<void> {
-    this.showShareMenu = false;
+    this.showShareSheet = false;
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const record: systemShare.SharedRecord = {
@@ -198,28 +206,70 @@ export struct BookReaderPage {
       promptAction.showToast({ message: '无法打开系统分享面板' });
     }
   }
-  @Builder private shareMenuRow(label: string, glyph: string, target: WechatBookShareTarget) {
+  private async copyBookLink(): Promise<void> {
+    this.showShareSheet = false;
+    try {
+      await pasteboard.getSystemPasteboard().setData(
+        pasteboard.createPlainTextData(this.book.readerUrl()));
+      promptAction.showToast({ message: '链接已复制' });
+    } catch (_) {
+      promptAction.showToast({ message: '复制失败' });
+    }
+  }
+  private shareTargets(): ShareSheetTarget[] {
+    return DetailShareUi.targetIds('book').map((id: string) => this.shareTarget(id));
+  }
+  private shareTarget(id: string): ShareSheetTarget {
+    if (id === 'friend') return new ShareSheetTarget(id, '微信好友', RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+  }
+  private runShareAction(id: string): void {
+    if (id === 'friend') this.shareBook('friend').catch(() => {});
+    else if (id === 'timeline') this.shareBook('timeline').catch(() => {});
+    else if (id === 'copy') this.copyBookLink().catch(() => {});
+    else if (id === 'system') this.shareBookWithSystem().catch(() => {});
+  }
+  private safeAreaBottom(): number {
+    return this.safeAreaBottomPx > 0 ? this.getUIContext().px2vp(this.safeAreaBottomPx) : 0;
+  }
+  private safeAreaTop(): number {
+    return this.safeAreaTopPx > 0 ? this.getUIContext().px2vp(this.safeAreaTopPx) : 0;
+  }
+  private closeRevise(): void {
+    this.showRevise = false;
+    try { this.controller.refresh(true); } catch (_) {}
+  }
+  private runMoreAction(id: string): void {
+    this.showMoreMenu = false;
+    if (id === 'revise') this.showRevise = true;
+    else if (id === 'share') this.showShareSheet = true;
+  }
+  private moreMenuLabel(id: string): string {
+    return id === 'revise' ? '修改这本书' : '分享';
+  }
+  private moreMenuGlyph(id: string): string {
+    return id === 'revise' ? RI.EDIT : RI.SHARE_FORWARD;
+  }
+  @Builder private moreMenuRow(id: string) {
     Row() {
-      Text(label).fontSize(14).fontColor(Theme.INK).layoutWeight(1)
-      RemixIcon({ glyph: glyph, iconSize: 20, color: Theme.INK })
+      Text(this.moreMenuLabel(id)).fontSize(14).fontColor(Theme.INK).layoutWeight(1).maxLines(1)
+      RemixIcon({ glyph: this.moreMenuGlyph(id), iconSize: 20, color: Theme.INK })
     }
       .height(44).padding({ left: 14, right: 12 }).width('100%')
-      .onClick(() => this.shareBook(target))
+      .onClick(() => this.runMoreAction(id))
   }
-  @Builder private shareMenu() {
+  @Builder private bookMoreMenu() {
     Column() {
-      this.shareMenuRow('微信好友', RI.WECHAT, 'friend')
-      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
-      this.shareMenuRow('朋友圈', RI.TEAM, 'timeline')
-      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
-      Row() {
-        Text('分享').fontSize(14).fontColor(Theme.INK).layoutWeight(1)
-        RemixIcon({ glyph: RI.SHARE_FORWARD, iconSize: 20, color: Theme.INK })
-      }
-        .height(44).padding({ left: 14, right: 12 }).width('100%')
-        .onClick(() => this.shareBookWithSystem())
+      ForEach(DetailShareUi.bookMenuIds(), (id: string, index: number) => {
+        this.moreMenuRow(id)
+        if (index < DetailShareUi.bookMenuIds().length - 1) {
+          Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
+        }
+      }, (id: string) => id)
     }
-      .padding({ top: 1, bottom: 1 }).width(188)
+      .padding({ top: 1, bottom: 1 }).width(196)
       .backgroundColor('#FCFFFFFF')
       .border({ width: 1, color: '#ECE7DE', radius: 14 })
       .borderRadius(14).clip(true)
@@ -230,14 +280,15 @@ export struct BookReaderPage {
       Column() {
         PageHeader({
           title: this.book.main,
-          actionGlyph: RI.SHARE_FORWARD,
-          actionLabel: '分享',
+          actionGlyph: RI.MORE,
+          actionLabel: '更多',
           actionFilled: false,
           onBack: () => {
-            if (this.showShareMenu) this.showShareMenu = false;
+            if (this.showMoreMenu) this.showMoreMenu = false;
+            else if (this.showShareSheet) this.showShareSheet = false;
             else this.onBack();
           },
-          onAction: () => this.showShareMenu = !this.showShareMenu
+          onAction: () => this.showMoreMenu = !this.showMoreMenu
         }).backgroundColor(Theme.BOOK_READER_BG)
         Stack({ alignContent: Alignment.Top }) {
           Web({ src: this.book.readerUrl(), controller: this.controller })
@@ -260,12 +311,27 @@ export struct BookReaderPage {
             }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
           }
         }.layoutWeight(1).width('100%').backgroundColor(Theme.BOOK_READER_BG)
-      }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
-      if (this.showShareMenu) {
+      }
+        .width('100%')
+        .height('100%')
+        .padding({ top: this.safeAreaTop() })
+        .backgroundColor(Theme.BOOK_READER_BG)
+      if (this.showMoreMenu) {
         Stack({ alignContent: Alignment.TopEnd }) {
-          Column().width('100%').height('100%').onClick(() => this.showShareMenu = false)
-          Column() { this.shareMenu() }.margin({ top: 60, right: 10 }).zIndex(1)
-        }.width('100%').height('100%').zIndex(10)
+          Column().width('100%').height('100%').onClick(() => this.showMoreMenu = false)
+          Column() { this.bookMoreMenu() }.margin({ top: this.safeAreaTop() + 64, right: 12 }).zIndex(1)
+        }.width('100%').height('100%').zIndex(9)
+      }
+      if (this.showShareSheet) {
+        ShareBottomSheet({
+          targets: this.shareTargets(),
+          safeAreaBottom: this.safeAreaBottom(),
+          onDismiss: () => this.showShareSheet = false,
+          onSelect: (id: string) => this.runShareAction(id)
+        }).zIndex(10)
+      }
+      if (this.showRevise) {
+        BookRevisePage({ book: this.book, onClose: () => this.closeRevise() }).zIndex(20)
       }
     }.width('100%').height('100%').backgroundColor(Theme.BOOK_READER_BG)
   }

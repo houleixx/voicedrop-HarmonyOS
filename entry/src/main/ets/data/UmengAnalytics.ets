@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { init, InternalPlugin, preInit } from '@umeng/analytics';
+import { init, InternalPlugin, onEventObject, preInit } from '@umeng/analytics';
 
 export class UmengAnalytics {
   private preInitialized: boolean = false;
@@ -34,6 +34,15 @@ export class UmengAnalytics {
       hilog.error(0x0000, 'VoiceDrop', 'Umeng analytics init failed: %{public}s', JSON.stringify(error));
     } finally {
       this.initializing = false;
+    }
+  }
+
+  capture(eventID: string, params: Record<string, string | number> = {}): void {
+    if (!this.initialized || eventID.trim().length === 0) return;
+    try {
+      onEventObject(eventID, params);
+    } catch (error) {
+      hilog.error(0x0000, 'VoiceDrop', 'Umeng analytics event failed: %{public}s', JSON.stringify(error));
     }
   }
 }

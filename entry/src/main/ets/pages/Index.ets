@@ -27,6 +27,7 @@ import { StyleRewriteUi } from '../core/StyleRewriteUi';
 import { RestyleResult } from '../core/RestyleRequest';
 import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, MinedArticle, CommunityPost } from '../model/Models';
 import { authStore } from '../data/AuthStore';
+import { appCacheStore } from '../data/AppCacheStore';
 import { appPreferences } from '../data/AppPreferences';
 import { umengAnalytics } from '../data/UmengAnalytics';
 import { libraryStore, ShareLinkTarget, XhsPack } from '../data/LibraryStore';
@@ -79,9 +80,11 @@ import { ClientReliability } from '../core/ClientReliability';
 import { WechatAuthResponse } from '../core/WechatAuthResponse';
 import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
 import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
+import { DetailShareUi } from '../core/DetailShareUi';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
 import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordingDock';
 import { RecordingSession } from '../components/RecordingSession';
+import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
 
 interface CommandMessage {
   type: string;
@@ -156,6 +159,7 @@ struct Index {
   @State private detailLoading: boolean = false;
   @State private detailLoadError: string = '';
   @State private showDetailMenu: boolean = false;
+  @State private showRecordingShareSheet: boolean = false;
   @State private loading: boolean = true;
   @State private libraryRefreshing: boolean = false;
   @State private communityRefreshing: boolean = false;
@@ -205,6 +209,7 @@ struct Index {
   private communityLikeSucceeded: boolean = false;
   private communityDetailDirty: boolean = false;
   @State private showCommunityMenu: boolean = false;
+  @State private showCommunityShareSheet: boolean = false;
   @State private promptImporting: boolean = false;
   @State private wechatLoggedIn: boolean = false;
   @State private wechatLoggingIn: boolean = false;
@@ -312,6 +317,7 @@ struct Index {
   private pendingPhotoRequests: Map<string, string> = new Map<string, string>();
   private initialized: boolean = false;
   @Provide('pathStack') pathStack: NavPathStack = new NavPathStack();
+  @State private settingsCacheRefreshVersion: number = 0;
 
   private navigateTo(target: AppPage): void {
     if (target === 'home') {
@@ -336,19 +342,7 @@ struct Index {
     return paths.length > 0 && paths[paths.length - 1] === 'communityDetail';
   }
 
-  private updateStatusBarColor(color: string): void {
-    if (!this.context) return;
-    window.getLastWindow(this.context).then((mainWindow: window.Window) => {
-      mainWindow.setWindowSystemBarProperties({
-        statusBarColor: color,
-        statusBarContentColor: Theme.INK,
-        isStatusBarLightIcon: false
-      }).catch(() => {});
-    }).catch(() => {});
-  }
-
   private handleDestinationHidden(routeName: string): void {
-    if (routeName === 'bookReader') this.updateStatusBarColor(Theme.BG);
     if (routeName === 'blocked') {
       // Wait for NavPathStack to finish popping the blocked page before
       // replacing the cached About page with one bound to the latest count.
@@ -356,6 +350,7 @@ struct Index {
     }
     if (routeName === 'detail') {
       this.showDetailMenu = false;
+      this.showRecordingShareSheet = false;
       this.showPromptMenu = false;
       this.closeParagraphEdit(false);
       this.showHistoryBrowser = false;
@@ -366,6 +361,7 @@ struct Index {
     }
     if (routeName === 'communityDetail') {
       this.showCommunityMenu = false;
+      this.showCommunityShareSheet = false;
       if (this.communityReplyRecording) this.cancelCommunityReplyRecording().catch(() => {});
       if (this.communityDetailDirty) {
         this.communityDetailDirty = false;
@@ -455,6 +451,7 @@ struct Index {
     await authStore.initialize(this.context);
     libraryStore.initialize(this.context);
     communityStore.initialize(this.context);
+    appCacheStore.initialize(this.context);
     this.wechatLoggedIn = authStore.isWechatAuthenticated();
     await promptStore.initialize(this.context);
     await this.handleWechatCallback();
@@ -1179,6 +1176,7 @@ struct Index {
     const detailLoadSequence: number = ++this.detailLoadSequence;
     this.detailLoadError = '';
     this.showDetailMenu = false;
+    this.showRecordingShareSheet = false;
     this.article = recording.hasArticles ? libraryStore.cachedArticle(recording) : undefined;
     this.detailLoading = ClientReliability.shouldBlockDetailLoading(this.article !== undefined);
     this.history = new ArticleHistory();
@@ -1327,7 +1325,7 @@ struct Index {
     if (generated) { await this.selectHistoryVersion(generated); promptAction.showToast({ message: `已切换到 v${styleVersion} 文风` }); return; }
     this.restyleTargetStyleVersion = styleVersion;
     this.restyleFinishing = false; this.restylePreviewActive = true;
-    await this.setRestyleSystemBars(true);
+    await this.setRestyleNavigationBar(true);
     try {
       const result: RestyleResult = await libraryStore.restyle(recording, styleVersion);
       if (this.restylePreviewActive) await this.finishRestyle(recording, result.ok, result.message());
@@ -1344,7 +1342,7 @@ struct Index {
       this.restylePreviewActive = false;
       this.restyleFinishing = false;
       this.restyleTargetStyleVersion = -1;
-      await this.setRestyleSystemBars(false);
+      await this.setRestyleNavigationBar(false);
       promptAction.showToast({ message: failureMessage });
       return;
     }
@@ -1372,7 +1370,7 @@ struct Index {
       this.restylePreviewActive = false;
       this.restyleFinishing = false;
       this.restyleTargetStyleVersion = -1;
-      await this.setRestyleSystemBars(false);
+      await this.setRestyleNavigationBar(false);
     }
   }
 
@@ -1394,15 +1392,12 @@ struct Index {
     return undefined;
   }
 
-  private async setRestyleSystemBars(blocking: boolean): Promise<void> {
+  private async setRestyleNavigationBar(blocking: boolean): Promise<void> {
     if (!this.context) return;
     try {
       const mainWindow: window.Window = await window.getLastWindow(this.context);
-      const color: string = StyleRewriteUi.systemBarColor(blocking);
+      const color: string = StyleRewriteUi.navigationBarColor(blocking);
       await mainWindow.setWindowSystemBarProperties({
-        statusBarColor: color,
-        statusBarContentColor: '#2A2521',
-        isStatusBarLightIcon: false,
         navigationBarColor: color,
         navigationBarContentColor: '#2A2521',
         isNavigationBarLightIcon: false
@@ -2623,6 +2618,7 @@ struct Index {
     const shareId: string = post.shareId;
     const loadSequence: number = ++this.communityDetailLoadSequence;
     this.showCommunityMenu = false;
+    this.showCommunityShareSheet = false;
     const cached: CommunityPost | undefined = communityStore.cachedPost(shareId);
     if (cached) {
       cached.likes = post.likes;
@@ -4065,10 +4061,8 @@ struct Index {
     this.showCommunityMenu = false;
     if (action === 'reply') {
       await this.beginCommunityReply();
-    } else if (action === 'wechat') {
-      await this.shareSelectedCommunityPostToWechat();
     } else if (action === 'share') {
-      await this.shareSelectedCommunityPost();
+      this.showCommunityShareSheet = true;
     } else if (action === 'report') {
       await this.reportSelectedCommunityPost();
     } else if (action === 'block') {
@@ -4084,6 +4078,51 @@ struct Index {
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+    }
+  }
+
+  private communityShareTargets(): ShareSheetTarget[] {
+    return DetailShareUi.targetIds('community').map((id: string) => this.communityShareTarget(id));
+  }
+
+  private communityShareTarget(id: string): ShareSheetTarget {
+    if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+  }
+
+  private runCommunityShareAction(id: string): void {
+    this.showCommunityShareSheet = false;
+    if (id === 'wechat') this.shareSelectedCommunityPostToWechat().catch(() => {});
+    else if (id === 'timeline') this.shareSelectedCommunityPostToTimeline().catch(() => {});
+    else if (id === 'copy') this.copySelectedCommunityPostLink().catch(() => {});
+    else if (id === 'system') this.shareSelectedCommunityPost().catch(() => {});
+  }
+
+  private async shareSelectedCommunityPostToTimeline(): Promise<void> {
+    if (!this.selectedPost || !this.context) return;
+    const url: string = Api.sharePage(this.selectedPost.shareId);
+    try {
+      const message: string = await WechatCommunityShare.sendTimeline(
+        this.context,
+        url,
+        this.selectedPost.title || 'VoiceDrop 社区文章',
+        '打开 VoiceDrop 查看这篇社区分享');
+      promptAction.showToast({ message: message });
+    } catch (error) {
+      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+    }
+  }
+
+  private async copySelectedCommunityPostLink(): Promise<void> {
+    if (!this.selectedPost) return;
+    try {
+      await pasteboard.getSystemPasteboard().setData(
+        pasteboard.createPlainTextData(Api.sharePage(this.selectedPost.shareId)));
+      promptAction.showToast({ message: '链接已复制' });
+    } catch (_) {
+      promptAction.showToast({ message: '复制失败' });
     }
   }
 
@@ -4172,6 +4211,58 @@ struct Index {
     }
   }
 
+  private recordingShareTargets(): ShareSheetTarget[] {
+    return DetailShareUi.targetIds('recording').map((id: string) => this.recordingShareTarget(id));
+  }
+
+  private recordingShareTarget(id: string): ShareSheetTarget {
+    if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'xhs') return new ShareSheetTarget(id, '小红书', '', '#FF2442', '#FFFFFF', 32, true);
+    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+  }
+
+  private runRecordingShareAction(id: string): void {
+    this.showRecordingShareSheet = false;
+    if (id === 'wechat') this.shareRecordingToWechat().catch(() => {});
+    else if (id === 'timeline') this.shareRecordingToTimeline().catch(() => {});
+    else if (id === 'xhs') this.shareToXhs().catch(() => {});
+    else if (id === 'copy') this.copyRecordingLink().catch(() => {});
+    else if (id === 'system') this.shareRecording().catch(() => {});
+  }
+
+  private async recordingShareUrl(): Promise<string> {
+    if (!this.selected) return '';
+    return libraryStore.shareUrl(this.selected, this.selectedArticle);
+  }
+
+  private async shareRecordingToTimeline(): Promise<void> {
+    if (!this.selected || !this.article || !this.context) return;
+    const url: string = await this.recordingShareUrl();
+    if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
+    const title: string = this.article.articles[Math.min(this.selectedArticle,
+      this.article.articles.length - 1)]?.title ?? this.selected.rowTitle();
+    try {
+      const message: string = await WechatCommunityShare.sendTimeline(
+        this.context, url, title, '打开 VoiceDrop 阅读这篇文章');
+      promptAction.showToast({ message: message });
+    } catch (error) {
+      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+    }
+  }
+
+  private async copyRecordingLink(): Promise<void> {
+    try {
+      const url: string = await this.recordingShareUrl();
+      if (url.length === 0) { promptAction.showToast({ message: '复制失败' }); return; }
+      await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(url));
+      promptAction.showToast({ message: '链接已复制' });
+    } catch (error) {
+      promptAction.showToast({ message: `复制失败：${String(error)}` });
+    }
+  }
+
   private async runDetailMenuAction(action: string): Promise<void> {
     this.showDetailMenu = false;
     if (action === 'publish') {
@@ -4183,7 +4274,7 @@ struct Index {
     } else if (action === 'wechat') {
       await this.shareRecordingToWechat();
     } else if (action === 'share') {
-      await this.shareRecording();
+      this.showRecordingShareSheet = true;
     } else if (action === 'delete') {
       this.deleteRecordingWithConfirmation(this.selected, true);
     }
@@ -4211,11 +4302,6 @@ struct Index {
       Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
       this.detailMenuRow(this.communityShareId.length > 0 ? '从 VD 社区隐藏' : 'VD 社区可见',
         RI.TEAM, 'community')
-      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
-      this.detailMenuRow(this.xhsPreparing ? '正在生成小红书…' : '分享到小红书',
-        RI.FILE_TEXT, 'xhs')
-      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
-      this.detailMenuRow('分享到微信', RI.SHARE_FORWARD, 'wechat')
       Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
       this.detailMenuRow('分享', RI.SHARE_FORWARD, 'share')
       Divider().height(4).color('#E9E5DC').margin({ left: 14, right: 14 })
@@ -4499,8 +4585,6 @@ struct Index {
         this.communityMenuRow('写回应', RI.MIC, 'reply')
         Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
       }
-      this.communityMenuRow('分享到微信', RI.SHARE_BOX, 'wechat')
-      Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
       this.communityMenuRow('分享', RI.SHARE_BOX, 'share')
       Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
       this.communityMenuRow('举报', RI.FLAG, 'report', true)
@@ -4793,7 +4877,8 @@ struct Index {
       autoShareCommunity: this.autoShareCommunity,
       savingAutoShare: this.savingAutoShare,
       preparingInvite: this.preparingInvite,
-      exporting: this.exporting
+      exporting: this.exporting,
+      cacheRefreshVersion: this.settingsCacheRefreshVersion
     })
     else if (page === 'style') this.stylePage()
     else if (page === 'wechat') this.wechatPage()
@@ -4847,14 +4932,14 @@ struct Index {
         .height('100%')
         .justifyContent(FlexAlign.Start)
         .alignItems(HorizontalAlign.Start)
-        .padding({ top: this.safeAreaTop() })
+        .padding({ top: routeName === 'bookReader' ? 0 : this.safeAreaTop() })
         .backgroundColor(routeName === 'bookReader' ? Theme.BOOK_READER_BG : Theme.BG)
     }
       .hideTitleBar(true)
       // Keep NavDestination's default back handling so the system back gesture
       // and the page header both pop the same native stack.
       .onShown(() => {
-        if (routeName === 'bookReader') this.updateStatusBarColor(Theme.BOOK_READER_BG);
+        if (routeName === 'settings') this.settingsCacheRefreshVersion++;
       })
       .onHidden(() => this.handleDestinationHidden(routeName))
   }
@@ -4960,6 +5045,22 @@ struct Index {
           .width('100%')
           .height('100%')
           .zIndex(120)
+      }
+      if (this.showRecordingShareSheet) {
+        ShareBottomSheet({
+          targets: this.recordingShareTargets(),
+          safeAreaBottom: this.safeAreaBottom(),
+          onDismiss: () => this.showRecordingShareSheet = false,
+          onSelect: (id: string) => this.runRecordingShareAction(id)
+        }).zIndex(140)
+      }
+      if (this.showCommunityShareSheet) {
+        ShareBottomSheet({
+          targets: this.communityShareTargets(),
+          safeAreaBottom: this.safeAreaBottom(),
+          onDismiss: () => this.showCommunityShareSheet = false,
+          onSelect: (id: string) => this.runCommunityShareAction(id)
+        }).zIndex(140)
       }
       if (this.showHistoryBrowser) {
         Column() {

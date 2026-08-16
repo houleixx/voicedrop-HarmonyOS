@@ -29,6 +29,9 @@ import xhsCardLayoutTest from './XhsCardLayout.test';
 import iosUpstreamFeaturesTest from './IosUpstreamFeatures.test';
 import wechatBindingTest from './WechatBinding.test';
 import wechatBookShareTest from './WechatBookShare.test';
+import cacheMaintenanceTest from './CacheMaintenance.test';
+import detailShareUiTest from './DetailShareUi.test';
+import bookReviseContractTest from './BookReviseContract.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -62,4 +65,7 @@ export default function testsuite() {
   iosUpstreamFeaturesTest();
   wechatBindingTest();
   wechatBookShareTest();
+  cacheMaintenanceTest();
+  detailShareUiTest();
+  bookReviseContractTest();
 }

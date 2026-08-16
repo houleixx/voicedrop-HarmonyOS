@@ -78,9 +78,9 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
         hilog.error(0x0000, 'VoiceDrop', 'enable immersive layout failed: %{public}s', JSON.stringify(error));
       });
       mainWindow.setWindowSystemBarProperties({
-        // Keep the system-bar background aligned with the app canvas. A transparent
-        // bar sits on top of arbitrary scroll content and cannot guarantee contrast.
-        statusBarColor: '#FAF6EF',
+        // Keep the status bar transparent so root-level ArkUI backgrounds and
+        // modal scrims are composited behind it in the same animation frame.
+        statusBarColor: '#00000000',
         statusBarContentColor: '#2A2521',
         isStatusBarLightIcon: false,
         navigationBarColor: '#FAF6EF',

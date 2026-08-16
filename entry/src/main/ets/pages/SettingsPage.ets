@@ -1,5 +1,7 @@
 import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { settingsStore, StyleSettings } from '../data/SettingsStore';
+import { appCacheStore } from '../data/AppCacheStore';
+import { CacheMaintenance } from '../core/CacheMaintenance';
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
@@ -109,7 +111,12 @@ export struct SettingsPage {
   savingAutoShare: boolean = false;
   preparingInvite: boolean = false;
   exporting: boolean = false;
+  @Prop @Watch('onCacheRefreshVersionChanged') cacheRefreshVersion: number = 0;
   @State private currentName: string = '';
+  @State private cacheSizeText: string = '计算中…';
+  @State private cacheClearing: boolean = false;
+  private cacheRequestId: number = 0;
+  private pageActive: boolean = false;
   private nameEditorDialog: CustomDialogController = new CustomDialogController({
     builder: NameEditorDialog({
       initialName: (): string => this.currentName,
@@ -127,7 +134,58 @@ export struct SettingsPage {
   });
 
   aboutToAppear(): void {
+    this.pageActive = true;
+    this.cacheClearing = false;
     this.loadName();
+    this.refreshCacheSize();
+  }
+
+  aboutToDisappear(): void {
+    this.pageActive = false;
+    this.cacheRequestId++;
+  }
+
+  private onCacheRefreshVersionChanged(): void {
+    if (this.pageActive) this.refreshCacheSize();
+  }
+
+  private async refreshCacheSize(): Promise<void> {
+    const requestId: number = ++this.cacheRequestId;
+    this.cacheSizeText = '计算中…';
+    try {
+      const bytes: number = await appCacheStore.sizeBytes();
+      if (CacheMaintenance.shouldApplyResult(requestId, this.cacheRequestId, this.pageActive)) {
+        this.cacheSizeText = CacheMaintenance.formatBytes(bytes);
+      }
+    } catch (_) {
+      if (CacheMaintenance.shouldApplyResult(requestId, this.cacheRequestId, this.pageActive)) {
+        this.cacheSizeText = '计算失败';
+      }
+    }
+  }
+
+  private async clearCache(): Promise<void> {
+    if (this.cacheClearing) return;
+    const result = await promptAction.showDialog({
+      title: '清除缓存？',
+      message: '只会清除可重新下载的文章、图片和社区详情缓存，不会删除录音、待上传内容、账户、设置或服务器数据。',
+      buttons: [{ text: '取消', color: Theme.SECONDARY }, { text: '清除', color: Theme.ACCENT_STRONG }]
+    });
+    if (result.index !== 1 || !this.pageActive || this.cacheClearing) return;
+    this.cacheClearing = true;
+    ++this.cacheRequestId;
+    this.cacheSizeText = '清理中…';
+    try {
+      await appCacheStore.clear();
+      if (this.pageActive) promptAction.showToast({ message: '缓存已清除' });
+    } catch (_) {
+      if (this.pageActive) promptAction.showToast({ message: '缓存清除失败，请重试' });
+    } finally {
+      if (this.pageActive) {
+        this.cacheClearing = false;
+        this.refreshCacheSize();
+      }
+    }
   }
 
   private async loadName(): Promise<void> {
@@ -215,6 +273,26 @@ export struct SettingsPage {
   }
 
   @Builder
+  private cacheRow() {
+    Row({ space: 12 }) {
+      this.settingIcon(RI.DELETE_BIN_LINE, Theme.TILE_NEUTRAL, Theme.SECONDARY)
+      Column({ space: 2 }) {
+        Text('清除缓存').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text('文章与图片缓存').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+      Text(this.cacheSizeText).fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
+      RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
+    }
+      .constraintSize({ minHeight: 68 })
+      .padding({ left: 16, right: 16, top: 11, bottom: 11 })
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .opacity(this.cacheClearing ? 0.6 : 1)
+      .enabled(!this.cacheClearing)
+      .onClick(() => this.clearCache())
+  }
+
+  @Builder
   private divider() {
     Divider()
       .strokeWidth(0.5)
@@ -295,6 +373,8 @@ export struct SettingsPage {
             }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
               .alignItems(VerticalAlign.Center).width('100%')
               .enabled(!this.exporting).onClick(this.onExport)
+            this.divider()
+            this.cacheRow()
             this.divider()
             this.row('关于', '隐私 · 公约 · 屏蔽 · 联系', 'about', RI.INFORMATION,
               Theme.TILE_NEUTRAL, Theme.SECONDARY)

@@ -43,7 +43,7 @@ export class StyleRewriteUi {
     return generated ? `切换到 v${styleVersion} 风格` : `用 v${styleVersion} 重写本文`;
   }
 
-  static systemBarColor(blocking: boolean): string {
+  static navigationBarColor(blocking: boolean): string {
     return blocking ? '#C8C5BF' : '#FAF6EF';
   }
 
