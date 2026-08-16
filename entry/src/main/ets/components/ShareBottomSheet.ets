@@ -123,12 +123,6 @@ export struct ShareBottomSheet {
         .opacity(this.presented ? 1 : 0)
         .onClick(() => this.close(() => this.onDismiss()))
       Column() {
-        Row()
-          .width(34)
-          .height(4)
-          .margin({ top: 8, bottom: 12 })
-          .backgroundColor('#26766F67')
-          .borderRadius(2)
         this.targetRow(this.targets.slice(0, 4))
         if (this.targets.length > 4) {
           Divider()
@@ -142,7 +136,7 @@ export struct ShareBottomSheet {
         }
       }
         .width('100%')
-        .padding({ left: 16, right: 16, bottom: 12 + Math.max(0, this.safeAreaBottom) })
+        .padding({ left: 16, right: 16, top: 24, bottom: 12 + Math.max(0, this.safeAreaBottom) })
         .backgroundColor(Color.White)
         .borderRadius({ topLeft: 24, topRight: 24 })
         .clip(true)
