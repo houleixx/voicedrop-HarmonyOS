@@ -21,6 +21,7 @@ import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureActio
 import { PromptNode, PromptTree } from '../core/PromptTree';
 import { RecordingListUi } from '../core/RecordingListUi';
 import { RecordingName } from '../core/RecordingName';
+import { ShareDatasetItem, ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../core/ShareImport';
 import { isRecordingTooShort } from '../core/RecordingPolicy';
 import { normalizeAmplitude } from '../core/RecordingUi';
 import { StyleRewriteUi } from '../core/StyleRewriteUi';
@@ -259,6 +260,10 @@ struct Index {
   @State private incomingShareDescription: string = '';
   @State private incomingShareExcerpt: string = '';
   @State private importingShare: boolean = false;
+  @State private incomingShareKindValue: ShareImportKind = ShareImportKind.DATASET;
+  @State private shareDataset: ShareDatasetSnapshot = new ShareDatasetSnapshot();
+  @State private shareDatasetCollected: boolean = false;
+  @State private shareDatasetClearAfter: boolean = true;
   @State private blockedAuthorCount: number = 0;
   @State private autoShareCommunity: boolean = false;
   @State private savingAutoShare: boolean = false;
@@ -766,30 +771,32 @@ struct Index {
     AppStorage.set<string>('sharedTitle', '');
     AppStorage.set<string>('sharedMime', '');
     AppStorage.set<string>('sharedUris', '[]');
-    const draft: IncomingShareDraft = new IncomingShareDraft(mime, uris.slice(), text, title);
+    this.presentIncomingShare(new IncomingShareDraft(mime, uris.slice(), text, title));
+  }
+
+  private presentIncomingShare(draft: IncomingShareDraft): void {
     this.incomingShare = draft;
-    const kind: string = this.incomingShareKind(draft);
-    if (kind === 'audio') {
+    const kind: ShareImportKind = ShareImport.classify(draft.mime, draft.uris);
+    this.incomingShareKindValue = kind;
+    this.shareDatasetCollected = false;
+    this.shareDatasetClearAfter = true;
+    if (kind === ShareImportKind.AUDIO) {
       this.incomingShareTitle = '从这段录音成文';
       this.incomingShareDescription = '转写和成文会一步完成，确认后开始上传音频。';
-    } else if (kind === 'image') {
+    } else if (kind === ShareImportKind.IMAGE) {
       this.incomingShareTitle = '看图写一篇';
-      this.incomingShareDescription = `${uris.length} 张图片，确认后开始上传并生成文章。`;
+      this.incomingShareDescription = `${draft.uris.length} 张图片，确认后开始上传并生成文章。`;
     } else {
-      this.incomingShareTitle = '加入风格数据集';
-      const count: number = text.trim().length;
-      const source: string = uris.length > 0 ? `${uris.length} 个文档${count > 0 ? '和分享文字' : ''}` : `${count} 字分享文字`;
-      this.incomingShareDescription = `${source}将作为写作语料；可读取内容少于 300 字时不会开始提取文风。`;
+      this.incomingShareTitle = '风格数据集';
+      const count: number = draft.text.trim().length;
+      const source: string = draft.uris.length > 0 ?
+        `${draft.uris.length} 个文档${count > 0 ? '和分享文字' : ''}` : `${count} 字分享文字`;
+      this.incomingShareDescription = `${source}将作为写作语料。加入后可以继续收集，攒够 300 字再提取文章风格。`;
+      this.shareDataset = new ShareDatasetSnapshot();
+      this.loadShareDataset().catch(() => {});
     }
     this.incomingShareExcerpt = this.incomingSharePreview(draft);
     this.showIncomingShare = true;
-  }
-
-  private incomingShareKind(draft: IncomingShareDraft): string {
-    const lower: string = draft.mime.toLowerCase();
-    if (lower.startsWith('audio/') || (draft.uris.length > 0 && /\.(m4a|mp3|aac|wav|flac|ogg)(\?|$)/i.test(draft.uris[0]))) return 'audio';
-    if (lower.startsWith('image/') || (draft.uris.length > 0 && /\.(jpe?g|png|webp|heic|gif)(\?|$)/i.test(draft.uris[0]))) return 'image';
-    return 'dataset';
   }
 
   private incomingSharePreview(draft: IncomingShareDraft): string {
@@ -810,22 +817,57 @@ struct Index {
     this.showIncomingShare = false;
     this.incomingShare = undefined;
     this.incomingShareExcerpt = '';
+    this.shareDatasetCollected = false;
   }
 
   private async confirmIncomingShare(): Promise<void> {
     const draft: IncomingShareDraft | undefined = this.incomingShare;
-    if (!draft || this.importingShare) return;
+    if (!draft || !this.context || this.importingShare) return;
     this.importingShare = true;
     try {
-      const result = await shareCollectService.collectIncoming(draft.mime, draft.uris, draft.text, draft.title);
+      const result = await shareCollectService.collectIncoming(this.context, draft.mime, draft.uris,
+        draft.text, draft.title);
+      promptAction.showToast({ message: result.message });
+      if (result.ok) {
+        if (result.kind === ShareImportKind.DATASET) {
+          this.shareDatasetCollected = true;
+          this.incomingShareDescription = result.message;
+          await this.loadShareDataset();
+        } else {
+          this.showIncomingShare = false;
+          this.incomingShare = undefined;
+          await this.refreshLibrary();
+        }
+      }
+    } catch (error) {
+      promptAction.showToast({ message: `分享导入失败：${String(error)}` });
+    } finally { this.importingShare = false; }
+  }
+
+  private async loadShareDataset(): Promise<void> {
+    this.shareDataset = await shareCollectService.fetchDataset();
+  }
+
+  private toggleShareDatasetClearAfter(): void {
+    if (!this.importingShare) this.shareDatasetClearAfter = !this.shareDatasetClearAfter;
+  }
+
+  private async extractIncomingStyle(): Promise<void> {
+    if (this.importingShare || !ShareImport.canExtract(this.shareDataset)) return;
+    this.importingShare = true;
+    try {
+      const result = await shareCollectService.extractStyle(this.shareDatasetClearAfter);
       promptAction.showToast({ message: result.message });
       if (result.ok) {
         this.showIncomingShare = false;
         this.incomingShare = undefined;
+        this.shareDatasetCollected = false;
+        this.navigateHome();
+        this.tab = 0;
         await this.refreshLibrary();
       }
     } catch (error) {
-      promptAction.showToast({ message: `分享导入失败：${String(error)}` });
+      promptAction.showToast({ message: `文风提取失败：${String(error)}` });
     } finally { this.importingShare = false; }
   }
 
@@ -4254,6 +4296,7 @@ struct Index {
     if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
     if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
     if (id === 'xhs') return new ShareSheetTarget(id, '小红书', '', '#FF2442', '#FFFFFF', 32, true);
+    if (id === 'style') return new ShareSheetTarget(id, '收集文风', RI.MAGIC, '#FCEBE5', '#D8593B', 25);
     if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
     return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
   }
@@ -4263,8 +4306,24 @@ struct Index {
     if (id === 'wechat') this.shareRecordingToWechat().catch(() => {});
     else if (id === 'timeline') this.shareRecordingToTimeline().catch(() => {});
     else if (id === 'xhs') this.shareToXhs().catch(() => {});
+    else if (id === 'style') this.collectCurrentArticleStyle();
     else if (id === 'copy') this.copyRecordingLink().catch(() => {});
     else if (id === 'system') this.shareRecording().catch(() => {});
+  }
+
+  private collectCurrentArticleStyle(): void {
+    const article: MinedArticle | undefined = this.article?.articles[this.selectedArticle];
+    if (!article) {
+      promptAction.showToast({ message: '没有可收集的文章正文' });
+      return;
+    }
+    const text: string = ArticleBody.stripMarkers(article.body).trim();
+    if (text.length === 0) {
+      promptAction.showToast({ message: '没有可收集的文章正文' });
+      return;
+    }
+    this.presentIncomingShare(new IncomingShareDraft('text/plain', [], text,
+      article.title.trim() || this.selected?.rowTitle() || 'VoiceDrop 文章'));
   }
 
   private async recordingShareUrl(): Promise<string> {
@@ -5381,18 +5440,70 @@ struct Index {
                 .enabled(!this.importingShare).onClick(() => this.cancelIncomingShare())
             }.width('100%')
             Text(this.incomingShareDescription).fontSize(14).lineHeight(22).fontColor('#666666').width('100%')
+            if (this.incomingShareKindValue === ShareImportKind.DATASET) {
+              Row() {
+                Text(`已收集 ${this.shareDataset.count} 项 · ${this.shareDataset.totalChars} 字`)
+                  .fontSize(13).fontWeight(FontWeight.Medium).fontColor('#8A8175')
+                Blank()
+                Text(this.shareDataset.totalChars >= ShareImport.MIN_STYLE_CHARS ? '可以提取' :
+                  `还差 ${ShareImport.MIN_STYLE_CHARS - this.shareDataset.totalChars} 字`)
+                  .fontSize(12).fontColor(this.shareDataset.totalChars >= ShareImport.MIN_STYLE_CHARS ? '#4E7B55' : '#C0682E')
+              }.width('100%')
+              if (this.shareDataset.items.length > 0) {
+                Column() {
+                  ForEach(this.shareDataset.items.slice(0, 4), (item: ShareDatasetItem) => {
+                    Row({ space: 10 }) {
+                      Text(item.type === 'web' ? '网页' : (item.type === 'doc' ? '文档' : '文字'))
+                        .fontSize(11).fontColor('#C0682E').width(34)
+                      Column({ space: 2 }) {
+                        Text(item.title || item.source || '未命名语料').fontSize(14).fontColor('#2A2521')
+                          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+                        Text(`${item.chars} 字`).fontSize(11).fontColor('#A79F93')
+                      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+                    }.width('100%').padding({ top: 8, bottom: 8 })
+                  }, (item: ShareDatasetItem) => item.id)
+                }.padding({ left: 12, right: 12 }).backgroundColor('#FFFFFF').borderRadius(10).width('100%')
+              }
+            }
             if (this.incomingShareExcerpt.length > 0) {
               Scroll() {
                 Text(this.incomingShareExcerpt).fontSize(14).lineHeight(22).fontColor('#333333').width('100%')
               }.padding(14).backgroundColor('#F4F1EB').borderRadius(12).width('100%').constraintSize({ maxHeight: 180 })
             }
-            Row({ space: 10 }) {
-              Button('取消').layoutWeight(1).height(50).fontColor('#333333').backgroundColor('#E8E8E5')
-                .enabled(!this.importingShare).onClick(() => this.cancelIncomingShare())
-              Button(this.importingShare ? '处理中…' : (this.incomingShareTitle === '加入风格数据集' ? '收集并提取文风' : '开始生成文章'))
-                .layoutWeight(1).height(50).fontColor(Color.White).backgroundColor('#D92D20')
-                .enabled(!this.importingShare).onClick(() => this.confirmIncomingShare())
-            }.width('100%')
+            if (this.incomingShareKindValue === ShareImportKind.DATASET && this.shareDatasetCollected) {
+              Button() {
+                Row({ space: 8 }) {
+                  Text(this.shareDatasetClearAfter ? '✓' : '').fontSize(13).fontColor(Color.White)
+                    .textAlign(TextAlign.Center).width(20).height(20)
+                    .backgroundColor(this.shareDatasetClearAfter ? '#D8593B' : '#FFFFFF')
+                    .border({ width: 1, color: this.shareDatasetClearAfter ? '#D8593B' : '#E2D8C8' })
+                    .borderRadius(6)
+                  Text('提取后清空数据集').fontSize(13).fontColor('#6B6357')
+                  Blank()
+                  Text('下次从零开始').fontSize(12).fontColor('#A79F93')
+                }.width('100%')
+              }.height(34).padding(0).backgroundColor(Color.Transparent)
+                .enabled(!this.importingShare).onClick(() => this.toggleShareDatasetClearAfter())
+              Row({ space: 10 }) {
+                Button('继续收集').layoutWeight(1).height(50).fontColor('#2A2521').backgroundColor('#FFFFFF')
+                  .border({ width: 1, color: '#E2D8C8' }).enabled(!this.importingShare)
+                  .onClick(() => this.cancelIncomingShare())
+                Button(this.importingShare ? '处理中…' : '提取文章风格')
+                  .layoutWeight(1).height(50).fontColor(Color.White)
+                  .backgroundColor(ShareImport.canExtract(this.shareDataset) ? '#D8593B' : '#D9B3A8')
+                  .enabled(!this.importingShare && ShareImport.canExtract(this.shareDataset))
+                  .onClick(() => this.extractIncomingStyle())
+              }.width('100%')
+            } else {
+              Row({ space: 10 }) {
+                Button('取消').layoutWeight(1).height(50).fontColor('#333333').backgroundColor('#E8E8E5')
+                  .enabled(!this.importingShare).onClick(() => this.cancelIncomingShare())
+                Button(this.importingShare ? '处理中…' :
+                  (this.incomingShareKindValue === ShareImportKind.DATASET ? '加入数据集' : '开始生成文章'))
+                  .layoutWeight(1).height(50).fontColor(Color.White).backgroundColor('#D92D20')
+                  .enabled(!this.importingShare).onClick(() => this.confirmIncomingShare())
+              }.width('100%')
+            }
           }.padding({ left: 20, right: 20, top: 18, bottom: 28 }).backgroundColor('#FAF6EF')
             .borderRadius({ topLeft: 22, topRight: 22 }).width('100%')
         }.width('100%').height('100%').backgroundColor('#66000000')
