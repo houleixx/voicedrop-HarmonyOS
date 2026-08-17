@@ -20,12 +20,10 @@ export class UmengAnalytics {
     }
   }
 
-  async initializeAfterPrivacyConsent(): Promise<void> {
+  async initializeAfterPrivacyConsent(context: common.ApplicationContext): Promise<void> {
     if (this.initialized || this.initializing) return;
-    if (!this.preInitialized) {
-      hilog.warn(0x0000, 'VoiceDrop', 'Umeng analytics init skipped because preInit did not complete');
-      return;
-    }
+    this.preInitialize(context);
+    if (!this.preInitialized) return;
     this.initializing = true;
     try {
       await init();

@@ -32,6 +32,7 @@ import wechatBookShareTest from './WechatBookShare.test';
 import cacheMaintenanceTest from './CacheMaintenance.test';
 import detailShareUiTest from './DetailShareUi.test';
 import bookReviseContractTest from './BookReviseContract.test';
+import privacyStartupTest from './PrivacyStartup.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -68,4 +69,5 @@ export default function testsuite() {
   cacheMaintenanceTest();
   detailShareUiTest();
   bookReviseContractTest();
+  privacyStartupTest();
 }

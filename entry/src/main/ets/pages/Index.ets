@@ -81,6 +81,7 @@ import { WechatAuthResponse } from '../core/WechatAuthResponse';
 import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
 import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { DetailShareUi } from '../core/DetailShareUi';
+import { PrivacyStartup, PrivacyStartupSurface } from '../core/PrivacyStartup';
 import { WechatShareContent } from '../core/WechatShareContent';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
 import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordingDock';
@@ -177,6 +178,7 @@ struct Index {
   @State private interviewActive: boolean = false;
   @State private interviewStatus: string = '';
   @State private capturedPhotos: CapturedPhoto[] = [];
+  @State private privacyResolved: boolean = false;
   @State private showPrivacy: boolean = false;
   @State private consentPolicyExpanded: boolean = false;
   @State private editText: string = '';
@@ -440,15 +442,22 @@ struct Index {
 
   private async initialize(): Promise<void> {
     this.context = getContext(this) as common.UIAbilityContext;
-    await appPreferences.initialize(this.context);
-    this.blockedAuthorCount = appPreferences.blockedAuthors().length;
-    this.showPrivacy = !appPreferences.privacyAccepted();
+    try {
+      await appPreferences.initialize(this.context);
+      this.blockedAuthorCount = appPreferences.blockedAuthors().length;
+      this.showPrivacy = !appPreferences.privacyAccepted();
+    } catch (_) {
+      // Fail closed: local preference errors must never expose business UI or
+      // activate network services before the user has explicitly consented.
+      this.showPrivacy = true;
+    }
+    this.privacyResolved = true;
     if (!this.showPrivacy) await this.activateBusiness();
   }
 
   private async activateBusiness(): Promise<void> {
     if (this.initialized || !this.context) return;
-    await umengAnalytics.initializeAfterPrivacyConsent();
+    await umengAnalytics.initializeAfterPrivacyConsent(this.context.getApplicationContext());
     await authStore.initialize(this.context);
     libraryStore.initialize(this.context);
     communityStore.initialize(this.context);
@@ -5008,8 +5017,56 @@ struct Index {
     }.width('100%').height('100%')
   }
 
+  private startupSurface(): PrivacyStartupSurface {
+    return PrivacyStartup.surface(this.privacyResolved, !this.showPrivacy);
+  }
+
+  @Builder
+  private privacyStartupPage() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column({ space: 18 }) {
+        Text('欢迎使用 VoiceDrop').fontSize(24).fontWeight(FontWeight.Bold)
+        if (this.consentPolicyExpanded) {
+          Scroll() {
+            Text(PRIVACY_TEXT).fontSize(14).lineHeight(23).fontColor('#333333').width('100%')
+          }.height('55%').width('100%').padding(12).backgroundColor('#F5F3EE').borderRadius(12)
+          Button('收起隐私政策').fontSize(14).fontColor('#555555').backgroundColor(Color.Transparent)
+            .onClick(() => this.consentPolicyExpanded = false)
+        } else {
+          Text('开始前，请阅读并同意隐私保护说明。录音仅在你主动点击后开始，并用于转写和生成文章；相册与相机仅在插图时使用。')
+            .fontSize(16).lineHeight(25)
+          Button('查看完整隐私政策').fontSize(14).fontColor('#16825D').backgroundColor(Color.Transparent)
+            .onClick(() => this.consentPolicyExpanded = true)
+        }
+        Row({ space: 10 }) {
+          Button('退出使用').layoutWeight(1).backgroundColor('#E8E8E5').fontColor('#333333')
+            .onClick(() => this.context?.terminateSelf())
+          Button('同意并继续').layoutWeight(1).backgroundColor(Theme.ACCENT)
+            .onClick(() => this.acceptPrivacy())
+        }.width('100%')
+      }
+        .padding(24)
+        .width('88%')
+        .backgroundColor(Color.White)
+        .borderRadius(22)
+        .shadow({ radius: 28, color: '#33000000' })
+    }
+      .width('100%')
+      .height('100%')
+      .padding({ top: this.safeAreaTop(), bottom: this.safeAreaBottom() })
+      .backgroundColor(Theme.BG)
+  }
+
   build() {
-    Stack() {
+    if (this.startupSurface() === PrivacyStartupSurface.Pending) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Theme.BG)
+    } else if (this.startupSurface() === PrivacyStartupSurface.Consent) {
+      this.privacyStartupPage()
+    } else {
+      Stack() {
       Navigation(this.pathStack) {
         Column() {
           this.homeRoot()
@@ -5340,26 +5397,7 @@ struct Index {
             .borderRadius({ topLeft: 22, topRight: 22 }).width('100%')
         }.width('100%').height('100%').backgroundColor('#66000000')
       }
-      if (this.showPrivacy) {
-        Column({ space: 18 }) {
-          Text('欢迎使用 VoiceDrop').fontSize(24).fontWeight(FontWeight.Bold)
-          if (this.consentPolicyExpanded) {
-            Scroll() {
-              Text(PRIVACY_TEXT).fontSize(14).lineHeight(23).fontColor('#333333').width('100%')
-            }.height('55%').width('100%').padding(12).backgroundColor('#F5F3EE').borderRadius(12)
-            Button('收起隐私政策').fontSize(14).fontColor('#555555').backgroundColor(Color.Transparent)
-              .onClick(() => this.consentPolicyExpanded = false)
-          } else {
-            Text('开始前，请阅读并同意隐私保护说明。录音仅在你主动点击后开始，并用于转写和生成文章；相册与相机仅在插图时使用。').fontSize(16).lineHeight(25)
-            Button('查看完整隐私政策').fontSize(14).fontColor('#16825D').backgroundColor(Color.Transparent)
-              .onClick(() => this.consentPolicyExpanded = true)
-          }
-          Row({ space: 10 }) {
-            Button('退出使用').layoutWeight(1).backgroundColor('#E8E8E5').fontColor('#333333').onClick(() => this.context?.terminateSelf())
-            Button('同意并继续').layoutWeight(1).backgroundColor(Theme.ACCENT).onClick(() => this.acceptPrivacy())
-          }.width('100%')
-        }.padding(24).width('88%').backgroundColor(Color.White).borderRadius(22).shadow({ radius: 28, color: '#33000000' })
-      }
-    }.width('100%').height('100%').backgroundColor(Theme.BG)
+      }.width('100%').height('100%').backgroundColor(Theme.BG)
+    }
   }
 }

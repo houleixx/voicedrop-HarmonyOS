@@ -9,10 +9,11 @@ export class WechatLogin {
   private static readonly STORE_NAME: string = 'voicedrop.wechat.login';
   private static readonly STATE_KEY: string = 'pendingState';
   private static readonly ISSUED_AT_KEY: string = 'issuedAt';
-  private static readonly api: WXApi = WXAPIFactory.createWXAPI(WechatLogin.APP_ID);
+  private static api?: WXApi;
 
   static async start(context: common.UIAbilityContext): Promise<boolean> {
-    if (!WechatLogin.api.isWXAppInstalled()) return false;
+    const api: WXApi = WechatLogin.wxApi();
+    if (!api.isWXAppInstalled()) return false;
     const state: string =
       `${WechatLoginState.PREFIX}${util.generateRandomUUID(true).replace(/-/g, '')}`;
     await WechatLogin.savePendingState(context, state);
@@ -21,7 +22,7 @@ export class WechatLogin {
     request.state = state;
     request.callbackAbility = 'EntryAbility';
     try {
-      const result: boolean | Promise<boolean> = WechatLogin.api.sendReq(context, request);
+      const result: boolean | Promise<boolean> = api.sendReq(context, request);
       const sent: boolean = typeof result === 'boolean' ? result : await result;
       if (!sent) await WechatLogin.clearPendingState(context);
       return sent;
@@ -49,7 +50,10 @@ export class WechatLogin {
     return valid;
   }
 
-  static wxApi(): WXApi { return WechatLogin.api; }
+  static wxApi(): WXApi {
+    if (!WechatLogin.api) WechatLogin.api = WXAPIFactory.createWXAPI(WechatLogin.APP_ID);
+    return WechatLogin.api;
+  }
 
   private static async savePendingState(context: common.Context, state: string): Promise<void> {
     const store: preferences.Preferences =

@@ -2,7 +2,10 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { BaseReq, BaseResp, ErrCode, SendAuthResp, WXApiEventHandler } from '@tencent/wechat_open_sdk';
+import { preferences } from '@kit.ArkData';
 import { WechatLogin } from '../data/WechatLogin';
+import { AppPreferences } from '../data/AppPreferences';
+import { PrivacyStartup } from '../core/PrivacyStartup';
 
 export default class EntryAbility extends UIAbility implements WXApiEventHandler {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -68,7 +71,15 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
   }
 
   private routeWant(want: Want): void {
-    if (!WechatLogin.wxApi().handleWant(want, this)) this.saveWant(want);
+    this.routeWantAfterPrivacyCheck(want).catch(() => this.saveWant(want));
+  }
+
+  private async routeWantAfterPrivacyCheck(want: Want): Promise<void> {
+    const store: preferences.Preferences =
+      await preferences.getPreferences(this.context, { name: 'voicedrop.prefs' });
+    const accepted: boolean = PrivacyStartup.accepted(
+      String(store.getSync('privacyAcceptedVersion', '') ?? ''), AppPreferences.PRIVACY_VERSION);
+    if (!accepted || !WechatLogin.wxApi().handleWant(want, this)) this.saveWant(want);
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

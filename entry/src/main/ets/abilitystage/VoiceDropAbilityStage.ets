@@ -1,8 +1,5 @@
 import AbilityStage from '@ohos.app.ability.AbilityStage';
-import { umengAnalytics } from '../data/UmengAnalytics';
 
-export default class VoiceDropAbilityStage extends AbilityStage {
-  onCreate(): void {
-    umengAnalytics.preInitialize(this.context.getApplicationContext());
-  }
-}
+// Keep application-stage startup free of SDK and network initialization.
+// Business services are activated by Index only after privacy consent.
+export default class VoiceDropAbilityStage extends AbilityStage {}
