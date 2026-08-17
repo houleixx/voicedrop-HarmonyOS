@@ -10,6 +10,7 @@ import { BookSeedBody, BookWritingService } from '../../../main/ets/data/BookWri
 import { BooksService } from '../../../main/ets/data/BooksService';
 import { FeedbackBody } from '../../../main/ets/data/SettingsStore';
 import { CommunityPost } from '../../../main/ets/model/Models';
+import { WechatShareContent } from '../../../main/ets/core/WechatShareContent';
 
 export default function iosUpstreamFeaturesTest() {
   describe('IosUpstreamFeatures', () => {
@@ -48,13 +49,14 @@ export default function iosUpstreamFeaturesTest() {
     });
 
     it('parsesCurrentIosBookShelfContract', 0, () => {
-      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"主标题：副标题","main":"主标题","sub":"副标题","cover":true,"chapters":7,"author":"作者","createdAt":123},{}]}');
+      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"主标题：副标题","main":"主标题","sub":"副标题","cover":true,"coverAt":456,"chapters":7,"author":"作者","createdAt":123},{}]}');
       expect(books.length).assertEqual(1);
       expect(books[0].main).assertEqual('主标题');
       expect(books[0].chapters).assertEqual(7);
       expect(books[0].author).assertEqual('作者');
       expect(books[0].createdAt).assertEqual(123);
       expect(books[0].readerUrl()).assertEqual('https://voicedrop.cn/books/a-book/');
+      expect(books[0].coverUrl()).assertEqual('https://voicedrop.cn/books/a-book/cover.jpg?v=456');
       expect(books[0].shareText()).assertEqual('《主标题：副标题》 — 作者\nhttps://voicedrop.cn/books/a-book/');
     });
 
@@ -67,6 +69,27 @@ export default function iosUpstreamFeaturesTest() {
       expect(books[0].createdAt).assertEqual(200);
       expect(books[1].slug).assertEqual('legacy-book');
       expect(books[1].createdAt).assertEqual(0);
+      expect(books[1].coverAt).assertEqual(0);
+      expect(books[1].coverUrl()).assertEqual('https://voicedrop.cn/books/legacy-book/cover.jpg');
+    });
+
+    it('buildsPublicArticleMiniProgramCardsWithoutCommunityVisibility', 0, () => {
+      const url: string = 'https://jianshuo.dev/voicedrop/Abc_123456?s=2';
+      expect(WechatShareContent.publicShareId(url)).assertEqual('Abc_123456');
+      expect(WechatShareContent.publicMiniProgramPath(url, 2))
+        .assertEqual('pages/shared-article/index?shareId=Abc_123456&section=2&fromShare=1');
+      expect(WechatShareContent.publicShareId('https://evil.example/Abc_123456')).assertEqual('');
+    });
+
+    it('usesCleanFortyFourCharacterWechatExcerptsAndSectionLinks', 0, () => {
+      const body: string = '<!-- style: v2 -->\n[[photo:photos/a.jpg]]\n' + '字'.repeat(45) + '\n 下一段';
+      expect(WechatShareContent.excerpt(body, '兜底'))
+        .assertEqual('字'.repeat(44) + '……');
+      expect(WechatShareContent.excerpt(' [[photo:1]] ', '兜底')).assertEqual('兜底');
+      expect(WechatShareContent.withSection('https://voicedrop.cn/abc123', 3))
+        .assertEqual('https://voicedrop.cn/abc123?s=3');
+      expect(WechatShareContent.communityMiniProgramPath('community1', 2))
+        .assertEqual('pages/community-detail/index?shareId=community1&section=2&fromShare=1');
     });
 
     it('parsesBundledMarkdownIntoIosEquivalentNativeBlocks', 0, () => {

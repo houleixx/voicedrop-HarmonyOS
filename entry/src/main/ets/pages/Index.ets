@@ -81,6 +81,7 @@ import { WechatAuthResponse } from '../core/WechatAuthResponse';
 import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
 import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { DetailShareUi } from '../core/DetailShareUi';
+import { WechatShareContent } from '../core/WechatShareContent';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
 import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordingDock';
 import { RecordingSession } from '../components/RecordingSession';
@@ -4078,9 +4079,18 @@ struct Index {
 
   private async shareSelectedCommunityPostToWechat(): Promise<void> {
     if (!this.selectedPost || !this.context) return;
+    const articleIndex: number = 0;
+    const article: MinedArticle | undefined = this.selectedPost.doc?.articles?.[articleIndex];
+    const title: string = article?.title || this.selectedPost.title || 'VoiceDrop 文章';
+    const url: string = WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), articleIndex);
+    if (!WechatCommunityShare.isWechatInstalled()) {
+      await this.copyWechatFallback(title, url); return;
+    }
     try {
       const message: string = await WechatCommunityShare.send(
-        this.context, this.selectedPost.shareId, this.selectedPost.title || 'VoiceDrop 文章');
+        this.context, this.selectedPost.shareId, articleIndex, title,
+        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, '来自 VD 社区')}`,
+        this.articleSharePhotoUrl(this.selectedPost.doc, articleIndex));
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
@@ -4108,13 +4118,18 @@ struct Index {
 
   private async shareSelectedCommunityPostToTimeline(): Promise<void> {
     if (!this.selectedPost || !this.context) return;
-    const url: string = Api.sharePage(this.selectedPost.shareId);
+    const articleIndex: number = 0;
+    const article: MinedArticle | undefined = this.selectedPost.doc?.articles?.[articleIndex];
+    const title: string = article?.title || this.selectedPost.title || 'VoiceDrop 社区文章';
+    const url: string = WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), articleIndex);
+    if (!WechatCommunityShare.isWechatInstalled()) {
+      await this.copyWechatFallback(title, url); return;
+    }
     try {
-      const message: string = await WechatCommunityShare.sendTimeline(
-        this.context,
-        url,
-        this.selectedPost.title || 'VoiceDrop 社区文章',
-        '打开 VoiceDrop 查看这篇社区分享');
+      const message: string = await WechatCommunityShare.sendTimelineWithThumbnail(
+        this.context, url, title,
+        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, '来自 VD 社区')}`,
+        this.articleSharePhotoUrl(this.selectedPost.doc, articleIndex));
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
@@ -4125,7 +4140,7 @@ struct Index {
     if (!this.selectedPost) return;
     try {
       await pasteboard.getSystemPasteboard().setData(
-        pasteboard.createPlainTextData(Api.sharePage(this.selectedPost.shareId)));
+        pasteboard.createPlainTextData(WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), 0)));
       promptAction.showToast({ message: '链接已复制' });
     } catch (_) {
       promptAction.showToast({ message: '复制失败' });
@@ -4203,14 +4218,19 @@ struct Index {
   }
 
   private async shareRecordingToWechat(): Promise<void> {
-    if (!this.context || !this.article) return;
-    if (this.communityShareId.length === 0) {
-      promptAction.showToast({ message: '请先在更多菜单开启“VD 社区可见”，再分享到微信' });
-      return;
-    }
+    if (!this.context || !this.article || !this.selected) return;
+    const url: string = await this.recordingShareUrl();
+    if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
     const title: string = this.article.articles[this.selectedArticle]?.title ?? this.selected?.rowTitle() ?? 'VoiceDrop 文章';
+    if (!WechatCommunityShare.isWechatInstalled()) {
+      await this.copyWechatFallback(title, url); return;
+    }
     try {
-      const message: string = await WechatCommunityShare.send(this.context, this.communityShareId, title);
+      const article: MinedArticle | undefined = this.article.articles[this.selectedArticle];
+      const message: string = await WechatCommunityShare.sendPublicArticle(
+        this.context, url, this.selectedArticle, title,
+        WechatShareContent.excerpt(article?.body, '一篇口述而成的文章'),
+        this.articleSharePhotoUrl(this.article, this.selectedArticle));
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
@@ -4249,9 +4269,15 @@ struct Index {
     if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
     const title: string = this.article.articles[Math.min(this.selectedArticle,
       this.article.articles.length - 1)]?.title ?? this.selected.rowTitle();
+    if (!WechatCommunityShare.isWechatInstalled()) {
+      await this.copyWechatFallback(title, url); return;
+    }
     try {
-      const message: string = await WechatCommunityShare.sendTimeline(
-        this.context, url, title, '打开 VoiceDrop 阅读这篇文章');
+      const article: MinedArticle | undefined = this.article.articles[this.selectedArticle];
+      const message: string = await WechatCommunityShare.sendTimelineWithThumbnail(
+        this.context, url, title,
+        WechatShareContent.excerpt(article?.body, '一篇口述而成的文章'),
+        this.articleSharePhotoUrl(this.article, this.selectedArticle));
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
@@ -4267,6 +4293,24 @@ struct Index {
     } catch (error) {
       promptAction.showToast({ message: `复制失败：${String(error)}` });
     }
+  }
+
+  private articleSharePhotoUrl(doc: ArticleDoc | undefined, articleIndex: number): string {
+    const article: MinedArticle | undefined = doc?.articles?.[articleIndex];
+    if (!article) return '';
+    const key: string | undefined = ArticleBody.firstPhotoKey(article.body, doc?.photos);
+    if (!key) return '';
+    const owner: string = (doc?.owner ?? '').replace(/\/+$/, '');
+    const fullKey: string = owner.length > 0 && !key.startsWith('users/') ? `${owner}/${key}` : key;
+    return ArticleBody.photoUrl(fullKey);
+  }
+
+  private async copyWechatFallback(title: string, url: string): Promise<void> {
+    try {
+      await pasteboard.getSystemPasteboard().setData(
+        pasteboard.createPlainTextData(`${title}\n${url}`));
+      promptAction.showToast({ message: '没检测到微信，链接在剪贴板里' });
+    } catch (_) { promptAction.showToast({ message: '未安装微信，复制链接失败' }); }
   }
 
   private async runDetailMenuAction(action: string): Promise<void> {
@@ -4669,7 +4713,7 @@ struct Index {
 
   private async shareSelectedCommunityPost(): Promise<void> {
     if (!this.selectedPost) return;
-    const url: string = Api.sharePage(this.selectedPost.shareId);
+    const url: string = WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), 0);
     try {
       await this.showTextShare(url, this.selectedPost.title || 'VoiceDrop 社区文章');
     } catch (_) {

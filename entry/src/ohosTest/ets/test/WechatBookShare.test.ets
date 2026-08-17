@@ -20,5 +20,30 @@ export default function wechatBookShareTest() {
       expect(WechatBookShare.isTimeline('friend')).assertFalse();
       expect(WechatBookShare.isTimeline('timeline')).assertTrue();
     });
+
+    it('sharesOnlyTrustedCurrentBookPages', 0, () => {
+      const root: string = 'https://voicedrop.cn/books/sample-book/';
+      const chapter = WechatBookShare.target(root,
+        'https://voicedrop.cn/books/sample-book/chapter-2.html', '第二章 · 出发', '一本书', '作者');
+      expect(chapter.url).assertEqual('https://voicedrop.cn/books/sample-book/chapter-2.html');
+      expect(chapter.title).assertEqual('第二章 · 出发');
+      expect(chapter.isChapter).assertTrue();
+
+      const outside = WechatBookShare.target(root, 'https://evil.example/books/sample-book/chapter-2.html',
+        '伪造标题', '一本书', '作者');
+      expect(outside.url).assertEqual(root);
+      expect(outside.title).assertEqual('《一本书》 — 作者');
+      expect(outside.isChapter).assertFalse();
+
+      const otherBook = WechatBookShare.target(root,
+        'https://voicedrop.cn/books/another-book/chapter-1.html', '另一本书', '一本书', '作者');
+      expect(otherBook.url).assertEqual(root);
+      expect(otherBook.title).assertEqual('《一本书》 — 作者');
+      expect(otherBook.isChapter).assertFalse();
+
+      const rootAnchor = WechatBookShare.target(root, `${root}#contents`, '目录', '一本书', '作者');
+      expect(rootAnchor.url).assertEqual(root);
+      expect(rootAnchor.isChapter).assertFalse();
+    });
   });
 }

@@ -216,9 +216,9 @@ export struct BookRevisePage {
           .onChange((value: string) => this.input = value.substring(0, 4000))
         Button({ type: ButtonType.Circle }) {
           if (this.sending) LoadingProgress().width(20).height(20).color(Color.White)
-          else RemixIcon({ glyph: RI.SEND_PLANE, iconSize: 20, color: Color.White })
+          else RemixIcon({ glyph: RI.ARROW_UP_LINE, iconSize: 22, color: Color.White })
         }
-          .width(44).height(44).padding(0).backgroundColor(this.canSend() ? Theme.ACCENT : '#B8B0A1')
+          .width(42).height(42).padding(0).backgroundColor(this.canSend() ? Theme.ACCENT : '#B8B0A1')
           .enabled(this.canSend()).onClick(() => this.send())
       }.width('100%').alignItems(VerticalAlign.Bottom)
       Text(this.running() ? '有一个修改正在进行，等它改完再提下一个' :

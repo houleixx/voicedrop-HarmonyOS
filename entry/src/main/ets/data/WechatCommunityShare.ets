@@ -8,7 +8,8 @@ import {
   WXWebpageObject
 } from '@tencent/wechat_open_sdk';
 import { Api } from '../core/Api';
-import { WechatBookShare, WechatBookShareTarget } from '../core/WechatBookShare';
+import { WechatBookShare, WechatBookShareTarget, WechatBookShareTargetValue } from '../core/WechatBookShare';
+import { WechatShareContent } from '../core/WechatShareContent';
 import { BinaryResponse, httpClient } from '../net/HttpClient';
 import { ShelfBook } from './BooksService';
 import { WechatLogin } from './WechatLogin';
@@ -17,23 +18,38 @@ export class WechatCommunityShare {
   private static readonly MINI_PROGRAM_ORIGINAL_ID: string = 'gh_451de6440ef4';
   private static readonly THUMBNAIL_LIMIT_BYTES: number = 64 * 1024;
 
-  static async send(context: common.UIAbilityContext, shareId: string, title: string): Promise<string> {
-    const thumbnail: Uint8Array = await context.resourceManager.getRawFileContent('voicedrop-share-thumb.jpg');
+  static isWechatInstalled(): boolean { return WechatLogin.wxApi().isWXAppInstalled(); }
+
+  static async send(context: common.UIAbilityContext, shareId: string, articleIndex: number,
+    title: string, description: string, thumbnailUrl: string = ''): Promise<string> {
+    const thumbnail: Uint8Array = await WechatCommunityShare.thumbnail(context, thumbnailUrl);
     return WechatCommunityShare.sendCard(
       context,
-      Api.sharePage(shareId),
-      `pages/community-detail/index?shareId=${encodeURIComponent(shareId.trim())}&fromShare=1`,
+      WechatShareContent.withSection(Api.sharePage(shareId), articleIndex),
+      WechatShareContent.communityMiniProgramPath(shareId, articleIndex),
       title,
-      '打开 VoiceDrop 小程序阅读全文',
+      description,
       thumbnail,
       'voicedrop-community-share-',
       SendMessageToWXReq.WXSceneSession
     );
   }
 
+  static async sendPublicArticle(context: common.UIAbilityContext, webpageUrl: string, articleIndex: number,
+    title: string, description: string, thumbnailUrl: string = ''): Promise<string> {
+    const path: string = WechatShareContent.publicMiniProgramPath(webpageUrl, articleIndex);
+    if (path.length === 0) return '无法生成小程序分享卡片';
+    return WechatCommunityShare.sendCard(
+      context, webpageUrl, path, title, description,
+      await WechatCommunityShare.thumbnail(context, thumbnailUrl),
+      'voicedrop-article-share-', SendMessageToWXReq.WXSceneSession
+    );
+  }
+
   static async sendBook(
     context: common.UIAbilityContext,
     book: ShelfBook,
+    share: WechatBookShareTargetValue,
     target: WechatBookShareTarget = 'friend'
   ): Promise<string> {
     let thumbnail: Uint8Array = await context.resourceManager.getRawFileContent('voicedrop-share-thumb.jpg');
@@ -45,9 +61,9 @@ export class WechatCommunityShare {
     }
     return WechatCommunityShare.sendWebpage(
       context,
-      book.readerUrl(),
-      WechatBookShare.title(book.title, book.main, book.author),
-      '打开 VoiceDrop 阅读这本书',
+      share.url,
+      share.title,
+      share.isChapter ? WechatBookShare.title(book.title, book.main, book.author) : 'VoiceDrop 图书馆 · 点开即读',
       thumbnail,
       WechatBookShare.isTimeline(target) ?
         SendMessageToWXReq.WXSceneTimeline : SendMessageToWXReq.WXSceneSession
@@ -60,13 +76,27 @@ export class WechatCommunityShare {
     title: string,
     description: string
   ): Promise<string> {
-    const thumbnail: Uint8Array = await context.resourceManager.getRawFileContent('voicedrop-share-thumb.jpg');
+    const thumbnail: Uint8Array = await WechatCommunityShare.thumbnail(context, '');
     return WechatCommunityShare.sendWebpage(
       context,
       webpageUrl,
       title,
       description,
       thumbnail,
+      SendMessageToWXReq.WXSceneTimeline
+    );
+  }
+
+  static async sendTimelineWithThumbnail(
+    context: common.UIAbilityContext,
+    webpageUrl: string,
+    title: string,
+    description: string,
+    thumbnailUrl: string
+  ): Promise<string> {
+    return WechatCommunityShare.sendWebpage(
+      context, webpageUrl, title, description,
+      await WechatCommunityShare.thumbnail(context, thumbnailUrl),
       SendMessageToWXReq.WXSceneTimeline
     );
   }
@@ -171,5 +201,17 @@ export class WechatCommunityShare {
       try { await source.release(); } catch (_) {}
       try { await packer.release(); } catch (_) {}
     }
+  }
+
+  private static async thumbnail(context: common.UIAbilityContext, url: string): Promise<Uint8Array> {
+    if (url.length > 0) {
+      try {
+        const response: BinaryResponse = await httpClient.getBytes(url);
+        if (response.ok() && response.data.byteLength > 0) {
+          return await WechatCommunityShare.imageThumbnail(response.data);
+        }
+      } catch (_) {}
+    }
+    return context.resourceManager.getRawFileContent('voicedrop-share-thumb.jpg');
   }
 }
