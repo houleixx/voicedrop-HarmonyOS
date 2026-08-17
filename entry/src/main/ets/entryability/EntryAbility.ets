@@ -134,13 +134,20 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
   private saveWant(want: Want): void {
     const shortcutUri: string = String(want.parameters?.['voicedrop.uri'] ?? '');
     AppStorage.setOrCreate<string>('launchUri', want.uri ?? shortcutUri);
-    AppStorage.setOrCreate<string>('sharedText', String(want.parameters?.['ohos.extra.param.key.content'] ?? ''));
+    const shareUrl: string = String(want.parameters?.['ohos.extra.param.key.shareUrl'] ?? '');
+    const shareContent: string = String(want.parameters?.['ohos.extra.param.key.content'] ?? '');
+    const shareAbstract: string = String(want.parameters?.['ohos.extra.param.key.shareAbstract'] ?? '');
+    AppStorage.setOrCreate<string>('sharedText', shareUrl || shareContent || shareAbstract);
     AppStorage.setOrCreate<string>('sharedTitle', String(want.parameters?.['ohos.extra.param.key.contentTitle'] ?? ''));
     AppStorage.setOrCreate<string>('sharedMime', want.type ?? '');
     const streams: Object | undefined = want.parameters?.['ability.params.stream'];
     let uris: string[] = [];
     if (typeof streams === 'string') uris = [streams];
-    else if (Array.isArray(streams)) uris = streams as string[];
+    else if (Array.isArray(streams)) uris = (streams as Object[])
+      .map((value: Object) => String(value)).filter((value: string) => value.length > 0);
+    const shareAction: boolean = want.action === 'ohos.want.action.sendData' ||
+      want.action === 'ohos.want.action.sendMultipleData';
+    if (shareAction && uris.length === 0 && (want.uri ?? '').length > 0 && !shareUrl) uris = [want.uri ?? ''];
     AppStorage.setOrCreate<string>('sharedUris', JSON.stringify(uris));
     const sequence: number = AppStorage.get<number>('shareSequence') ?? 0;
     AppStorage.setOrCreate<number>('shareSequence', sequence + 1);

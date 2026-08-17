@@ -13,7 +13,7 @@ export class DetailShareUi {
   }
 
   static targetIds(surface: DetailShareSurface): string[] {
-    if (surface === 'recording') return ['wechat', 'timeline', 'xhs', 'copy', 'system'];
+    if (surface === 'recording') return ['wechat', 'timeline', 'xhs', 'style', 'copy', 'system'];
     if (surface === 'community') return ['wechat', 'timeline', 'copy', 'system'];
     return ['friend', 'timeline', 'copy', 'system'];
   }
