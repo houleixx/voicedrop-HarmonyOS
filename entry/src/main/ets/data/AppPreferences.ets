@@ -1,6 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { CommunityLikeState } from '../core/CommunityLikeState';
+import { PrivacyStartup } from '../core/PrivacyStartup';
 
 interface PendingCommunityTimestamp { createdAt?: number; }
 
@@ -13,7 +14,8 @@ export class AppPreferences {
   }
 
   privacyAccepted(): boolean {
-    return String(this.store?.getSync('privacyAcceptedVersion', '') ?? '') === AppPreferences.PRIVACY_VERSION;
+    return PrivacyStartup.accepted(
+      String(this.store?.getSync('privacyAcceptedVersion', '') ?? ''), AppPreferences.PRIVACY_VERSION);
   }
 
   async acceptPrivacy(): Promise<void> {
