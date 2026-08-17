@@ -39,10 +39,29 @@
               { "scheme": "https", "host": "www.jianshuo.dev", "pathStartWith": "voicedrop" }
             ]
           },
+        ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "VoiceDropShareAbility",
+        "srcEntry": "./ets/shareability/VoiceDropShareAbility.ets",
+        "type": "share",
+        "icon": "$media:voicedrop_launcher",
+        "label": "$string:app_name",
+        "exported": true,
+        "skills": [
           {
             "entities": ["entity.system.default"],
             "actions": ["ohos.want.action.sendData", "ohos.want.action.sendMultipleData"],
-            "uris": [{ "type": "*/*" }]
+            "uris": [
+              { "type": "general.text" },
+              { "type": "general.image" },
+              { "type": "general.audio" },
+              { "type": "com.adobe.pdf" },
+              { "type": "com.microsoft.word.doc" },
+              { "type": "org.openxmlformats.wordprocessingml.document" }
+            ]
           }
         ]
       }

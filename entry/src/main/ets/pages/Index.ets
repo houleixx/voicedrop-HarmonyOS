@@ -4296,7 +4296,6 @@ struct Index {
     if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
     if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
     if (id === 'xhs') return new ShareSheetTarget(id, '小红书', '', '#FF2442', '#FFFFFF', 32, true);
-    if (id === 'style') return new ShareSheetTarget(id, '收集文风', RI.MAGIC, '#FCEBE5', '#D8593B', 25);
     if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
     return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
   }
@@ -4306,24 +4305,8 @@ struct Index {
     if (id === 'wechat') this.shareRecordingToWechat().catch(() => {});
     else if (id === 'timeline') this.shareRecordingToTimeline().catch(() => {});
     else if (id === 'xhs') this.shareToXhs().catch(() => {});
-    else if (id === 'style') this.collectCurrentArticleStyle();
     else if (id === 'copy') this.copyRecordingLink().catch(() => {});
     else if (id === 'system') this.shareRecording().catch(() => {});
-  }
-
-  private collectCurrentArticleStyle(): void {
-    const article: MinedArticle | undefined = this.article?.articles[this.selectedArticle];
-    if (!article) {
-      promptAction.showToast({ message: '没有可收集的文章正文' });
-      return;
-    }
-    const text: string = ArticleBody.stripMarkers(article.body).trim();
-    if (text.length === 0) {
-      promptAction.showToast({ message: '没有可收集的文章正文' });
-      return;
-    }
-    this.presentIncomingShare(new IncomingShareDraft('text/plain', [], text,
-      article.title.trim() || this.selected?.rowTitle() || 'VoiceDrop 文章'));
   }
 
   private async recordingShareUrl(): Promise<string> {

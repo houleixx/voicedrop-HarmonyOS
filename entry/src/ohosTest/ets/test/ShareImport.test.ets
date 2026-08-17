@@ -1,5 +1,10 @@
 import { describe, expect, it } from '@ohos/hypium';
-import { ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../../../main/ets/core/ShareImport';
+import {
+  ShareDatasetSnapshot,
+  ShareImport,
+  ShareImportKind,
+  ShareIncomingPayload
+} from '../../../main/ets/core/ShareImport';
 
 export default function shareImportTest() {
   describe('ShareImport', () => {
@@ -9,6 +14,18 @@ export default function shareImportTest() {
       expect(ShareImport.classify('application/pdf', ['file://article.pdf'])).assertEqual(ShareImportKind.DATASET);
       expect(ShareImport.classify('*/*', ['file://image.jpg', 'file://article.pdf']))
         .assertEqual(ShareImportKind.DATASET);
+      expect(ShareImport.classify('general.jpeg', ['file://shared'])).assertEqual(ShareImportKind.IMAGE);
+      expect(ShareImport.classify('general.mpeg-4-audio', ['file://shared'])).assertEqual(ShareImportKind.AUDIO);
+    });
+
+    it('combinesSystemShareRecordsIntoOneIncomingPayload', 0, () => {
+      const payload: ShareIncomingPayload = ShareImport.payloadFromRecords([
+        { utd: 'general.plain-text', content: '第一段', title: '自己的文章' },
+        { utd: 'general.plain-text', content: '第二段' }
+      ]);
+      expect(payload.type).assertEqual('general.plain-text');
+      expect(payload.title).assertEqual('自己的文章');
+      expect(payload.text).assertEqual('第一段\n\n第二段');
     });
 
     it('parsesDatasetAndAppliesTheSharedExtractionThreshold', 0, () => {
