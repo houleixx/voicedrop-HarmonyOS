@@ -5,7 +5,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { systemShare } from '@kit.ShareKit';
 import { BooksService, ShelfBook, booksService } from '../data/BooksService';
 import { WechatCommunityShare } from '../data/WechatCommunityShare';
-import { WechatBookShareTarget } from '../core/WechatBookShare';
+import { WechatBookShare, WechatBookShareTarget, WechatBookShareTargetValue } from '../core/WechatBookShare';
 import { DetailShareUi } from '../core/DetailShareUi';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { PageHeader } from '../ui/PageHeader';
@@ -178,12 +178,25 @@ export struct BookReaderPage {
   @State private showShareSheet: boolean = false;
   @State private showRevise: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
+  private currentPageUrl: string = '';
+  private currentPageTitle: string = '';
+  private currentShare(): WechatBookShareTargetValue {
+    return WechatBookShare.target(this.book.readerUrl(), this.currentPageUrl, this.currentPageTitle,
+      this.book.title || this.book.main, this.book.author);
+  }
   private async shareBook(target: WechatBookShareTarget): Promise<void> {
     this.showShareSheet = false;
+    const share: WechatBookShareTargetValue = this.currentShare();
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      if (!WechatCommunityShare.isWechatInstalled()) {
+        await pasteboard.getSystemPasteboard().setData(
+          pasteboard.createPlainTextData(`${share.title}\n${share.url}`));
+        promptAction.showToast({ message: '没检测到微信，链接在剪贴板里' });
+        return;
+      }
       if (this.book.cover) promptAction.showToast({ message: '正在准备微信分享…' });
-      const message: string = await WechatCommunityShare.sendBook(context, this.book, target);
+      const message: string = await WechatCommunityShare.sendBook(context, this.book, share, target);
       promptAction.showToast({ message: message });
     } catch (error) {
       promptAction.showToast({ message: `微信分享失败：${String(error)}` });
@@ -191,12 +204,13 @@ export struct BookReaderPage {
   }
   private async shareBookWithSystem(): Promise<void> {
     this.showShareSheet = false;
+    const share: WechatBookShareTargetValue = this.currentShare();
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const record: systemShare.SharedRecord = {
         utd: 'general.plain-text',
-        content: this.book.shareText(),
-        title: this.book.title || this.book.main || 'VoiceDrop 书籍'
+        content: `${share.title}\n${share.url}`,
+        title: share.title
       };
       const data: systemShare.SharedData = new systemShare.SharedData(record);
       await new systemShare.ShareController(data).show(context, {
@@ -210,7 +224,7 @@ export struct BookReaderPage {
     this.showShareSheet = false;
     try {
       await pasteboard.getSystemPasteboard().setData(
-        pasteboard.createPlainTextData(this.book.readerUrl()));
+        pasteboard.createPlainTextData(this.currentShare().url));
       promptAction.showToast({ message: '链接已复制' });
     } catch (_) {
       promptAction.showToast({ message: '复制失败' });
@@ -295,8 +309,21 @@ export struct BookReaderPage {
           Web({ src: this.book.readerUrl(), controller: this.controller })
             .width('100%').height('100%')
             .javaScriptAccess(true).domStorageAccess(true).fileAccess(false).mixedMode(MixedMode.None)
-            .onPageBegin(() => this.loading = true)
-            .onPageEnd(() => this.loading = false)
+            .onPageBegin((event: OnPageBeginEvent): void => {
+              this.loading = true;
+              this.currentPageUrl = event.url;
+              this.currentPageTitle = '';
+            })
+            .onPageEnd((event: OnPageEndEvent): void => {
+              this.loading = false;
+              this.currentPageUrl = event.url;
+            })
+            .onRefreshAccessedHistory((event: OnRefreshAccessedHistoryEvent): void => {
+              this.currentPageUrl = event.url;
+            })
+            .onTitleReceive((event: OnTitleReceiveEvent): void => {
+              this.currentPageTitle = event.title;
+            })
             .onErrorReceive((event: OnErrorReceiveEvent): void => {
               if (event.request.isMainFrame()) this.loading = false;
             })
