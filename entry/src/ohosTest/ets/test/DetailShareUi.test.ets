@@ -5,7 +5,7 @@ export default function detailShareUiTest() {
   describe('DetailShareUi', () => {
     it('keepsRecordingChannelsInTheApprovedOrder', 0, () => {
       expect(DetailShareUi.targetIds('recording').join(','))
-        .assertEqual('wechat,timeline,xhs,style,copy,system');
+        .assertEqual('wechat,timeline,xhs,copy,system');
       expect(DetailShareUi.needsDivider('recording')).assertTrue();
     });
 

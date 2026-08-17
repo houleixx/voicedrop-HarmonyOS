@@ -53,7 +53,7 @@ export class ShareCollectService {
     return response.ok();
   }
 
-  async collectIncoming(context: common.UIAbilityContext, mime: string, uris: string[], text: string,
+  async collectIncoming(context: common.Context, mime: string, uris: string[], text: string,
     title: string = ''): Promise<ShareCollectResult> {
     const kind: ShareImportKind = ShareImport.classify(mime, uris);
     if (kind === ShareImportKind.AUDIO && uris.length > 0) return this.generateFromAudio(uris[0]);
@@ -113,7 +113,7 @@ export class ShareCollectService {
     return new ShareCollectResult(true, `${uploaded} 张图片已送入 VoiceDrop，正在看图成文`, ShareImportKind.IMAGE);
   }
 
-  private async collectDataset(context: common.UIAbilityContext, uris: string[], sharedText: string,
+  private async collectDataset(context: common.Context, uris: string[], sharedText: string,
     sharedTitle: string): Promise<ShareCollectResult> {
     let chars: number = 0;
     const text: string = sharedText.trim();
@@ -164,7 +164,7 @@ export class ShareCollectService {
     } finally { fs.closeSync(file); }
   }
 
-  private async decodeDocument(context: common.UIAbilityContext, bytes: ArrayBuffer, uri: string): Promise<string> {
+  private async decodeDocument(context: common.Context, bytes: ArrayBuffer, uri: string): Promise<string> {
     if (bytes.byteLength === 0) return '';
     const data: Uint8Array = new Uint8Array(bytes);
     if (data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) {
@@ -178,7 +178,7 @@ export class ShareCollectService {
     return value.indexOf('\u0000') >= 0 ? '' : value;
   }
 
-  private extractPdf(context: common.UIAbilityContext, bytes: ArrayBuffer): string {
+  private extractPdf(context: common.Context, bytes: ArrayBuffer): string {
     const path: string = this.writeTemporary(context, bytes, '.pdf');
     const document: pdfService.PdfDocument = new pdfService.PdfDocument();
     const pages: string[] = [];
@@ -204,7 +204,7 @@ export class ShareCollectService {
     return pages.join('\n\n').trim();
   }
 
-  private async extractDocx(context: common.UIAbilityContext, bytes: ArrayBuffer): Promise<string> {
+  private async extractDocx(context: common.Context, bytes: ArrayBuffer): Promise<string> {
     const zipPath: string = this.writeTemporary(context, bytes, '.docx');
     const root: string = `${context.cacheDir}/share-docx-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     try {
@@ -247,7 +247,7 @@ export class ShareCollectService {
     } finally { request.destroy(); }
   }
 
-  private writeTemporary(context: common.UIAbilityContext, bytes: ArrayBuffer, suffix: string): string {
+  private writeTemporary(context: common.Context, bytes: ArrayBuffer, suffix: string): string {
     const path: string = `${context.cacheDir}/share-${Date.now()}-${Math.floor(Math.random() * 100000)}${suffix}`;
     const file: fs.File = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
     try { fs.writeSync(file.fd, bytes); } finally { fs.closeSync(file); }

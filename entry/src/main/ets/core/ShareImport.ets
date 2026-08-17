@@ -4,6 +4,37 @@ export enum ShareImportKind {
   DATASET = 'dataset'
 }
 
+export class ShareRecordValue {
+  utd: string;
+  content: string;
+  uri: string;
+  title: string;
+  description: string;
+
+  constructor(utd: string = '', content: string = '', uri: string = '', title: string = '',
+    description: string = '') {
+    this.utd = utd;
+    this.content = content;
+    this.uri = uri;
+    this.title = title;
+    this.description = description;
+  }
+}
+
+export class ShareIncomingPayload {
+  type: string;
+  uris: string[];
+  text: string;
+  title: string;
+
+  constructor(type: string = '', uris: string[] = [], text: string = '', title: string = '') {
+    this.type = type;
+    this.uris = uris;
+    this.text = text;
+    this.title = title;
+  }
+}
+
 export class ShareDatasetItem {
   id: string;
   type: string;
@@ -55,13 +86,22 @@ export class ShareImport {
 
   static classify(mime: string, uris: string[]): ShareImportKind {
     const lower: string = (mime || '').toLowerCase();
-    if (lower.startsWith('audio/')) return ShareImportKind.AUDIO;
-    if (lower.startsWith('image/')) return ShareImportKind.IMAGE;
+    if (ShareImport.isAudioType(lower)) return ShareImportKind.AUDIO;
+    if (ShareImport.isImageType(lower)) return ShareImportKind.IMAGE;
     if (uris.some((uri: string) => ShareImport.looksLikeAudio(uri))) return ShareImportKind.AUDIO;
     if (uris.length > 0 && uris.every((uri: string) => ShareImport.looksLikeImage(uri))) {
       return ShareImportKind.IMAGE;
     }
     return ShareImportKind.DATASET;
+  }
+
+  static payloadFromRecords(records: ShareRecordValue[]): ShareIncomingPayload {
+    const uris: string[] = records.map((record: ShareRecordValue) => (record.uri ?? '').trim())
+      .filter((uri: string) => uri.length > 0);
+    const text: string = records.map((record: ShareRecordValue) =>
+      (record.content ?? record.description ?? '').trim()).filter((value: string) => value.length > 0).join('\n\n');
+    const first: ShareRecordValue | undefined = records[0];
+    return new ShareIncomingPayload(first?.utd ?? '', uris, text, first?.title?.trim() ?? '');
   }
 
   static canExtract(snapshot: ShareDatasetSnapshot): boolean {
@@ -157,5 +197,15 @@ export class ShareImport {
 
   private static looksLikeImage(uri: string): boolean {
     return /\.(jpe?g|png|webp|heic|gif)(\?|$)/i.test(uri);
+  }
+
+  private static isAudioType(value: string): boolean {
+    return value.startsWith('audio/') || value === 'general.audio' || value.endsWith('-audio') ||
+      value.includes('.audio');
+  }
+
+  private static isImageType(value: string): boolean {
+    return value.startsWith('image/') || value === 'general.image' || value === 'general.jpeg' ||
+      value === 'general.png' || value.endsWith('-image');
   }
 }
