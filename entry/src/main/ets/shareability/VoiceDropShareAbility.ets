@@ -14,8 +14,9 @@ export default class VoiceDropShareAbility extends ShareExtensionAbility {
     const records: ShareRecordValue[] = data.getRecords().map((record: systemShare.SharedRecord) =>
       new ShareRecordValue(record.utd, record.content ?? '', record.uri ?? '', record.title ?? '',
         record.description ?? ''));
-    const payload: ShareIncomingPayload = ShareImport.payloadFromRecords(records);
-    this.loadPayload(session, this.hasPayload(payload) ? payload : this.payloadFromWant(want));
+    const payload: ShareIncomingPayload = ShareImport.mergePayload(
+      ShareImport.payloadFromRecords(records), this.payloadFromWant(want));
+    this.loadPayload(session, payload);
   }
 
   private loadPayload(session: UIExtensionContentSession, payload: ShareIncomingPayload): void {
@@ -37,11 +38,11 @@ export default class VoiceDropShareAbility extends ShareExtensionAbility {
     if (typeof streams === 'string') uris = [streams];
     else if (Array.isArray(streams)) uris = (streams as Object[])
       .map((value: Object) => String(value)).filter((value: string) => value.length > 0);
-    if (uris.length === 0 && (want.uri ?? '').length > 0 && text.length === 0) uris = [want.uri ?? ''];
+    const wantUri: string = (want.uri ?? '').trim();
+    if (text.length === 0 && ShareImport.isWebUrl(wantUri)) {
+      return new ShareIncomingPayload(want.type ?? '', uris, wantUri, title);
+    }
+    if (uris.length === 0 && wantUri.length > 0 && text.length === 0) uris = [wantUri];
     return new ShareIncomingPayload(want.type ?? '', uris, text, title);
-  }
-
-  private hasPayload(payload: ShareIncomingPayload): boolean {
-    return payload.text.trim().length > 0 || payload.uris.length > 0;
   }
 }

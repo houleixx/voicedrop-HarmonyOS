@@ -97,13 +97,31 @@ export class ShareImport {
 
   static payloadFromRecords(records: ShareRecordValue[]): ShareIncomingPayload {
     const uris: string[] = records.map((record: ShareRecordValue) => (record.uri ?? '').trim())
-      .filter((uri: string) => uri.length > 0);
+      .filter((uri: string) => uri.length > 0 && !ShareImport.isWebUrl(uri));
     const text: string = records.map((record: ShareRecordValue) => {
       const content: string = (record.content ?? '').trim();
-      return content.length > 0 ? content : (record.description ?? '').trim();
+      const description: string = (record.description ?? '').trim();
+      const uri: string = (record.uri ?? '').trim();
+      if (ShareImport.isWebUrl(content)) return content;
+      if (ShareImport.isWebUrl(description)) return description;
+      if (ShareImport.isWebUrl(uri)) return uri;
+      return content.length > 0 ? content : description;
     }).filter((value: string) => value.length > 0).join('\n\n');
     const first: ShareRecordValue | undefined = records[0];
     return new ShareIncomingPayload(first?.utd ?? '', uris, text, first?.title?.trim() ?? '');
+  }
+
+  static mergePayload(shared: ShareIncomingPayload, fallback: ShareIncomingPayload): ShareIncomingPayload {
+    const sharedText: string = shared.text.trim();
+    const fallbackText: string = fallback.text.trim();
+    let text: string = sharedText.length > 0 ? sharedText : fallbackText;
+    if (!ShareImport.isWebUrl(text) && ShareImport.isWebUrl(fallbackText)) text = fallbackText;
+    const uris: string[] = shared.uris.concat(fallback.uris)
+      .filter((uri: string, index: number, values: string[]) => uri.length > 0 && values.indexOf(uri) === index);
+    const useFallbackType: boolean = text === fallbackText && fallback.type.trim().length > 0;
+    return new ShareIncomingPayload(
+      useFallbackType ? fallback.type : (shared.type.trim() || fallback.type),
+      uris, text, shared.title.trim() || fallback.title.trim());
   }
 
   static newestAddedDatasetItem(before: ShareDatasetSnapshot,

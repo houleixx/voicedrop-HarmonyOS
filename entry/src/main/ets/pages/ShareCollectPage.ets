@@ -26,6 +26,7 @@ struct ShareCollectPage {
   @LocalStorageProp('shareTitle') private shareTitle: string = '';
   @State private kind: ShareImportKind = ShareImportKind.DATASET;
   @State private dataset: ShareDatasetSnapshot = new ShareDatasetSnapshot();
+  @State private existingItems: ShareDatasetItem[] = [];
   @State private clearAfter: boolean = true;
   @State private busy: boolean = false;
   @State private ready: boolean = false;
@@ -78,6 +79,7 @@ struct ShareCollectPage {
       return;
     }
     await this.loadDataset();
+    this.existingItems = this.dataset.items.slice();
     this.prepareIncomingDatasetItem();
     this.ready = true;
     if (!this.datasetStarted) await this.collectDatasetIncoming();
@@ -161,7 +163,7 @@ struct ShareCollectPage {
         this.context, this.shareType, this.uris(), this.shareText, this.shareTitle);
       this.message = result.message;
       if (!result.ok) {
-        this.incomingTitle = '未能保存本次内容';
+        this.incomingTitle = this.incomingApiType === 'web' ? '网页解析失败' : '未能保存本次内容';
         this.incomingState = DatasetIncomingState.FAILED;
         return;
       }
@@ -218,9 +220,31 @@ struct ShareCollectPage {
   }
 
   private incomingGlyph(): string {
-    if (this.incomingApiType === 'web') return RI.GLOBE_LINE;
-    if (this.incomingApiType === 'text') return RI.ALIGN_LEFT;
+    return this.glyphForType(this.incomingApiType);
+  }
+
+  private glyphForType(type: string): string {
+    if (type === 'web') return RI.GLOBE_LINE;
+    if (type === 'text') return RI.ALIGN_LEFT;
     return RI.FILE_TEXT;
+  }
+
+  private typeLabel(type: string): string {
+    if (type === 'web') return '网页';
+    if (type === 'doc') return '文档';
+    return '文字';
+  }
+
+  private collectedDate(value: string): string {
+    const date: Date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+
+  private existingSubtitle(item: ShareDatasetItem): string {
+    const meta: string = item.type === 'web' ? item.source.trim() : ShareImport.formatChars(item.chars);
+    return [this.typeLabel(item.type), meta, this.collectedDate(item.collectedAt)]
+      .filter((value: string) => value.length > 0).join(' · ');
   }
 
   private applyBackendDatasetItem(item: ShareDatasetItem): void {
@@ -294,6 +318,27 @@ struct ShareCollectPage {
   }
 
   @Builder
+  private existingDatasetRow(item: ShareDatasetItem) {
+    Row({ space: 12 }) {
+      Row() {
+        RemixIcon({ glyph: this.glyphForType(item.type), iconSize: 19, color: '#6B6357' })
+      }
+        .justifyContent(FlexAlign.Center).width(42).height(42).borderRadius(10)
+        .backgroundColor(Theme.TILE_NEUTRAL)
+      Column({ space: 3 }) {
+        Text(item.title)
+          .fontSize(15).fontColor(Theme.INK).maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+        Text(this.existingSubtitle(item))
+          .fontSize(12).fontColor('#A79F93').maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+    }
+      .width('100%').padding({ left: 4, right: 4, top: 13, bottom: 13 })
+      .border({ width: { bottom: 1 }, color: Theme.DIVIDER })
+  }
+
+  @Builder
   private datasetFooter() {
     Column({ space: 0 }) {
       Divider().strokeWidth(1).color(Theme.DIVIDER)
@@ -347,16 +392,23 @@ struct ShareCollectPage {
       Row().width(40).height(5).borderRadius(3).backgroundColor('#DDD3C2')
         .margin({ top: 10, bottom: 8 })
       this.datasetHeader()
-      Column({ space: 10 }) {
-        Row({ space: 9 }) {
-          Text('本次新增').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
-            .letterSpacing(2)
-          Divider().vertical(false).strokeWidth(1).color('#E8C9B8').layoutWeight(1)
-        }.width('100%').padding({ left: 4, right: 4, top: 10, bottom: 4 })
-        this.incomingDatasetCard()
+      Scroll() {
+        Column({ space: 0 }) {
+          ForEach(this.existingItems, (item: ShareDatasetItem) => {
+            this.existingDatasetRow(item)
+          }, (item: ShareDatasetItem) => item.id)
+          Row({ space: 9 }) {
+            Text('本次新增').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
+              .letterSpacing(2)
+            Divider().vertical(false).strokeWidth(1).color('#E8C9B8').layoutWeight(1)
+          }.width('100%').padding({ left: 4, right: 4, top: 16, bottom: 6 })
+          this.incomingDatasetCard()
+        }
+          .width('100%').padding({ left: 16, right: 16, bottom: 12 })
+          .justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Start)
       }
-        .layoutWeight(1).width('100%').padding({ left: 16, right: 16, bottom: 12 })
-        .justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Start)
+        .layoutWeight(1).width('100%').scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
       this.datasetFooter()
     }
       .width('100%').height('100%')

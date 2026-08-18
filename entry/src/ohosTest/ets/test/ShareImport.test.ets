@@ -37,6 +37,32 @@ export default function shareImportTest() {
       expect(payload.text).assertEqual('https://voicedrop.cn/article');
     });
 
+    it('prefersSharedUrlWhenHarmonyAlsoProvidesPreviewText', 0, () => {
+      const payload: ShareIncomingPayload = ShareImport.payloadFromRecords([
+        new ShareRecordValue('general.hyperlink', '急性肠胃炎那天', '', '网页标题',
+          'https://voicedrop.cn/article')
+      ]);
+      expect(payload.text).assertEqual('https://voicedrop.cn/article');
+    });
+
+    it('mergesWantUrlWhenSharedDataOnlyContainsPreviewText', 0, () => {
+      const shared: ShareIncomingPayload = new ShareIncomingPayload(
+        'general.plain-text', [], '急性肠胃炎那天', '网页标题');
+      const want: ShareIncomingPayload = new ShareIncomingPayload(
+        'general.hyperlink', [], 'https://voicedrop.cn/article', '网页标题');
+      const payload: ShareIncomingPayload = ShareImport.mergePayload(shared, want);
+      expect(payload.text).assertEqual('https://voicedrop.cn/article');
+      expect(payload.title).assertEqual('网页标题');
+    });
+
+    it('treatsHttpRecordUriAsWebContentInsteadOfLocalDocument', 0, () => {
+      const payload: ShareIncomingPayload = ShareImport.payloadFromRecords([
+        new ShareRecordValue('general.hyperlink', '', 'https://voicedrop.cn/article', '网页标题')
+      ]);
+      expect(payload.text).assertEqual('https://voicedrop.cn/article');
+      expect(payload.uris.length).assertEqual(0);
+    });
+
     it('parsesDatasetAndAppliesTheSharedExtractionThreshold', 0, () => {
       const snapshot: ShareDatasetSnapshot = ShareImport.parseDatasetResponse(
         '{"items":[{"id":"a","type":"doc","title":"文章","source":"a.pdf","chars":301}],"count":1,"totalChars":301}');
