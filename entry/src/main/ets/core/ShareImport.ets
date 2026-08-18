@@ -98,10 +98,18 @@ export class ShareImport {
   static payloadFromRecords(records: ShareRecordValue[]): ShareIncomingPayload {
     const uris: string[] = records.map((record: ShareRecordValue) => (record.uri ?? '').trim())
       .filter((uri: string) => uri.length > 0);
-    const text: string = records.map((record: ShareRecordValue) =>
-      (record.content ?? record.description ?? '').trim()).filter((value: string) => value.length > 0).join('\n\n');
+    const text: string = records.map((record: ShareRecordValue) => {
+      const content: string = (record.content ?? '').trim();
+      return content.length > 0 ? content : (record.description ?? '').trim();
+    }).filter((value: string) => value.length > 0).join('\n\n');
     const first: ShareRecordValue | undefined = records[0];
     return new ShareIncomingPayload(first?.utd ?? '', uris, text, first?.title?.trim() ?? '');
+  }
+
+  static newestAddedDatasetItem(before: ShareDatasetSnapshot,
+    after: ShareDatasetSnapshot): ShareDatasetItem | undefined {
+    return after.items.find((candidate: ShareDatasetItem) =>
+      !before.items.some((existing: ShareDatasetItem) => existing.id === candidate.id));
   }
 
   static canExtract(snapshot: ShareDatasetSnapshot): boolean {
