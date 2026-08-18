@@ -108,6 +108,24 @@ export class ShareImport {
     return snapshot.count > 0 && snapshot.totalChars >= ShareImport.MIN_STYLE_CHARS;
   }
 
+  static formatChars(chars: number): string {
+    const digits: string = `${Math.max(0, Math.floor(chars))}`;
+    const groups: string[] = [];
+    let end: number = digits.length;
+    while (end > 3) {
+      groups.unshift(digits.substring(end - 3, end));
+      end -= 3;
+    }
+    groups.unshift(digits.substring(0, end));
+    return `${groups.join(',')} 字`;
+  }
+
+  static formatTotalChars(chars: number): string {
+    const safe: number = Math.max(0, Math.floor(chars));
+    if (safe >= 10000) return `约 ${(safe / 10000).toFixed(1)} 万字`;
+    return `约 ${ShareImport.formatChars(safe)}`;
+  }
+
   static styleTaskTag(clearAfter: boolean): string {
     return clearAfter ? 'TaskStyleExtract' : 'TaskStyleExtract-Keep';
   }
