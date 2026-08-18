@@ -13,6 +13,14 @@ export default function recordingListUiTest() {
       expect(RecordingListUi.usesDedicatedCover('', fallback, [fallback])).assertFalse();
     });
 
+    it('switchesToTheFirstPhotoAfterTheDedicatedCoverFails', 0, () => {
+      const dedicated: string = 'users/me/photos/session/cover.jpg';
+      const fallback: string = 'users/me/photos/session/first.jpg';
+      expect(RecordingListUi.visibleCoverKey(dedicated, fallback, [])).assertEqual(dedicated);
+      expect(RecordingListUi.visibleCoverKey(dedicated, fallback, [dedicated])).assertEqual(fallback);
+      expect(RecordingListUi.visibleCoverKey('', fallback, [])).assertEqual(fallback);
+    });
+
     it('removesOnlyTheSuccessfullyDeletedRecording', 0, () => {
       const first: Recording = new Recording({ name: 'VoiceDrop-first.m4a' });
       const second: Recording = new Recording({ name: 'VoiceDrop-second.m4a' });

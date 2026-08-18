@@ -1797,8 +1797,8 @@ struct Index {
 
   private recordingCoverFullKey(recording: Recording): string {
     const dedicated: string = this.recordingDedicatedCoverFullKey(recording);
-    if (dedicated.length > 0 && !this.recordingPhotoFailureKeys.includes(dedicated)) return dedicated;
-    return this.recordingFallbackCoverFullKey(recording);
+    return RecordingListUi.visibleCoverKey(
+      dedicated, this.recordingFallbackCoverFullKey(recording), this.recordingPhotoFailureKeys);
   }
 
   private recordingUsesDedicatedCover(recording: Recording): boolean {
@@ -1835,21 +1835,6 @@ struct Index {
   }
 
   @Builder
-  private recordingRowCover(recording: Recording, fullKey: string) {
-    if (fullKey.length > 0 && !this.recordingPhotoFailureKeys.includes(fullKey)) {
-      Image(this.recordingCoverSource(fullKey))
-        .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
-        .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
-        .objectFit(ImageFit.Cover)
-        .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
-        .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
-        .clip(true)
-        .onComplete(() => this.markRecordingCoverLoaded(recording, fullKey))
-        .onError(() => this.fallbackRecordingCover(fullKey))
-    }
-  }
-
-  @Builder
   private recordingRowIcon(recording: Recording) {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 4 }) {
@@ -1861,7 +1846,18 @@ struct Index {
           .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
       }.width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
         .backgroundColor(recording.isEmpty ? '#F4F0EB' : '#FBEAE7').borderRadius(14)
-      this.recordingRowCover(recording, this.recordingCoverFullKey(recording))
+      if (this.recordingCoverFullKey(recording).length > 0 &&
+        !this.recordingPhotoFailureKeys.includes(this.recordingCoverFullKey(recording))) {
+        Image(this.recordingCoverSource(this.recordingCoverFullKey(recording)))
+          .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
+          .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
+          .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
+          .clip(true)
+          .onComplete(() => this.markRecordingCoverLoaded(recording, this.recordingCoverFullKey(recording)))
+          .onError(() => this.fallbackRecordingCover(this.recordingCoverFullKey(recording)))
+      }
       if (this.commandTalking && this.commandRefNumber(recording) > 0) {
         Text(`${this.commandRefNumber(recording)}`)
           .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)
