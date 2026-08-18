@@ -3,6 +3,10 @@ import { Recording } from '../model/Models';
 export class RecordingListUi {
   static readonly deleteMessage: string = '音频和已挖出的文章都会从云端删除，不可恢复。';
 
+  static usesDedicatedCover(dedicatedKey: string, visibleKey: string, loadedKeys: string[]): boolean {
+    return dedicatedKey.length > 0 && visibleKey === dedicatedKey && loadedKeys.includes(dedicatedKey);
+  }
+
   static rowRenderKey(recording: Recording): string {
     return [
       recording.name,

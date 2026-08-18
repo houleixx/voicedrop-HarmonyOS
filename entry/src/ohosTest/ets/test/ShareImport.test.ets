@@ -3,7 +3,8 @@ import {
   ShareDatasetSnapshot,
   ShareImport,
   ShareImportKind,
-  ShareIncomingPayload
+  ShareIncomingPayload,
+  ShareRecordValue
 } from '../../../main/ets/core/ShareImport';
 
 export default function shareImportTest() {
@@ -20,8 +21,8 @@ export default function shareImportTest() {
 
     it('combinesSystemShareRecordsIntoOneIncomingPayload', 0, () => {
       const payload: ShareIncomingPayload = ShareImport.payloadFromRecords([
-        { utd: 'general.plain-text', content: '第一段', title: '自己的文章' },
-        { utd: 'general.plain-text', content: '第二段' }
+        new ShareRecordValue('general.plain-text', '第一段', '', '自己的文章'),
+        new ShareRecordValue('general.plain-text', '第二段')
       ]);
       expect(payload.type).assertEqual('general.plain-text');
       expect(payload.title).assertEqual('自己的文章');
@@ -53,6 +54,12 @@ export default function shareImportTest() {
     it('usesBackendRecognizedTaskTags', 0, () => {
       expect(ShareImport.styleTaskTag(true)).assertEqual('TaskStyleExtract');
       expect(ShareImport.styleTaskTag(false)).assertEqual('TaskStyleExtract-Keep');
+    });
+
+    it('formatsDatasetCountsLikeTheIosDatasetHeaderAndRows', 0, () => {
+      expect(ShareImport.formatChars(1116)).assertEqual('1,116 字');
+      expect(ShareImport.formatTotalChars(1116)).assertEqual('约 1,116 字');
+      expect(ShareImport.formatTotalChars(12345)).assertEqual('约 1.2 万字');
     });
   });
 }

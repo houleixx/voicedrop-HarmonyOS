@@ -276,6 +276,7 @@ struct Index {
   @State private thumbnailFallbackKeys: string[] = [];
   @State private recordingThumbnailFallbackKeys: string[] = [];
   @State private recordingPhotoFailureKeys: string[] = [];
+  @State private recordingLoadedDedicatedCoverKeys: string[] = [];
   private context?: common.UIAbilityContext;
   private timer: number = -1;
   private recordingMeterSampling: boolean = false;
@@ -528,6 +529,9 @@ struct Index {
     this.selectedReplyParent = undefined;
     this.communityReplies = [];
     this.recordings = [];
+    this.recordingThumbnailFallbackKeys = [];
+    this.recordingPhotoFailureKeys = [];
+    this.recordingLoadedDedicatedCoverKeys = [];
     this.posts = []; this.communityRecommended = []; this.communityLatest = [];
     libraryStore.clearArticleSnapshots();
     communityStore.clearPostSnapshots();
@@ -1799,7 +1803,8 @@ struct Index {
 
   private recordingUsesDedicatedCover(recording: Recording): boolean {
     const dedicated: string = this.recordingDedicatedCoverFullKey(recording);
-    return dedicated.length > 0 && this.recordingCoverFullKey(recording) === dedicated;
+    return RecordingListUi.usesDedicatedCover(
+      dedicated, this.recordingCoverFullKey(recording), this.recordingLoadedDedicatedCoverKeys);
   }
 
   private recordingCoverSource(fullKey: string): string {
@@ -1814,8 +1819,34 @@ struct Index {
       this.recordingThumbnailFallbackKeys = this.recordingThumbnailFallbackKeys.concat(fullKey);
     } else if (!this.recordingPhotoFailureKeys.includes(fullKey)) {
       this.recordingPhotoFailureKeys = this.recordingPhotoFailureKeys.concat(fullKey);
+      this.recordingLoadedDedicatedCoverKeys =
+        this.recordingLoadedDedicatedCoverKeys.filter((key: string) => key !== fullKey);
     }
     this.recordings = this.recordings.slice();
+  }
+
+  private markRecordingCoverLoaded(recording: Recording, loaded: string): void {
+    const dedicated: string = this.recordingDedicatedCoverFullKey(recording);
+    if (loaded.length === 0 || loaded !== dedicated || loaded !== this.recordingCoverFullKey(recording) ||
+      this.recordingPhotoFailureKeys.includes(loaded) ||
+      this.recordingLoadedDedicatedCoverKeys.includes(loaded)) return;
+    this.recordingLoadedDedicatedCoverKeys = this.recordingLoadedDedicatedCoverKeys.concat(loaded);
+    this.recordings = this.recordings.slice();
+  }
+
+  @Builder
+  private recordingRowCover(recording: Recording, fullKey: string) {
+    if (fullKey.length > 0 && !this.recordingPhotoFailureKeys.includes(fullKey)) {
+      Image(this.recordingCoverSource(fullKey))
+        .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
+        .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
+        .objectFit(ImageFit.Cover)
+        .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
+        .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
+        .clip(true)
+        .onComplete(() => this.markRecordingCoverLoaded(recording, fullKey))
+        .onError(() => this.fallbackRecordingCover(fullKey))
+    }
   }
 
   @Builder
@@ -1830,17 +1861,7 @@ struct Index {
           .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
       }.width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
         .backgroundColor(recording.isEmpty ? '#F4F0EB' : '#FBEAE7').borderRadius(14)
-      if (this.recordingCoverFullKey(recording).length > 0 &&
-        !this.recordingPhotoFailureKeys.includes(this.recordingCoverFullKey(recording))) {
-        Image(this.recordingCoverSource(this.recordingCoverFullKey(recording)))
-          .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
-          .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
-          .objectFit(ImageFit.Cover)
-          .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
-          .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
-          .clip(true)
-          .onError(() => this.fallbackRecordingCover(this.recordingCoverFullKey(recording)))
-      }
+      this.recordingRowCover(recording, this.recordingCoverFullKey(recording))
       if (this.commandTalking && this.commandRefNumber(recording) > 0) {
         Text(`${this.commandRefNumber(recording)}`)
           .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)

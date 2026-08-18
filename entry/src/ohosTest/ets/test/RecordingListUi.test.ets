@@ -4,6 +4,15 @@ import { Recording } from '../../../main/ets/model/Models';
 
 export default function recordingListUiTest() {
   describe('RecordingListUi', () => {
+    it('usesPortraitGeometryOnlyAfterTheDedicatedCoverLoads', 0, () => {
+      const dedicated: string = 'users/me/photos/session/cover.jpg';
+      const fallback: string = 'users/me/photos/session/first.jpg';
+      expect(RecordingListUi.usesDedicatedCover(dedicated, dedicated, [])).assertFalse();
+      expect(RecordingListUi.usesDedicatedCover(dedicated, dedicated, [dedicated])).assertTrue();
+      expect(RecordingListUi.usesDedicatedCover(dedicated, fallback, [dedicated])).assertFalse();
+      expect(RecordingListUi.usesDedicatedCover('', fallback, [fallback])).assertFalse();
+    });
+
     it('removesOnlyTheSuccessfullyDeletedRecording', 0, () => {
       const first: Recording = new Recording({ name: 'VoiceDrop-first.m4a' });
       const second: Recording = new Recording({ name: 'VoiceDrop-second.m4a' });

@@ -55,12 +55,20 @@
             "entities": ["entity.system.default"],
             "actions": ["ohos.want.action.sendData", "ohos.want.action.sendMultipleData"],
             "uris": [
-              { "type": "general.text" },
-              { "type": "general.image" },
-              { "type": "general.audio" },
-              { "type": "com.adobe.pdf" },
-              { "type": "com.microsoft.word.doc" },
-              { "type": "org.openxmlformats.wordprocessingml.document" }
+              { "scheme": "file", "utd": "general.text", "maxFileSupported": 1 },
+              { "scheme": "file", "utd": "general.plain-text", "maxFileSupported": 1 },
+              { "scheme": "file", "utd": "general.image", "maxFileSupported": 20 },
+              { "scheme": "file", "utd": "general.jpeg", "maxFileSupported": 20 },
+              { "scheme": "file", "utd": "general.png", "maxFileSupported": 20 },
+              { "scheme": "file", "utd": "general.audio", "maxFileSupported": 1 },
+              { "scheme": "file", "utd": "general.mpeg-4-audio", "maxFileSupported": 1 },
+              { "scheme": "file", "utd": "com.adobe.pdf", "maxFileSupported": 1 },
+              { "scheme": "file", "utd": "com.microsoft.word.doc", "maxFileSupported": 1 },
+              {
+                "scheme": "file",
+                "utd": "org.openxmlformats.wordprocessingml.document",
+                "maxFileSupported": 1
+              }
             ]
           }
         ]
