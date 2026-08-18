@@ -3,7 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { systemShare } from '@kit.ShareKit';
 import { AppPreferences } from '../data/AppPreferences';
 import { authStore } from '../data/AuthStore';
-import { ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../core/ShareImport';
+import { ShareDatasetItem, ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../core/ShareImport';
 import { PrivacyStartup } from '../core/PrivacyStartup';
 import { ShareCollectResult, shareCollectService } from '../share/ShareCollectService';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
@@ -32,12 +32,17 @@ struct ShareCollectPage {
   @State private message: string = '';
   @State private incomingState: DatasetIncomingState = DatasetIncomingState.SAVING;
   @State private incomingTitle: string = '正在读取分享内容…';
+  @State private incomingApiType: string = 'text';
   @State private incomingTypeLabel: string = '文字';
   @State private incomingMeta: string = '';
   private context?: common.UIExtensionContext;
   private datasetStarted: boolean = false;
 
   aboutToAppear(): void {
+    this.getUIContext().getFont().registerFont({
+      familyName: 'remixicon',
+      familySrc: $rawfile('remixicon.ttf')
+    });
     this.context = getContext(this) as common.UIExtensionContext;
     this.initialize().catch((error: Object) => {
       this.message = `分享初始化失败：${String(error)}`;
@@ -118,14 +123,17 @@ struct ShareCollectPage {
     const text: string = this.shareText.trim();
     const uris: string[] = this.uris();
     if (uris.length > 0) {
+      this.incomingApiType = 'doc';
       this.incomingTypeLabel = '文档';
       this.incomingTitle = this.shareTitle.trim() || this.fileName(uris[0]);
       this.incomingMeta = uris.length > 1 ? `${uris.length} 个文档` : this.fileName(uris[0]);
     } else if (ShareImport.isWebUrl(text)) {
+      this.incomingApiType = 'web';
       this.incomingTypeLabel = '网页';
       this.incomingTitle = '正在解析网页…';
       this.incomingMeta = this.webHost(text);
     } else {
+      this.incomingApiType = 'text';
       this.incomingTypeLabel = '文字';
       this.incomingTitle = '正在保存…';
       this.incomingMeta = ShareImport.formatChars(text.length);
@@ -147,6 +155,7 @@ struct ShareCollectPage {
     this.busy = true;
     this.incomingState = DatasetIncomingState.SAVING;
     this.message = '';
+    const before: ShareDatasetSnapshot = this.dataset;
     try {
       const result: ShareCollectResult = await shareCollectService.collectIncoming(
         this.context, this.shareType, this.uris(), this.shareText, this.shareTitle);
@@ -158,12 +167,14 @@ struct ShareCollectPage {
       }
       this.incomingTitle = this.successfulIncomingTitle();
       this.incomingMeta = ShareImport.formatChars(result.collectedChars);
-      this.incomingState = DatasetIncomingState.DONE;
       try {
         await this.loadDataset();
+        const added: ShareDatasetItem | undefined = ShareImport.newestAddedDatasetItem(before, this.dataset);
+        if (added) this.applyBackendDatasetItem(added);
       } catch (_) {
         this.message = '内容已保存，但数据集统计刷新失败';
       }
+      this.incomingState = DatasetIncomingState.DONE;
     } catch (error) {
       this.message = `分享导入失败：${String(error)}`;
       this.incomingTitle = '未能保存本次内容';
@@ -207,7 +218,19 @@ struct ShareCollectPage {
   }
 
   private incomingGlyph(): string {
-    return this.incomingTypeLabel === '网页' ? RI.LINK : RI.FILE_TEXT;
+    if (this.incomingApiType === 'web') return RI.GLOBE_LINE;
+    if (this.incomingApiType === 'text') return RI.ALIGN_LEFT;
+    return RI.FILE_TEXT;
+  }
+
+  private applyBackendDatasetItem(item: ShareDatasetItem): void {
+    this.incomingApiType = item.type || this.incomingApiType;
+    if (item.type === 'web') this.incomingTypeLabel = '网页';
+    else if (item.type === 'doc') this.incomingTypeLabel = '文档';
+    else this.incomingTypeLabel = '文字';
+    this.incomingTitle = item.title.trim() || this.successfulIncomingTitle();
+    this.incomingMeta = item.type === 'web' && item.source.trim().length > 0 ?
+      item.source.trim() : ShareImport.formatChars(item.chars);
   }
 
   private incomingSubtitle(): string {
@@ -324,16 +347,16 @@ struct ShareCollectPage {
       Row().width(40).height(5).borderRadius(3).backgroundColor('#DDD3C2')
         .margin({ top: 10, bottom: 8 })
       this.datasetHeader()
-      Scroll() {
-        Column({ space: 10 }) {
-          Row({ space: 9 }) {
-            Text('本次新增').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
-              .letterSpacing(2)
-            Divider().vertical(false).strokeWidth(1).color('#E8C9B8').layoutWeight(1)
-          }.width('100%').padding({ left: 4, right: 4, top: 10, bottom: 4 })
-          this.incomingDatasetCard()
-        }.width('100%').padding({ left: 16, right: 16, bottom: 12 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      Column({ space: 10 }) {
+        Row({ space: 9 }) {
+          Text('本次新增').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
+            .letterSpacing(2)
+          Divider().vertical(false).strokeWidth(1).color('#E8C9B8').layoutWeight(1)
+        }.width('100%').padding({ left: 4, right: 4, top: 10, bottom: 4 })
+        this.incomingDatasetCard()
+      }
+        .layoutWeight(1).width('100%').padding({ left: 16, right: 16, bottom: 12 })
+        .justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Start)
       this.datasetFooter()
     }
       .width('100%').height('100%')

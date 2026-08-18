@@ -3,6 +3,7 @@
  * Font asset: resources/rawfile/remixicon.ttf (Apache-2.0).
  */
 export class RemixIconGlyph {
+  static readonly ALIGN_LEFT: string = '\uEA27';
   static readonly ARROW_GO_BACK: string = '\uEA58';
   static readonly ARROW_GO_FORWARD: string = '\uEA5A';
   static readonly ARROW_LEFT: string = '\uEA64';
@@ -24,6 +25,7 @@ export class RemixIconGlyph {
   static readonly FLASHLIGHT_FILL: string = '\uED3C';
   static readonly FLASHLIGHT: string = '\uED3D';
   static readonly FOLDER: string = '\uED6A';
+  static readonly GLOBE_LINE: string = '\uEDD1';
   static readonly HAND_HEART: string = '\uEDF3';
   static readonly HEART_FILL: string = '\uEE0E';
   static readonly HEART: string = '\uEE0F';

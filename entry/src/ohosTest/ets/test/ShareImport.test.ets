@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  ShareDatasetItem,
   ShareDatasetSnapshot,
   ShareImport,
   ShareImportKind,
@@ -27,6 +28,13 @@ export default function shareImportTest() {
       expect(payload.type).assertEqual('general.plain-text');
       expect(payload.title).assertEqual('自己的文章');
       expect(payload.text).assertEqual('第一段\n\n第二段');
+    });
+
+    it('usesDescriptionWhenHarmonyRecordContentIsPresentButEmpty', 0, () => {
+      const payload: ShareIncomingPayload = ShareImport.payloadFromRecords([
+        new ShareRecordValue('general.plain-text', '', '', '网页标题', 'https://voicedrop.cn/article')
+      ]);
+      expect(payload.text).assertEqual('https://voicedrop.cn/article');
     });
 
     it('parsesDatasetAndAppliesTheSharedExtractionThreshold', 0, () => {
@@ -60,6 +68,19 @@ export default function shareImportTest() {
       expect(ShareImport.formatChars(1116)).assertEqual('1,116 字');
       expect(ShareImport.formatTotalChars(1116)).assertEqual('约 1,116 字');
       expect(ShareImport.formatTotalChars(12345)).assertEqual('约 1.2 万字');
+    });
+
+    it('findsTheBackendDatasetItemAddedByTheCurrentShare', 0, () => {
+      const before: ShareDatasetSnapshot = new ShareDatasetSnapshot([
+        new ShareDatasetItem('old', 'text', '旧文章', '分享文本', '2026-08-18T01:00:00Z', 300)
+      ], 1, 300);
+      const after: ShareDatasetSnapshot = new ShareDatasetSnapshot([
+        new ShareDatasetItem('new', 'web', '后端解析后的标题', 'voicedrop.cn', '2026-08-18T02:00:00Z', 1116),
+        new ShareDatasetItem('old', 'text', '旧文章', '分享文本', '2026-08-18T01:00:00Z', 300)
+      ], 2, 1416);
+      const added: ShareDatasetItem | undefined = ShareImport.newestAddedDatasetItem(before, after);
+      expect(added?.id).assertEqual('new');
+      expect(added?.title).assertEqual('后端解析后的标题');
     });
   });
 }
