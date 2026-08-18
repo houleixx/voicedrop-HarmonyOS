@@ -1,6 +1,7 @@
 import { ShareExtensionAbility, UIExtensionContentSession, Want } from '@kit.AbilityKit';
 import { systemShare } from '@kit.ShareKit';
 import { ShareImport, ShareIncomingPayload, ShareRecordValue } from '../core/ShareImport';
+import { sharePageStorage } from '../share/SharePageStorage';
 
 export default class VoiceDropShareAbility extends ShareExtensionAbility {
   onSessionCreate(want: Want, session: UIExtensionContentSession): void {
@@ -20,12 +21,11 @@ export default class VoiceDropShareAbility extends ShareExtensionAbility {
   }
 
   private loadPayload(session: UIExtensionContentSession, payload: ShareIncomingPayload): void {
-    const storage: LocalStorage = new LocalStorage();
-    storage.setOrCreate<string>('shareType', payload.type);
-    storage.setOrCreate<string>('shareUris', JSON.stringify(payload.uris));
-    storage.setOrCreate<string>('shareText', payload.text);
-    storage.setOrCreate<string>('shareTitle', payload.title);
-    session.loadContent('pages/ShareCollectPage', storage);
+    sharePageStorage.setOrCreate<string>('shareType', payload.type);
+    sharePageStorage.setOrCreate<string>('shareUris', JSON.stringify(payload.uris));
+    sharePageStorage.setOrCreate<string>('shareText', payload.text);
+    sharePageStorage.setOrCreate<string>('shareTitle', payload.title);
+    session.loadContent('pages/ShareCollectPage', sharePageStorage);
   }
 
   private payloadFromWant(want: Want): ShareIncomingPayload {
