@@ -77,6 +77,7 @@ import { WechatSettingsPage } from './WechatSettingsPage';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { PageHeader } from '../ui/PageHeader';
+import { AiGeneratedLabel } from '../ui/AiGeneratedLabel';
 import { ClientReliability } from '../core/ClientReliability';
 import { WechatAuthResponse } from '../core/WechatAuthResponse';
 import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
@@ -2871,6 +2872,10 @@ struct Index {
         if (this.communityDate(this.selectedPost).length > 0) {
           Text(this.communityDate(this.selectedPost)).fontSize(14).fontColor(Theme.SECONDARY)
         }
+        if (this.selectedPost?.kind !== 'prompt') {
+          Blank()
+          AiGeneratedLabel()
+        }
       }.width('100%').margin({ top: 9, bottom: 4 })
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
@@ -3589,6 +3594,8 @@ struct Index {
             .enabled(!this.paragraphEditing)
             .onClick(() => this.openStyleRewrite())
         }
+        Blank()
+        AiGeneratedLabel()
       }.width('100%').margin({ top: 8, bottom: 4 })
     }.width('100%').alignItems(HorizontalAlign.Start)
   }

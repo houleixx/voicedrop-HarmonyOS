@@ -1,6 +1,7 @@
 import { ArticleBlock, ArticleBody } from '../core/ArticleBody';
 import { ArticleDoc, MinedArticle } from '../model/Models';
 import { PageHeader } from '../ui/PageHeader';
+import { AiGeneratedLabel } from '../ui/AiGeneratedLabel';
 
 @Component
 export struct SharedArticlePage {
@@ -47,6 +48,10 @@ export struct SharedArticlePage {
               }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
             }
             Text(this.article!.articles[this.selectedIndex].title).fontSize(28).fontWeight(FontWeight.Bold).width('100%')
+            Row() {
+              Blank()
+              AiGeneratedLabel()
+            }.width('100%')
             ForEach(ArticleBody.blocks(this.article!.articles[this.selectedIndex].body),
               (block: ArticleBlock) => this.articleBlock(block))
           }.padding({ left: 16, right: 16, top: 6, bottom: 40 }).alignItems(HorizontalAlign.Start).width('100%')

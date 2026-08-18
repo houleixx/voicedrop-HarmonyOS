@@ -34,9 +34,17 @@ export struct RecordingSession {
           if (this.interviewActive && this.interviewStatus.length > 0) {
             Text(this.interviewStatus).fontSize(11).fontColor(Theme.FAINT).letterSpacing(1)
           }
+          Row({ space: 7 }) {
+            Text('AI生成').fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
+            Text('录音结束后将由人工智能转写并生成文章')
+              .fontSize(11).fontWeight(FontWeight.Medium).fontColor('#9B9388')
+          }
+            .margin({ top: 8 })
+            .justifyContent(FlexAlign.Center)
+            .accessibilityText('AI生成，录音结束后将由人工智能转写并生成文章')
         }
         .width('100%')
-        .height(72)
+        .height(96)
         .padding({ top: 18 })
         .alignItems(HorizontalAlign.Center)
 

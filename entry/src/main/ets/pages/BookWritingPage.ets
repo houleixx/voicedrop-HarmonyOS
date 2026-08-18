@@ -100,6 +100,19 @@ export struct BookWritingPage {
         .alignItems(HorizontalAlign.Center)
       else {
         Scroll() { Column({ space: 18 }) {
+          Row({ space: 9 }) {
+            Text('AI生成')
+              .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
+              .padding({ left: 7, right: 7, top: 2, bottom: 2 })
+              .backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
+              .accessibilityText('AI生成内容')
+            Text('本功能使用人工智能生成书籍内容')
+              .fontSize(12).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
+          }
+            .width('100%').constraintSize({ minHeight: 34 })
+            .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+            .border({ width: 1, color: '#EBC6B9' }).borderRadius(9)
+            .backgroundColor('#FFF8F4').alignItems(VerticalAlign.Center)
           Row() {
             Column({ space: 3 }) {
               Row({ space: 4 }) {
@@ -191,7 +204,7 @@ export struct BookWritingPage {
             .backgroundColor(this.sending || this.canSubmit() ? Theme.ACCENT : '#B8B0A1').borderRadius(12)
             .shadow({ radius: 10, color: this.sending || this.canSubmit() ? '#30D8593B' : '#18000000', offsetY: 4 })
             .enabled(this.canSubmit()).onClick(() => this.start())
-          Text('提交后就可以关 App · 10–30 分钟写完，出现在「写书」书架')
+          Text('AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架')
             .fontSize(12.5).fontColor('#928A80').textAlign(TextAlign.Center)
         }.padding({ left: 16, right: 16, top: 12, bottom: 10 + this.safeAreaBottom() }).width('100%')
           .backgroundColor(Theme.BG).border({ width: { top: 1 }, color: '#E6DED2' })
