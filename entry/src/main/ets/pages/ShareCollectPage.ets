@@ -274,21 +274,23 @@ struct ShareCollectPage {
   private datasetFooter() {
     Column({ space: 0 }) {
       Divider().strokeWidth(1).color(Theme.DIVIDER)
-      Button() {
-        Row({ space: 9 }) {
-          Row() {
-            if (this.clearAfter) RemixIcon({ glyph: RI.CHECK, iconSize: 14, color: Theme.WHITE })
-          }
-            .justifyContent(FlexAlign.Center).width(22).height(22).borderRadius(7)
-            .backgroundColor(this.clearAfter ? Theme.ACCENT : Theme.CARD)
-            .border({ width: 1, color: this.clearAfter ? Theme.ACCENT : '#E2D8C8' })
+      Row({ space: 9 }) {
+        Checkbox({ name: 'clearAfter', group: 'styleDataset' })
+          .select(this.clearAfter)
+          .selectedColor(Theme.ACCENT)
+          .unselectedColor('#E2D8C8')
+          .shape(CheckBoxShape.ROUNDED_SQUARE)
+          .width(22).height(22)
+          .enabled(!this.busy)
+          .onChange((selected: boolean) => this.clearAfter = selected)
+        Row() {
           Text('提取后清空数据集').fontSize(14).fontColor(Theme.SECONDARY)
           Blank()
           Text('下次从零开始').fontSize(12).fontColor('#8A8175')
-        }.width('100%')
-      }
-        .height(52).padding(0).backgroundColor(Color.Transparent).enabled(!this.busy)
-        .onClick(() => this.clearAfter = !this.clearAfter)
+        }
+          .layoutWeight(1).height('100%').enabled(!this.busy)
+          .onClick(() => this.clearAfter = !this.clearAfter)
+      }.width('100%').height(52).alignItems(VerticalAlign.Center)
       if (this.ready && this.dataset.count > 0 && !ShareImport.canExtract(this.dataset)) {
         Text(`素材还太少（共 ${this.dataset.totalChars} 字），攒到 ${ShareImport.MIN_STYLE_CHARS} 字以上再提取`)
           .fontSize(12).fontColor('#C0682E').width('100%').padding({ bottom: 8 })
@@ -333,7 +335,10 @@ struct ShareCollectPage {
         }.width('100%').padding({ left: 16, right: 16, bottom: 12 })
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
       this.datasetFooter()
-    }.width('100%').height('100%').backgroundColor(Theme.BG)
+    }
+      .width('100%').height('100%')
+      .justifyContent(FlexAlign.Start).alignItems(HorizontalAlign.Center)
+      .backgroundColor(Theme.BG)
   }
 
   @Builder
@@ -370,7 +375,9 @@ struct ShareCollectPage {
   }
 
   build() {
-    if (this.kind === ShareImportKind.DATASET) this.datasetPage()
-    else this.composePage()
+    Stack({ alignContent: Alignment.TopStart }) {
+      if (this.kind === ShareImportKind.DATASET) this.datasetPage()
+      else this.composePage()
+    }.width('100%').height('100%')
   }
 }
