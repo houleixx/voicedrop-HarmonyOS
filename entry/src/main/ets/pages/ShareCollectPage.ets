@@ -6,10 +6,9 @@ import { authStore } from '../data/AuthStore';
 import { ShareDatasetItem, ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../core/ShareImport';
 import { PrivacyStartup } from '../core/PrivacyStartup';
 import { ShareCollectResult, shareCollectService } from '../share/ShareCollectService';
+import { sharePageStorage } from '../share/SharePageStorage';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
-
-const shareStorage: LocalStorage = new LocalStorage();
 
 enum DatasetIncomingState {
   SAVING = 'saving',
@@ -17,7 +16,7 @@ enum DatasetIncomingState {
   FAILED = 'failed'
 }
 
-@Entry(shareStorage)
+@Entry(sharePageStorage)
 @Component
 struct ShareCollectPage {
   @LocalStorageProp('shareType') private shareType: string = '';
@@ -193,7 +192,7 @@ struct ShareCollectPage {
       const result: ShareCollectResult = await shareCollectService.collectIncoming(
         this.context, this.shareType, this.uris(), this.shareText, this.shareTitle);
       this.message = result.message;
-      if (result.ok) this.close(systemShare.ShareAbilityResultCode.CLOSE);
+      if (result.ok) await this.close(systemShare.ShareAbilityResultCode.CLOSE);
     } catch (error) {
       this.message = `分享导入失败：${String(error)}`;
     } finally {
@@ -207,7 +206,7 @@ struct ShareCollectPage {
     try {
       const result: ShareCollectResult = await shareCollectService.extractStyle(this.clearAfter);
       this.message = result.message;
-      if (result.ok) this.close(systemShare.ShareAbilityResultCode.CLOSE);
+      if (result.ok) await this.close(systemShare.ShareAbilityResultCode.CLOSE);
     } catch (error) {
       this.message = `文风提取失败：${String(error)}`;
     } finally {
@@ -215,8 +214,13 @@ struct ShareCollectPage {
     }
   }
 
-  private close(resultCode: number): void {
-    this.context?.terminateSelfWithResult({ resultCode: resultCode }).catch(() => {});
+  private async close(resultCode: number): Promise<void> {
+    if (!this.context) return;
+    try {
+      await this.context.terminateSelfWithResult({ resultCode: resultCode });
+    } catch (_) {
+      await this.context.terminateSelf();
+    }
   }
 
   private incomingGlyph(): string {
