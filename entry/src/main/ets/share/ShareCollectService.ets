@@ -116,6 +116,7 @@ export class ShareCollectService {
   private async collectDataset(context: common.Context, uris: string[], sharedText: string,
     sharedTitle: string): Promise<ShareCollectResult> {
     let chars: number = 0;
+    let webFailed: boolean = false;
     const text: string = sharedText.trim();
     if (text.length > 0) {
       if (ShareImport.isWebUrl(text)) {
@@ -124,7 +125,7 @@ export class ShareCollectService {
           const response: HttpResponse = await this.collectStyle('web', page.title, page.text, page.source);
           if (!response.ok()) return new ShareCollectResult(false, `网页收集失败（${response.code}）`);
           chars += page.text.length;
-        }
+        } else webFailed = true;
       } else {
         const response: HttpResponse = await this.collectStyle('text',
           sharedTitle.length > 0 ? sharedTitle : ShareImport.firstLineTitle(text), text, '分享文本');
@@ -140,6 +141,7 @@ export class ShareCollectService {
         docText.trim(), this.fileName(uri));
       if (response.ok()) chars += docText.trim().length;
     }
+    if (chars === 0 && webFailed) return new ShareCollectResult(false, '网页解析失败，未读取到正文');
     if (chars === 0) return new ShareCollectResult(false, '未能读取正文；PDF 扫描件暂不支持 OCR');
     return new ShareCollectResult(true, `本次已加入 ${chars} 字，可继续收集或提取文章风格`,
       ShareImportKind.DATASET, chars);
