@@ -31,6 +31,7 @@ import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion
 import { authStore } from '../data/AuthStore';
 import { appCacheStore } from '../data/AppCacheStore';
 import { appPreferences } from '../data/AppPreferences';
+import { apiRoute } from '../core/ApiRoute';
 import { umengAnalytics } from '../data/UmengAnalytics';
 import { libraryStore, ShareLinkTarget, XhsPack } from '../data/LibraryStore';
 import { communityStore, CommunityShareResult, CommunityFeed, CommunityFeedState, CommunityFeedResult } from '../data/CommunityStore';
@@ -465,6 +466,8 @@ struct Index {
 
   private async activateBusiness(): Promise<void> {
     if (this.initialized || !this.context) return;
+    // 先恢复上次线路，冷启动测速在模块内并发进行；之后新建的请求自动跟随结果。
+    await apiRoute.initialize(this.context, true);
     await umengAnalytics.initializeAfterPrivacyConsent(this.context.getApplicationContext());
     await authStore.initialize(this.context);
     libraryStore.initialize(this.context);

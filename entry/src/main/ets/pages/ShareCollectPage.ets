@@ -3,6 +3,7 @@ import { preferences } from '@kit.ArkData';
 import { systemShare } from '@kit.ShareKit';
 import { AppPreferences } from '../data/AppPreferences';
 import { authStore } from '../data/AuthStore';
+import { apiRoute } from '../core/ApiRoute';
 import { ShareDatasetItem, ShareDatasetSnapshot, ShareImport, ShareImportKind } from '../core/ShareImport';
 import { PrivacyStartup } from '../core/PrivacyStartup';
 import { ShareCollectResult, shareCollectService } from '../share/ShareCollectService';
@@ -70,6 +71,8 @@ struct ShareCollectPage {
       this.ready = true;
       return;
     }
+    // UIExtension 生命周期短，不测速；只沿用主应用持久化的优选线路。
+    await apiRoute.initialize(this.context, false);
     await authStore.initialize(this.context);
     const uris: string[] = this.uris();
     this.kind = ShareImport.classify(this.shareType, uris);

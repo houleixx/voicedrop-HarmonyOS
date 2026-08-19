@@ -1,3 +1,5 @@
+import { Api } from './Api';
+
 export interface ArticleBlock {
   kind: 'text' | 'photo';
   value: string;
@@ -132,7 +134,7 @@ export class ArticleBody {
   }
 
   static photoUrl(key: string): string {
-    return `https://voicedrop.cn/files/api/photo/${key.split('/').map((part: string) => encodeURIComponent(part)).join('/')}`;
+    return `${Api.PHOTO_BASE}/photo/${key.split('/').map((part: string) => encodeURIComponent(part)).join('/')}`;
   }
 
   /** Small feed/list images use Cloudflare's edge rendition; article bodies use photoUrl. */

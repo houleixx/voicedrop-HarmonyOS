@@ -12,7 +12,7 @@ export default function restyleRequestTest() {
     });
 
     it('bypassesTheShortLivedProxyForLongRunningRewrites', 0, () => {
-      expect(Api.restyleUrl()).assertEqual('https://jianshuo.dev/agent/restyle');
+      expect(Api.restyleUrl()).assertEqual('https://voicedrop.cn/agent/restyle');
     });
 
     it('requiresBothHttpAndBusinessSuccess', 0, () => {

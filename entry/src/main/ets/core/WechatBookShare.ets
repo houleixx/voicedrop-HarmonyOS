@@ -19,16 +19,15 @@ export class WechatBookShare {
   }
 
   static trustedReaderUrl(url: string, rootUrl: string): boolean {
-    const candidate: string = url.trim();
-    const root: string = rootUrl.trim();
-    const bookUrlPattern: RegExp = /^https:\/\/(?:www\.)?voicedrop\.cn\/books\/[^\s]*$/i;
-    return bookUrlPattern.test(candidate) && bookUrlPattern.test(root) && candidate.startsWith(root);
+    const candidate: string = WechatBookShare.canonicalReaderUrl(url);
+    const root: string = WechatBookShare.canonicalReaderUrl(rootUrl);
+    return candidate.length > 0 && root.length > 0 && candidate.startsWith(root);
   }
 
   static target(rootUrl: string, currentUrl: string, pageTitle: string,
     title: string, author: string): WechatBookShareTargetValue {
-    const root: string = rootUrl.trim();
-    const candidate: string = currentUrl.trim();
+    const root: string = WechatBookShare.canonicalReaderUrl(rootUrl);
+    const candidate: string = WechatBookShare.canonicalReaderUrl(currentUrl);
     const bookTitle: string = WechatBookShare.title(title, title, author);
     const relative: string = candidate.startsWith(root) ? candidate.substring(root.length) : '';
     if (!WechatBookShare.trustedReaderUrl(candidate, root) || relative.length === 0 ||
@@ -38,6 +37,17 @@ export class WechatBookShare {
     const cleanPageTitle: string = pageTitle.trim();
     return new WechatBookShareTargetValue(candidate,
       cleanPageTitle.length > 0 ? cleanPageTitle : bookTitle, true);
+  }
+
+  /** App 内阅读可走 CF；任何系统/微信分享都归一回备案的 .cn 公共链接。 */
+  private static canonicalReaderUrl(value: string): string {
+    const candidate: string = value.trim();
+    const cn: RegExpMatchArray | null = candidate.match(
+      /^https:\/\/(?:www\.)?voicedrop\.cn(\/books\/[^\s]*)$/i);
+    if (cn) return `https://voicedrop.cn${cn[1]}`;
+    const cf: RegExpMatchArray | null = candidate.match(
+      /^https:\/\/(?:www\.)?jianshuo\.dev\/voicedrop(\/books\/[^\s]*)$/i);
+    return cf ? `https://voicedrop.cn${cf[1]}` : '';
   }
 }
 

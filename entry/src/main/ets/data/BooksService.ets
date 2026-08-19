@@ -1,5 +1,6 @@
 import { httpClient, HttpResponse } from '../net/HttpClient';
 import { appPreferences } from './AppPreferences';
+import { Api } from '../core/Api';
 
 interface ShelfBookWire { slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; }
 interface ShelfIndexWire { books?: ShelfBookWire[]; }
@@ -14,20 +15,21 @@ export class ShelfBook {
     this.author = wire.author ?? ''; this.createdAt = Math.max(0, wire.createdAt ?? 0);
     this.coverAt = Math.max(0, wire.coverAt ?? 0);
   }
-  readerUrl(): string { return `https://voicedrop.cn/books/${encodeURIComponent(this.slug)}/`; }
+  readerUrl(): string { return `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(this.slug)}/`; }
+  shareUrl(): string { return `https://voicedrop.cn/books/${encodeURIComponent(this.slug)}/`; }
   coverUrl(): string {
-    const base: string = `https://voicedrop.cn/books/${encodeURIComponent(this.slug)}/cover.jpg`;
+    const base: string = `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(this.slug)}/cover.jpg`;
     return this.coverAt > 0 ? `${base}?v=${this.coverAt}` : base;
   }
   shareText(): string {
     const title: string = (this.title || this.main || '未命名').trim() || '未命名';
     const byline: string = this.author.trim().length > 0 ? ` — ${this.author.trim()}` : '';
-    return `《${title}》${byline}\n${this.readerUrl()}`;
+    return `《${title}》${byline}\n${this.shareUrl()}`;
   }
 }
 
 export class BooksService {
-  static readonly INDEX: string = 'https://voicedrop.cn/books/?format=json';
+  static get INDEX(): string { return `${Api.PUBLIC_WEB_BASE}/books/?format=json`; }
   cached(): ShelfBook[] { return this.parse(appPreferences.bookShelfCache()); }
   async load(): Promise<ShelfBook[]> {
     const response: HttpResponse = await httpClient.get(BooksService.INDEX);

@@ -257,7 +257,7 @@ export struct BookReaderPage {
   private currentPageUrl: string = '';
   private currentPageTitle: string = '';
   private currentShare(): WechatBookShareTargetValue {
-    return WechatBookShare.target(this.book.readerUrl(), this.currentPageUrl, this.currentPageTitle,
+    return WechatBookShare.target(this.book.shareUrl(), this.currentPageUrl, this.currentPageTitle,
       this.book.title || this.book.main, this.book.author);
   }
   private async shareBook(target: WechatBookShareTarget): Promise<void> {

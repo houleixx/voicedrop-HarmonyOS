@@ -6,6 +6,7 @@ import { preferences } from '@kit.ArkData';
 import { WechatLogin } from '../data/WechatLogin';
 import { AppPreferences } from '../data/AppPreferences';
 import { PrivacyStartup } from '../core/PrivacyStartup';
+import { apiRoute } from '../core/ApiRoute';
 
 export default class EntryAbility extends UIAbility implements WXApiEventHandler {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -20,6 +21,8 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
   onForeground(): void {
     const sequence: number = AppStorage.get<number>('foregroundSequence') ?? 0;
     AppStorage.setOrCreate<number>('foregroundSequence', sequence + 1);
+    // 未完成隐私确认/主界面尚未初始化时模块会直接忽略；其余情况每 30 分钟至多复测一次。
+    apiRoute.probeIfDue().catch(() => {});
   }
 
   onReq(request: BaseReq): void {}

@@ -29,6 +29,13 @@ export default function wechatBookShareTest() {
       expect(chapter.title).assertEqual('第二章 · 出发');
       expect(chapter.isChapter).assertTrue();
 
+      const cfChapter = WechatBookShare.target(root,
+        'https://jianshuo.dev/voicedrop/books/sample-book/chapter-3.html',
+        '第三章 · 海外', '一本书', '作者');
+      expect(cfChapter.url).assertEqual('https://voicedrop.cn/books/sample-book/chapter-3.html');
+      expect(cfChapter.title).assertEqual('第三章 · 海外');
+      expect(cfChapter.isChapter).assertTrue();
+
       const outside = WechatBookShare.target(root, 'https://evil.example/books/sample-book/chapter-2.html',
         '伪造标题', '一本书', '作者');
       expect(outside.url).assertEqual(root);
