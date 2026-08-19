@@ -34,6 +34,7 @@ import detailShareUiTest from './DetailShareUi.test';
 import bookReviseContractTest from './BookReviseContract.test';
 import privacyStartupTest from './PrivacyStartup.test';
 import shareImportTest from './ShareImport.test';
+import bookCoverPolicyTest from './BookCoverPolicy.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -72,4 +73,5 @@ export default function testsuite() {
   bookReviseContractTest();
   privacyStartupTest();
   shareImportTest();
+  bookCoverPolicyTest();
 }

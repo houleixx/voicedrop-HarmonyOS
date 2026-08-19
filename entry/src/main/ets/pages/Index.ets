@@ -3,6 +3,7 @@ import { abilityAccessCtrl } from '@kit.AbilityKit';
 import { ColorMetrics, FrameNode, LengthMetrics, promptAction, window } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { bookCoverStore } from '../data/BookCoverStore';
 import { systemShare } from '@kit.ShareKit';
 import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
 import {
@@ -469,6 +470,7 @@ struct Index {
     libraryStore.initialize(this.context);
     communityStore.initialize(this.context);
     appCacheStore.initialize(this.context);
+    bookCoverStore.initialize(this.context);
     this.wechatLoggedIn = authStore.isWechatAuthenticated();
     await promptStore.initialize(this.context);
     await this.handleWechatCallback();

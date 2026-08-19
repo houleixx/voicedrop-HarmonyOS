@@ -5,6 +5,7 @@ import { CacheMaintenance } from '../core/CacheMaintenance';
 import { communityStore } from './CommunityStore';
 import { libraryStore } from './LibraryStore';
 import { photoService } from './PhotoService';
+import { bookCoverStore } from './BookCoverStore';
 
 @Concurrent
 function measureCacheRoots(roots: string[]): number {
@@ -42,6 +43,7 @@ export class AppCacheStore {
     // LibraryStore also clears photos; keep this explicit so the app-owned
     // in-flight image task map is cleared even if article storage was not ready.
     photoService.clearArticlePhotoCache();
+    bookCoverStore.clear();
   }
 }
 

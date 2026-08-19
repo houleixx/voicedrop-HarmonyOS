@@ -4,6 +4,8 @@ import { promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { systemShare } from '@kit.ShareKit';
 import { BooksService, ShelfBook, booksService } from '../data/BooksService';
+import { BookCoverRequest, bookCoverStore } from '../data/BookCoverStore';
+import { BookCoverPolicy } from '../core/BookCoverPolicy';
 import { WechatCommunityShare } from '../data/WechatCommunityShare';
 import { WechatBookShare, WechatBookShareTarget, WechatBookShareTargetValue } from '../core/WechatBookShare';
 import { DetailShareUi } from '../core/DetailShareUi';
@@ -12,6 +14,80 @@ import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
 import { BookRevisePage } from './BookRevisePage';
+
+@Component
+struct CachedBookCoverImage {
+  @Prop @Watch('onBookChanged') book: ShelfBook = new ShelfBook();
+  @State private source: string = '';
+  private active: boolean = false;
+  private generation: number = 0;
+  private displayRecoveryUsed: boolean = false;
+  private request?: BookCoverRequest;
+
+  aboutToAppear(): void {
+    this.active = true;
+    this.restoreOrLoad().catch(() => {});
+  }
+
+  aboutToDisappear(): void {
+    this.active = false;
+    this.generation++;
+    this.request?.cancel();
+    if (this.request) bookCoverStore.release(this.request);
+    this.request = undefined;
+  }
+
+  private onBookChanged(): void {
+    this.generation++;
+    this.request?.cancel();
+    if (this.request) bookCoverStore.release(this.request);
+    this.request = undefined;
+    this.displayRecoveryUsed = false;
+    this.source = '';
+    if (this.active) this.restoreOrLoad().catch(() => {});
+  }
+
+  private async restoreOrLoad(): Promise<void> {
+    const generation: number = ++this.generation;
+    const source: string = await bookCoverStore.cachedSource(this.book);
+    if (!BookCoverPolicy.shouldApplyResult(this.active, generation, this.generation)) return;
+    if (source.length > 0) {
+      this.source = source;
+      return;
+    }
+    await this.load();
+  }
+
+  private onDisplayError(): void {
+    if (!BookCoverPolicy.shouldRecoverDisplayFailure(this.displayRecoveryUsed)) return;
+    this.displayRecoveryUsed = true;
+    this.source = '';
+    bookCoverStore.invalidate(this.book);
+    this.load().catch(() => {});
+  }
+
+  private async load(): Promise<void> {
+    const request: BookCoverRequest | undefined = bookCoverStore.request(this.book);
+    if (!request) return;
+    this.request?.cancel();
+    if (this.request) bookCoverStore.release(this.request);
+    this.request = request;
+    const generation: number = ++this.generation;
+    const source: string = await request.load();
+    if (source.length > 0 && BookCoverPolicy.shouldApplyResult(this.active, generation, this.generation)) {
+      this.source = source;
+    }
+    bookCoverStore.release(request);
+    if (this.request === request) this.request = undefined;
+  }
+
+  build() {
+    if (this.source.length > 0) {
+      Image(this.source).width('100%').height('100%').objectFit(ImageFit.Cover)
+        .onError(() => this.onDisplayError())
+    }
+  }
+}
 
 @Component
 export struct BooksShelfPage {
@@ -64,8 +140,7 @@ export struct BooksShelfPage {
       Stack({ alignContent: Alignment.TopStart }) {
         Column().width('100%').height('100%')
           .linearGradient({ angle: 145, colors: [[book.c, 0], [book.c2, 1]] })
-        if (book.cover) Image(book.coverUrl()).width('100%').height('100%').objectFit(ImageFit.Cover)
-        else Column({ space: 10 }) {
+        Column({ space: 10 }) {
           Text(book.main).fontFamily('serif').fontSize(22).fontWeight(FontWeight.Bold)
             .letterSpacing(3).lineHeight(31).fontColor('#F7F1DF')
             .textAlign(TextAlign.Start).width('100%').maxLines(4)
@@ -76,6 +151,7 @@ export struct BooksShelfPage {
           }
         }.width('100%').height('100%').padding({ left: 24, right: 16, top: 26 })
           .alignItems(HorizontalAlign.Start)
+        if (book.cover) CachedBookCoverImage({ book: book })
         Row() {
           Row().width(13).height('100%')
             .linearGradient({ angle: 90, colors: [['#5C000000', 0], ['#1A000000', 0.55], ['#1FFFFFFF', 1]] })

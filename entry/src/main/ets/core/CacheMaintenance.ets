@@ -2,7 +2,8 @@ export class CacheMaintenance {
   static readonly DIRECTORY_NAMES: string[] = [
     'article-doc-cache-v1',
     'photo-cache',
-    'community-post-cache-v1'
+    'community-post-cache-v1',
+    'book-cover-cache-v1'
   ];
 
   static roots(cacheDir: string): string[] {

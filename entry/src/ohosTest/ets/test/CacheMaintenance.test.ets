@@ -6,11 +6,12 @@ export default function cacheMaintenanceTest() {
   describe('CacheMaintenance', () => {
     it('limitsCleanupToReloadableArticlePhotoAndCommunityDetailDirectories', 0, () => {
       expect(JSON.stringify(CacheMaintenance.DIRECTORY_NAMES)).assertEqual(
-        JSON.stringify(['article-doc-cache-v1', 'photo-cache', 'community-post-cache-v1']));
+        JSON.stringify(['article-doc-cache-v1', 'photo-cache', 'community-post-cache-v1', 'book-cover-cache-v1']));
       expect(JSON.stringify(CacheMaintenance.roots('/data/cache/'))).assertEqual(JSON.stringify([
         '/data/cache/article-doc-cache-v1',
         '/data/cache/photo-cache',
-        '/data/cache/community-post-cache-v1'
+        '/data/cache/community-post-cache-v1',
+        '/data/cache/book-cover-cache-v1'
       ]));
     });
 
