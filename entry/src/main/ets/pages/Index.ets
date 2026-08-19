@@ -86,6 +86,7 @@ import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureG
 import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { DetailShareUi } from '../core/DetailShareUi';
 import { PrivacyStartup, PrivacyStartupSurface } from '../core/PrivacyStartup';
+import { HomeTabIndex, HomeTabPolicy } from '../core/HomeTabPolicy';
 import { WechatShareContent } from '../core/WechatShareContent';
 import { ArticlePhotoView } from '../components/ArticlePhotoView';
 import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordingDock';
@@ -146,7 +147,7 @@ struct Index {
   @StorageLink('shareSequence') @Watch('onShareSequence') private shareSequence: number = 0;
   @StorageLink('wechatSequence') @Watch('onWechatSequence') private wechatSequence: number = 0;
   @StorageLink('foregroundSequence') @Watch('onForegroundSequence') private foregroundSequence: number = 0;
-  @State private tab: number = 0;
+  @State private tab: number = HomeTabIndex.Recordings;
   @State private selectedBook: ShelfBook = new ShelfBook();
   @State private recordings: Recording[] = [];
   @State private deletedRecordingNames: string[] = [];
@@ -173,6 +174,8 @@ struct Index {
   @State private communityRefreshStatus: RefreshStatus = RefreshStatus.Inactive;
   @State private libraryRefreshOffset: number = 0;
   @State private communityRefreshOffset: number = 0;
+  private communityRemoteLoaded: boolean = false;
+  private communityInitialLoadPending: boolean = false;
   @State private errorText: string = '';
   @State private recording: boolean = false;
   @State private recordingTransitioning: boolean = false;
@@ -399,7 +402,7 @@ struct Index {
     const likeRequest: Promise<boolean> | undefined = this.communityLikeRequest;
     let likeSucceeded: boolean = this.communityLikeSucceeded;
     if (likeRequest) likeSucceeded = await likeRequest.catch(() => false);
-    await this.refreshCommunity(false);
+    await this.refreshCommunity();
     if (likeSucceeded) this.reapplyCommunityLikeTarget();
     this.communityLikeRequest = undefined;
     this.communityLikeShareId = '';
@@ -539,6 +542,8 @@ struct Index {
     this.recordingPhotoFailureKeys = [];
     this.recordingLoadedDedicatedCoverKeys = [];
     this.posts = []; this.communityRecommended = []; this.communityLatest = [];
+    this.communityRemoteLoaded = false;
+    this.communityInitialLoadPending = false;
     libraryStore.clearArticleSnapshots();
     communityStore.clearPostSnapshots();
     this.reconnectAgentSessions();
@@ -550,7 +555,7 @@ struct Index {
     this.wechatLoggingIn = false;
     if (!this.initialized || this.pathStack.size() > 0) return;
     this.refreshLibrary(this.recordings.length === 0).catch(() => {});
-    if (this.tab === 1) this.refreshCommunity().catch(() => {});
+    if (this.tab === HomeTabIndex.Community) this.refreshCommunity().catch(() => {});
   }
 
   private onWechatSequence(): void {
@@ -730,9 +735,15 @@ struct Index {
       }
       if (!route && /^https?:\/\/(?:www\.)?(?:voicedrop\.cn\/|jianshuo\.dev\/voicedrop(?:\/|$))/i.test(raw)) route = 'web';
     }
-    if (!route || route === 'recordings' || route === 'home') { this.navigateHome(); this.tab = 0; return; }
-    if (route === 'community') { this.navigateHome(); this.tab = 1; await this.refreshCommunity(); return; }
-    if (route === 'books' || route === 'library') { this.navigateHome(); this.tab = 2; return; }
+    if (!route || route === 'recordings' || route === 'home') {
+      this.navigateHome(); this.selectHomeTab(HomeTabIndex.Recordings); return;
+    }
+    if (route === 'community') {
+      this.navigateHome(); this.selectHomeTab(HomeTabIndex.Community); return;
+    }
+    if (route === 'books' || route === 'library') {
+      this.navigateHome(); this.selectHomeTab(HomeTabIndex.Books); return;
+    }
     if (route === 'settings' || route === 'setting') { this.navigateTo('settings'); return; }
     if (route === 'usage' || route === 'billing') { this.navigateTo('usage'); return; }
     if (route === 'prompt' || route === 'prompt-import') {
@@ -741,7 +752,7 @@ struct Index {
     }
     if (route === 'link') { await this.recoverPendingLink(); return; }
     if ((route === 'i' || route === 'invite') && /^[A-Za-z0-9_-]{6,16}$/.test(value)) {
-      await this.claimReferral('link', value); this.navigateHome(); this.tab = 0; return;
+      await this.claimReferral('link', value); this.navigateHome(); this.tab = HomeTabIndex.Recordings; return;
     }
     if (route === 'share' && value) { await this.openShareLink(value, raw); return; }
     if (route === 'web') { await this.openExternalUrl(raw); return; }
@@ -752,7 +763,7 @@ struct Index {
     }
     if (route === 'record' && !this.recording) {
       this.defaultRecordTag = this.queryValue(raw, 'tag'); this.selectedTag = '';
-      this.navigateHome(); this.tab = 0; await this.toggleRecording();
+      this.navigateHome(); this.tab = HomeTabIndex.Recordings; await this.toggleRecording();
     }
   }
 
@@ -873,7 +884,7 @@ struct Index {
         this.incomingShare = undefined;
         this.shareDatasetCollected = false;
         this.navigateHome();
-        this.tab = 0;
+        this.tab = HomeTabIndex.Recordings;
         await this.refreshLibrary();
       }
     } catch (error) {
@@ -1068,15 +1079,14 @@ struct Index {
     }
   }
 
-  private async refreshCommunity(showLoading: boolean = true): Promise<void> {
-    if (showLoading) this.loading = true;
+  private async refreshCommunity(): Promise<void> {
     try {
       const blocked: string[] = appPreferences.blockedAuthors();
       const feed: CommunityFeed = await communityStore.feed();
       this.applyCommunityFeed(feed, blocked);
+      this.communityRemoteLoaded = true;
     }
     catch (error) { this.errorText = `暂时无法加载社区：${String(error)}`; }
-    finally { if (showLoading) this.loading = false; }
   }
 
   /** Show last successful account-scoped home data before the network refresh completes. */
@@ -1108,7 +1118,7 @@ struct Index {
   private async pullRefreshCommunity(): Promise<void> {
     if (this.communityRefreshing) return;
     this.communityRefreshing = true;
-    try { await this.refreshCommunity(false); }
+    try { await this.refreshCommunity(); }
     finally {
       this.communityRefreshing = false;
       this.communityRefreshStatus = RefreshStatus.Done;
@@ -1122,6 +1132,24 @@ struct Index {
     else if (this.communityFilter === 'replies') source = this.communityRecommended.filter((post: CommunityPost) => (post.replyTo ?? '').length > 0);
     else source = this.communityRecommended.slice();
     this.posts = CommunitySearch.filter(source, this.communitySearchQuery);
+  }
+
+  private ensureCommunityLoaded(): void {
+    if (!HomeTabPolicy.shouldLoadCommunity(
+      this.tab, this.communityRemoteLoaded, this.communityInitialLoadPending)) return;
+    this.communityInitialLoadPending = true;
+    this.refreshCommunity().finally(() => this.communityInitialLoadPending = false);
+  }
+
+  private selectHomeTab(index: number): void {
+    this.selectedTag = '';
+    this.tab = index;
+    if (index === HomeTabIndex.Community) this.ensureCommunityLoaded();
+  }
+
+  private selectHomeTag(tag: string): void {
+    this.selectedTag = tag;
+    this.tab = HomeTabIndex.Recordings;
   }
 
   // Community detail is a nested route. Remove moderated content from every
@@ -1901,33 +1929,29 @@ struct Index {
       Row({ space: 20 }) {
         Column({ space: 5 }) {
           Text('我的录音').fontSize(20).fontWeight(FontWeight.Medium)
-            .fontColor(this.tab === 0 && this.selectedTag.length === 0 ? Theme.INK : '#B8AE9E')
+            .fontColor(this.tab === HomeTabIndex.Recordings && this.selectedTag.length === 0 ? Theme.INK : '#B8AE9E')
           Blank().width(78).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
-            .opacity(this.tab === 0 && this.selectedTag.length === 0 ? 1 : 0)
-        }.onClick(() => { this.selectedTag = ''; this.tab = 0; })
+            .opacity(this.tab === HomeTabIndex.Recordings && this.selectedTag.length === 0 ? 1 : 0)
+        }.onClick(() => this.selectHomeTab(HomeTabIndex.Recordings))
         Column({ space: 5 }) {
           Text('VD社区').fontSize(20).fontWeight(FontWeight.Medium)
-            .fontColor(this.tab === 1 ? Theme.INK : '#B8AE9E')
+            .fontColor(this.tab === HomeTabIndex.Community ? Theme.INK : '#B8AE9E')
           Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
-            .opacity(this.tab === 1 ? 1 : 0)
-        }.onClick(() => {
-          this.selectedTag = '';
-          this.tab = 1;
-          this.refreshCommunity(false).catch(() => {});
-        })
+            .opacity(this.tab === HomeTabIndex.Community ? 1 : 0)
+        }.onClick(() => this.selectHomeTab(HomeTabIndex.Community))
         Column({ space: 5 }) {
           Text('写书').fontSize(20).fontWeight(FontWeight.Medium)
-            .fontColor(this.tab === 2 ? Theme.INK : '#B8AE9E')
+            .fontColor(this.tab === HomeTabIndex.Books ? Theme.INK : '#B8AE9E')
           Blank().width(41).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
-            .opacity(this.tab === 2 ? 1 : 0)
-        }.onClick(() => { this.selectedTag = ''; this.tab = 2; })
+            .opacity(this.tab === HomeTabIndex.Books ? 1 : 0)
+        }.onClick(() => this.selectHomeTab(HomeTabIndex.Books))
         ForEach(this.homeTags(), (tag: string) => {
           Text(tag)
             .fontSize(20).fontWeight(FontWeight.Medium)
-            .fontColor(this.tab === 0 && this.selectedTag === tag ? Theme.INK : '#B8AE9E')
+            .fontColor(this.tab === HomeTabIndex.Recordings && this.selectedTag === tag ? Theme.INK : '#B8AE9E')
             .maxLines(1)
             .padding({ bottom: 8 })
-            .onClick(() => { this.selectedTag = tag; this.tab = 0; })
+            .onClick(() => this.selectHomeTag(tag))
         }, (tag: string) => tag)
       }
         .constraintSize({ minWidth: '100%' })
@@ -1944,8 +1968,6 @@ struct Index {
   private libraryPage() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
-      this.topBar('VoiceDrop 口述')
-      this.homeTabs()
       if (this.loading) {
         this.pageLoadingState()
         Blank()
@@ -2614,8 +2636,6 @@ struct Index {
   @Builder
   private communityPage() {
     Column() {
-      this.topBar('VoiceDrop 口述')
-      this.homeTabs()
       if (this.communitySearching) {
         Row({ space: 10 }) {
           TextInput({ text: this.communitySearchQuery, placeholder: '搜索标题、作者或内容' })
@@ -5018,7 +5038,7 @@ struct Index {
       onBack: () => this.navigateBack(),
       onUnblocked: (count: number) => {
         this.blockedAuthorCount = count;
-        this.refreshCommunity(false).catch(() => {});
+        this.refreshCommunity().catch(() => {});
       }
     })
     else if (page === 'privacy') PrivacyPolicyPage({ onBack: () => this.navigateBack() })
@@ -5030,7 +5050,7 @@ struct Index {
     else if (page === 'feedback') FeedbackPage({ onBack: () => this.navigateBack() })
     else if (page === 'books') BookWritingPage({
       onBack: () => this.navigateBack(),
-      onOpenShelf: () => { this.navigateBack(); this.tab = 2; },
+      onOpenShelf: () => { this.navigateBack(); this.selectHomeTab(HomeTabIndex.Books); },
       onInvite: () => this.shareInvite()
     })
     else if (page === 'bookReader') BookReaderPage({ book: this.selectedBook, onBack: () => this.navigateBack() })
@@ -5076,15 +5096,32 @@ struct Index {
 
   @Builder
   private homeRoot() {
-    if (this.tab === 0) this.libraryPage()
-    else if (this.tab === 1) this.communityPage()
-    else Column() {
+    Column() {
       this.topBar('VoiceDrop 口述')
       this.homeTabs()
-      BooksShelfPage({
-        onWrite: () => this.navigateTo('books'),
-        onRead: (book: ShelfBook) => { this.selectedBook = book; this.navigateTo('bookReader'); }
-      }).layoutWeight(1)
+      Tabs({ index: this.tab }) {
+        TabContent() {
+          this.libraryPage()
+        }
+        TabContent() {
+          this.communityPage()
+        }
+        TabContent() {
+          BooksShelfPage({
+            onWrite: () => this.navigateTo('books'),
+            onRead: (book: ShelfBook) => { this.selectedBook = book; this.navigateTo('bookReader'); }
+          })
+        }
+      }
+        .barHeight(0)
+        .scrollable(false)
+        .cachedMaxCount(3, TabsCacheMode.CACHE_BOTH_SIDE)
+        .onChange((index: number) => {
+          this.tab = index;
+          if (index === HomeTabIndex.Community) this.ensureCommunityLoaded();
+        })
+        .layoutWeight(1)
+        .width('100%')
     }.width('100%').height('100%')
   }
 

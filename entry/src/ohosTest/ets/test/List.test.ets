@@ -36,6 +36,7 @@ import privacyStartupTest from './PrivacyStartup.test';
 import shareImportTest from './ShareImport.test';
 import bookCoverPolicyTest from './BookCoverPolicy.test';
 import apiRoutePolicyTest from './ApiRoutePolicy.test';
+import homeTabPolicyTest from './HomeTabPolicy.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -76,4 +77,5 @@ export default function testsuite() {
   shareImportTest();
   bookCoverPolicyTest();
   apiRoutePolicyTest();
+  homeTabPolicyTest();
 }
