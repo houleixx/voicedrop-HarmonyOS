@@ -37,6 +37,9 @@ import shareImportTest from './ShareImport.test';
 import bookCoverPolicyTest from './BookCoverPolicy.test';
 import apiRoutePolicyTest from './ApiRoutePolicy.test';
 import homeTabPolicyTest from './HomeTabPolicy.test';
+import bookShelfLoadingPolicyTest from './BookShelfLoadingPolicy.test';
+import deviceLinkTransferTest from './DeviceLinkTransfer.test';
+import deviceLinkCryptoInteropTest from './DeviceLinkCryptoInterop.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -78,4 +81,7 @@ export default function testsuite() {
   bookCoverPolicyTest();
   apiRoutePolicyTest();
   homeTabPolicyTest();
+  bookShelfLoadingPolicyTest();
+  deviceLinkTransferTest();
+  deviceLinkCryptoInteropTest();
 }

@@ -6,6 +6,7 @@ import { systemShare } from '@kit.ShareKit';
 import { BooksService, ShelfBook, booksService } from '../data/BooksService';
 import { BookCoverRequest, bookCoverStore } from '../data/BookCoverStore';
 import { BookCoverPolicy } from '../core/BookCoverPolicy';
+import { BookShelfLoadingPolicy } from '../core/BookShelfLoadingPolicy';
 import { WechatCommunityShare } from '../data/WechatCommunityShare';
 import { WechatBookShare, WechatBookShareTarget, WechatBookShareTargetValue } from '../core/WechatBookShare';
 import { DetailShareUi } from '../core/DetailShareUi';
@@ -208,7 +209,7 @@ export struct BooksShelfPage {
   }
   build() {
     Column() {
-      if (this.loading && this.books.length === 0) {
+      if (BookShelfLoadingPolicy.shouldShowExclusiveLoading(this.loading, this.books.length)) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(Theme.ACCENT_STRONG)
           Text('正在整理书架…').fontSize(14).fontColor(Theme.SECONDARY)

@@ -322,7 +322,11 @@ struct Index {
   private processingReplies: Set<string> = new Set<string>();
   private pendingLinkId: string = '';
   private pendingLinkPubkey: string = '';
+  @State private pendingLinkCode: string = '';
+  @State private pendingLinkReleased: boolean = false;
+  @State private showDeviceLinkDialog: boolean = false;
   private linkDialogShowing: boolean = false;
+  private releasingLinkId: string = '';
   private settledLinkIds: Set<string> = new Set<string>();
   private incomingShare?: IncomingShareDraft;
   private defaultRecordTag: string = '';
@@ -670,33 +674,72 @@ struct Index {
 
   private async presentLinkRequest(pending: DeviceLinkPending): Promise<void> {
     if (this.settledLinkIds.has(pending.pairingId) || this.linkDialogShowing) return;
-    this.pendingLinkId = pending.pairingId; this.pendingLinkPubkey = pending.pubkey; this.linkDialogShowing = true;
-    try {
-      const result = await promptAction.showDialog({ title: '设备登录请求',
-        message: `有新设备想登录当前账号。\n\n验证码：${pending.code}\n\n如果不是你本人操作，请选择“不是我”。`,
-        buttons: [{ text: '不是我', color: '#D92D20' }, { text: '是我', color: '#16825D' }] });
-      if (result.index === 0) {
-        this.settledLinkIds.add(pending.pairingId); await DeviceLinkStore.reject(pending.pairingId);
-        this.pendingLinkId = ''; this.pendingLinkPubkey = '';
-      } else {
-        promptAction.showToast({ message: `请在新设备输入验证码 ${pending.code}` });
-        if (pending.released) await this.releaseLink(pending.pairingId);
-      }
-    } finally { this.linkDialogShowing = false; }
+    this.pendingLinkId = pending.pairingId;
+    this.pendingLinkPubkey = pending.pubkey;
+    this.pendingLinkCode = pending.code;
+    this.pendingLinkReleased = pending.released;
+    this.linkDialogShowing = true;
+    this.showDeviceLinkDialog = true;
+  }
+
+  private acknowledgeLinkRequest(): void {
+    const pairingId: string = this.pendingLinkId;
+    const released: boolean = this.pendingLinkReleased;
+    this.showDeviceLinkDialog = false;
+    this.linkDialogShowing = false;
+    if (released && pairingId.length > 0) this.releaseLink(pairingId).catch(() => {});
+  }
+
+  private async rejectLinkRequest(): Promise<void> {
+    const pairingId: string = this.pendingLinkId;
+    this.showDeviceLinkDialog = false;
+    this.linkDialogShowing = false;
+    this.pendingLinkCode = '';
+    this.pendingLinkReleased = false;
+    if (pairingId.length === 0) return;
+    this.settledLinkIds.add(pairingId);
+    await DeviceLinkStore.reject(pairingId);
+    this.pendingLinkId = '';
+    this.pendingLinkPubkey = '';
   }
 
   private async releaseLink(pairingId: string): Promise<void> {
-    if (this.settledLinkIds.has(pairingId)) return;
+    if (this.settledLinkIds.has(pairingId) || this.releasingLinkId === pairingId) return;
     let publicKey: string = pairingId === this.pendingLinkId ? this.pendingLinkPubkey : '';
     if (!publicKey) {
       const pending: DeviceLinkPending | undefined = await DeviceLinkStore.pending();
       if (pending?.pairingId === pairingId) publicKey = pending.pubkey;
     }
     if (!publicKey) { promptAction.showToast({ message: '登录请求已失效' }); return; }
-    this.settledLinkIds.add(pairingId);
-    const ok: boolean = await DeviceLinkStore.complete(pairingId, publicKey);
-    this.pendingLinkId = ''; this.pendingLinkPubkey = '';
-    promptAction.showToast({ message: ok ? '已安全发送账号' : '账号发送失败' });
+    this.releasingLinkId = pairingId;
+    if (pairingId === this.pendingLinkId) {
+      this.showDeviceLinkDialog = false;
+      this.linkDialogShowing = false;
+    }
+    let ok: boolean = false;
+    try {
+      ok = await DeviceLinkStore.complete(pairingId, publicKey);
+    } catch (_) {
+      ok = false;
+    } finally {
+      if (this.releasingLinkId === pairingId) this.releasingLinkId = '';
+    }
+    if (ok) {
+      this.settledLinkIds.add(pairingId);
+      if (pairingId === this.pendingLinkId) {
+        this.pendingLinkId = ''; this.pendingLinkPubkey = '';
+        this.pendingLinkCode = '';
+        this.pendingLinkReleased = false;
+      }
+      promptAction.showToast({ message: '已安全发送账号' });
+      return;
+    }
+    if (pairingId === this.pendingLinkId) {
+      this.pendingLinkReleased = true;
+      this.showDeviceLinkDialog = true;
+      this.linkDialogShowing = true;
+    }
+    promptAction.showToast({ message: '账号发送失败，请重试' });
   }
 
   private async recoverPendingLink(): Promise<void> {
@@ -5165,6 +5208,79 @@ struct Index {
       .backgroundColor(Theme.BG)
   }
 
+  @Builder
+  private deviceLinkDialog() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column({ space: 0 }) {
+        Text('有新设备想登录你的账号')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.INK)
+          .lineHeight(28)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+        Text('在新设备上输入下面的验证码')
+          .fontSize(14)
+          .fontColor(Theme.SECONDARY)
+          .lineHeight(22)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .margin({ top: 12 })
+        Text(this.pendingLinkCode)
+          .fontFamily('monospace')
+          .fontSize(44)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.INK)
+          .letterSpacing(8)
+          .lineHeight(56)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .margin({ top: 16 })
+        Text('不是你本人操作？点「不是我」。')
+          .fontSize(12)
+          .fontColor(Theme.FAINT)
+          .lineHeight(18)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .margin({ top: 12 })
+        Row({ space: 12 }) {
+          Button('不是我', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(48)
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Theme.SECONDARY)
+            .backgroundColor(Theme.WHITE)
+            .border({ width: 1, color: '#E1D3C4', radius: 12 })
+            .borderRadius(12)
+            .onClick(() => this.rejectLinkRequest().catch(() => {}))
+          Button('这是我', { type: ButtonType.Normal })
+            .layoutWeight(1)
+            .height(48)
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Theme.WHITE)
+            .backgroundColor(Theme.ACCENT_STRONG)
+            .borderRadius(12)
+            .onClick(() => this.acknowledgeLinkRequest())
+        }
+          .width('100%')
+          .margin({ top: 24 })
+      }
+        .width('86%')
+        .constraintSize({ maxWidth: 360 })
+        .padding({ left: 24, right: 24, top: 26, bottom: 24 })
+        .backgroundColor('#FFFAF3')
+        .borderRadius(16)
+        .shadow({ radius: 28, color: '#47000000', offsetY: 12 })
+    }
+      .width('100%')
+      .height('100%')
+      .padding({ top: this.safeAreaTop(), bottom: this.safeAreaBottom() })
+      .backgroundColor('#94000000')
+      .zIndex(260)
+  }
+
   build() {
     if (this.startupSurface() === PrivacyStartupSurface.Pending) {
       Column()
@@ -5556,6 +5672,9 @@ struct Index {
           }.padding({ left: 20, right: 20, top: 18, bottom: 28 }).backgroundColor('#FAF6EF')
             .borderRadius({ topLeft: 22, topRight: 22 }).width('100%')
         }.width('100%').height('100%').backgroundColor('#66000000')
+      }
+      if (this.showDeviceLinkDialog) {
+        this.deviceLinkDialog()
       }
       }.width('100%').height('100%').backgroundColor(Theme.BG)
     }

@@ -1,13 +1,6 @@
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { util } from '@kit.ArkTS';
 
-class X25519PublicSpec implements cryptoFramework.X25519PubKeySpec {
-  algName: string = 'X25519';
-  specType: cryptoFramework.AsyKeySpecType = cryptoFramework.AsyKeySpecType.PUBLIC_KEY_SPEC;
-  pk: bigint;
-  constructor(pk: bigint) { this.pk = pk; }
-}
-
 export class DeviceLinkKeypair {
   nativeKeypair: cryptoFramework.KeyPair;
   publicKeyB64: string;
@@ -80,16 +73,23 @@ export class DeviceLinkCrypto {
   private static async shared(privateKey: cryptoFramework.PriKey, publicKeyB64: string): Promise<Uint8Array> {
     const raw: Uint8Array = DeviceLinkCrypto.unb64(publicKeyB64);
     if (raw.byteLength !== 32) throw new Error('X25519 公钥长度错误');
-    const peer: cryptoFramework.PubKey = await cryptoFramework.createAsyKeyGeneratorBySpec(
-      new X25519PublicSpec(DeviceLinkCrypto.littleEndianToBigint(raw))).generatePubKey();
+    // MCP / CryptoKit / Bouncy Castle exchange the RFC 7748 32-byte raw key.
+    // CryptoArchitectureKit.convertKey expects an X.509 SubjectPublicKeyInfo,
+    // so wrap the raw bytes with the fixed X25519 OID prefix (1.3.101.110).
+    const x509Prefix: Uint8Array = new Uint8Array([
+      0x30, 0x2A, 0x30, 0x05, 0x06, 0x03, 0x2B, 0x65, 0x6E, 0x03, 0x21, 0x00
+    ]);
+    const imported: cryptoFramework.KeyPair = await cryptoFramework.createAsyKeyGenerator('X25519')
+      .convertKey({ data: DeviceLinkCrypto.concat(x509Prefix, raw) }, null);
+    const peer: cryptoFramework.PubKey = imported.pubKey;
     return (await cryptoFramework.createKeyAgreement('X25519').generateSecret(privateKey, peer)).data;
   }
 
   private static async hkdf(shared: Uint8Array): Promise<Uint8Array> {
     const encoder: util.TextEncoder = new util.TextEncoder();
-    const spec: cryptoFramework.HKDFSpec = { algName: 'HKDF|SHA256', key: shared,
+    const spec: cryptoFramework.HKDFSpec = { algName: 'HKDF', key: shared,
       salt: encoder.encodeInto('voicedrop-device-link/v1'), info: encoder.encodeInto('anon-token'), keySize: 32 };
-    return (await cryptoFramework.createKdf('HKDF|SHA256').generateSecret(spec)).data;
+    return (await cryptoFramework.createKdf('HKDF|SHA256|EXTRACT_AND_EXPAND').generateSecret(spec)).data;
   }
 
   private static async aesEncrypt(keyBytes: Uint8Array, nonce: Uint8Array, plain: Uint8Array): Promise<Uint8Array> {
@@ -125,9 +125,6 @@ export class DeviceLinkCrypto {
   }
   private static concat(left: Uint8Array, right: Uint8Array): Uint8Array {
     const out: Uint8Array = new Uint8Array(left.length + right.length); out.set(left, 0); out.set(right, left.length); return out;
-  }
-  private static littleEndianToBigint(bytes: Uint8Array): bigint {
-    let value: bigint = BigInt(0); for (let index: number = bytes.length - 1; index >= 0; index--) value = (value << BigInt(8)) | BigInt(bytes[index]); return value;
   }
   private static bigintToLittleEndian(input: bigint, length: number): Uint8Array {
     let value: bigint = input; const bytes: Uint8Array = new Uint8Array(length);

@@ -24,6 +24,12 @@ export class DeviceLinkPending {
 
 interface PendingResponse { pairingId?: string; code?: string; pubkey?: string; released?: boolean; }
 
+export class DeviceLinkTransfer {
+  static completePayload(pairingId: string, blob: DeviceLinkBlob): string {
+    return JSON.stringify(new LinkCompleteBody(pairingId, blob));
+  }
+}
+
 export class DeviceLinkStore {
   private keypair?: DeviceLinkKeypair;
   private pairingId: string = '';
@@ -70,8 +76,10 @@ export class DeviceLinkStore {
   }
 
   static async complete(pairingId: string, publicKey: string): Promise<boolean> {
+    const activeBearer: string = authStore.bearer();
     const blob: DeviceLinkBlob = await DeviceLinkCrypto.encrypt(authStore.anonymousBearer(), publicKey);
-    return (await httpClient.postJson(`${Api.AGENT}/link/complete`, authStore.bearer(), new LinkCompleteBody(pairingId, blob))).ok();
+    const payload: string = DeviceLinkTransfer.completePayload(pairingId, blob);
+    return (await httpClient.postJson(`${Api.AGENT}/link/complete`, activeBearer, payload)).ok();
   }
   static async reject(pairingId: string): Promise<void> {
     await httpClient.postJson(`${Api.AGENT}/link/cancel`, authStore.bearer(), new LinkIdBody(pairingId));
