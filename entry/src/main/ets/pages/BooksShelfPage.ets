@@ -167,6 +167,16 @@ export struct BooksShelfPage {
         .width('100%').height('100%')
         .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 5, bottomRight: 5 }).clip(true)
         .shadow({ radius: 2, color: '#333C2D1E', offsetY: 2 })
+      if (book.hidden) {
+        Text('隐藏')
+          .fontSize(11)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Color.White)
+          .backgroundColor('#B8654A')
+          .borderRadius(10)
+          .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+          .position({ top: 8, right: 8 })
+      }
     }
       .width('100%').aspectRatio(0.7)
       .shadow({ radius: 8, color: '#593C2D1E', offsetY: 7 })

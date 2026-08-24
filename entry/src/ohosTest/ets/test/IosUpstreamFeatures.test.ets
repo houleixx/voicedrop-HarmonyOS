@@ -49,12 +49,13 @@ export default function iosUpstreamFeaturesTest() {
     });
 
     it('parsesCurrentIosBookShelfContract', 0, () => {
-      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"主标题：副标题","main":"主标题","sub":"副标题","cover":true,"coverAt":456,"chapters":7,"author":"作者","createdAt":123},{}]}');
+      const books = new BooksService().parse('{"books":[{"slug":"a-book","title":"主标题：副标题","main":"主标题","sub":"副标题","cover":true,"coverAt":456,"chapters":7,"author":"作者","createdAt":123,"hidden":true},{}]}');
       expect(books.length).assertEqual(1);
       expect(books[0].main).assertEqual('主标题');
       expect(books[0].chapters).assertEqual(7);
       expect(books[0].author).assertEqual('作者');
       expect(books[0].createdAt).assertEqual(123);
+      expect(books[0].hidden).assertTrue();
       expect(books[0].readerUrl()).assertEqual('https://voicedrop.cn/books/a-book/');
       expect(books[0].coverUrl()).assertEqual('https://voicedrop.cn/books/a-book/cover.jpg?v=456');
       expect(books[0].shareText()).assertEqual('《主标题：副标题》 — 作者\nhttps://voicedrop.cn/books/a-book/');
@@ -69,6 +70,7 @@ export default function iosUpstreamFeaturesTest() {
       expect(books[0].createdAt).assertEqual(200);
       expect(books[1].slug).assertEqual('legacy-book');
       expect(books[1].createdAt).assertEqual(0);
+      expect(books[1].hidden).assertFalse();
       expect(books[1].coverAt).assertEqual(0);
       expect(books[1].coverUrl()).assertEqual('https://voicedrop.cn/books/legacy-book/cover.jpg');
     });

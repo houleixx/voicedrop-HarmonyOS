@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
 import { DeviceLinkCrypto } from './DeviceLinkCrypto';
 import { ClientReliability } from '../core/ClientReliability';
+import { BookShelfCachePolicy } from '../core/BookShelfCachePolicy';
 
 export class AuthStore {
   private store?: preferences.Preferences;
@@ -28,6 +29,7 @@ export class AuthStore {
       const previous: string = String(this.store?.getSync('preWechatAnon', '') ?? '');
       this.store?.deleteSync('session'); this.store?.deleteSync('preWechatAnon');
       if (previous.startsWith('anon_') && previous.length >= 20) this.store?.putSync('anon', previous);
+      this.bumpIdentityGeneration();
       this.store?.flush(); return '';
     }
     return existing;
@@ -59,11 +61,18 @@ export class AuthStore {
     return `users/${this.anonId()}/`;
   }
 
+  /** Stable, non-secret cache partition that also changes after every account transition. */
+  bookShelfCacheIdentity(): string {
+    const digest: string = DeviceLinkCrypto.stableDigestSync(`book-shelf:${this.storageScope()}`);
+    return BookShelfCachePolicy.identity(digest, this.identityGeneration());
+  }
+
   async adoptAnonymousToken(token: string): Promise<boolean> {
     if (!token.startsWith('anon_') || token.length < 20 || !this.store) return false;
     this.store.putSync('anon', token);
     this.store.deleteSync('session');
     this.store.deleteSync('preWechatAnon');
+    this.bumpIdentityGeneration();
     await this.store.flush();
     return true;
   }
@@ -72,6 +81,7 @@ export class AuthStore {
     if (!this.isSessionToken(token) || this.isJwtExpired(token) || !this.store) return false;
     this.store.putSync('session', token);
     this.store.deleteSync('preWechatAnon');
+    this.bumpIdentityGeneration();
     await this.store.flush();
     return true;
   }
@@ -80,6 +90,7 @@ export class AuthStore {
     if (!this.isSessionToken(token) || this.isJwtExpired(token) || !this.store) return false;
     this.store.putSync('preWechatAnon', this.anonymousBearer());
     this.store.putSync('session', token);
+    this.bumpIdentityGeneration();
     await this.store.flush();
     return true;
   }
@@ -88,13 +99,16 @@ export class AuthStore {
     const previous: string = String(this.store?.getSync('preWechatAnon', '') ?? '');
     this.store?.deleteSync('session'); this.store?.deleteSync('preWechatAnon');
     if (previous.startsWith('anon_') && previous.length >= 20) this.store?.putSync('anon', previous);
+    this.bumpIdentityGeneration();
     await this.store?.flush();
   }
 
   async resetAnonymous(): Promise<void> {
     if (!this.store) return;
+    const nextIdentityGeneration: number = this.identityGeneration() + 1;
     this.store.clearSync();
     this.store.putSync('anon', this.newAnonymousToken());
+    this.store.putSync('identityGeneration', nextIdentityGeneration);
     await this.store.flush();
   }
 
@@ -115,6 +129,14 @@ export class AuthStore {
 
   private homeCacheKey(kind: string): string {
     return ClientReliability.homeSnapshotCacheKey(kind, this.storageScope());
+  }
+
+  private identityGeneration(): number {
+    return Math.max(0, Number(this.store?.getSync('identityGeneration', 0) ?? 0));
+  }
+
+  private bumpIdentityGeneration(): void {
+    this.store?.putSync('identityGeneration', this.identityGeneration() + 1);
   }
 
   private newAnonymousToken(): string {

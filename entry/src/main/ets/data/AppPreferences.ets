@@ -2,6 +2,7 @@ import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { CommunityLikeState } from '../core/CommunityLikeState';
 import { PrivacyStartup } from '../core/PrivacyStartup';
+import { BookShelfCachePolicy } from '../core/BookShelfCachePolicy';
 
 interface PendingCommunityTimestamp { createdAt?: number; }
 
@@ -45,9 +46,19 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
-  bookShelfCache(): string { return String(this.store?.getSync('booksShelfCache', '') ?? ''); }
+  bookShelfCache(identity: string): string {
+    const storedIdentity: string = String(this.store?.getSync('booksShelfCacheIdentity', '') ?? '');
+    if (BookShelfCachePolicy.canRestore(storedIdentity, identity)) {
+      return String(this.store?.getSync('booksShelfCache', '') ?? '');
+    }
+    this.store?.deleteSync('booksShelfCache');
+    this.store?.deleteSync('booksShelfCacheIdentity');
+    this.store?.flush();
+    return '';
+  }
 
-  async saveBookShelfCache(value: string): Promise<void> {
+  async saveBookShelfCache(identity: string, value: string): Promise<void> {
+    this.store?.putSync('booksShelfCacheIdentity', identity);
     this.store?.putSync('booksShelfCache', value);
     await this.store?.flush();
   }
