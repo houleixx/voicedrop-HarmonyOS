@@ -7,11 +7,15 @@ export class WechatBookShare {
     return `《${cleanTitle}》${cleanAuthor.length > 0 ? ` — ${cleanAuthor}` : ''}`;
   }
 
-  static miniProgramPath(slug: string, title: string, author: string, hasCover: boolean): string {
+  static miniProgramPath(slug: string, title: string, main: string, author: string,
+    hasCover: boolean, coverAt: number, chapterUrl: string = ''): string {
     return `pages/book-reader/index?slug=${encodeURIComponent(slug.trim())}` +
       `&title=${encodeURIComponent(title.trim())}` +
+      `&main=${encodeURIComponent(main.trim())}` +
       `&author=${encodeURIComponent(author.trim())}` +
-      `&cover=${hasCover ? '1' : '0'}`;
+      `&cover=${hasCover ? '1' : '0'}` +
+      `&coverAt=${Math.max(0, coverAt)}` +
+      (chapterUrl.trim().length > 0 ? `&page=${encodeURIComponent(chapterUrl.trim())}` : '');
   }
 
   static isTimeline(target: WechatBookShareTarget): boolean {

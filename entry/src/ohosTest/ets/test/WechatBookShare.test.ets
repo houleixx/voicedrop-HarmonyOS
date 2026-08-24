@@ -9,11 +9,15 @@ export default function wechatBookShareTest() {
     });
 
     it('buildsTheMiniProgramReaderPathWithCoverMetadata', 0, () => {
-      expect(WechatBookShare.miniProgramPath('sample-book', '一本书', '张 三', true))
+      expect(WechatBookShare.miniProgramPath('sample-book', '一本书', '主标题', '张 三', true, 456))
         .assertEqual('pages/book-reader/index?slug=sample-book&title=%E4%B8%80%E6%9C%AC%E4%B9%A6' +
-          '&author=%E5%BC%A0%20%E4%B8%89&cover=1');
-      expect(WechatBookShare.miniProgramPath('sample-book', '一本书', '', false).endsWith('&cover=0'))
-        .assertTrue();
+          '&main=%E4%B8%BB%E6%A0%87%E9%A2%98&author=%E5%BC%A0%20%E4%B8%89&cover=1&coverAt=456');
+      expect(WechatBookShare.miniProgramPath(
+        'sample-book', '一本书', '主标题', '', false, -1,
+        'https://voicedrop.cn/books/sample-book/02.html?x=1'))
+        .assertEqual('pages/book-reader/index?slug=sample-book&title=%E4%B8%80%E6%9C%AC%E4%B9%A6' +
+          '&main=%E4%B8%BB%E6%A0%87%E9%A2%98&author=&cover=0&coverAt=0' +
+          '&page=https%3A%2F%2Fvoicedrop.cn%2Fbooks%2Fsample-book%2F02.html%3Fx%3D1');
     });
 
     it('mapsTheBookMenuTargetsToWechatScenes', 0, () => {

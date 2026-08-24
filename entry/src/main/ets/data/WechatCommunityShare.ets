@@ -59,14 +59,25 @@ export class WechatCommunityShare {
         if (response.ok()) thumbnail = await WechatCommunityShare.imageThumbnail(response.data);
       } catch (_) {}
     }
-    return WechatCommunityShare.sendWebpage(
+    const description: string = share.isChapter ?
+      WechatBookShare.title(book.title, book.main, book.author) : 'VoiceDrop 图书馆 · 点开即读';
+    if (WechatBookShare.isTimeline(target)) {
+      return WechatCommunityShare.sendWebpage(
+        context, share.url, share.title, description, thumbnail,
+        SendMessageToWXReq.WXSceneTimeline
+      );
+    }
+    return WechatCommunityShare.sendCard(
       context,
       share.url,
+      WechatBookShare.miniProgramPath(
+        book.slug, book.title, book.main, book.author, book.cover, book.coverAt,
+        share.isChapter ? share.url : ''),
       share.title,
-      share.isChapter ? WechatBookShare.title(book.title, book.main, book.author) : 'VoiceDrop 图书馆 · 点开即读',
+      description,
       thumbnail,
-      WechatBookShare.isTimeline(target) ?
-        SendMessageToWXReq.WXSceneTimeline : SendMessageToWXReq.WXSceneSession
+      'voicedrop-book-share-',
+      SendMessageToWXReq.WXSceneSession
     );
   }
 
