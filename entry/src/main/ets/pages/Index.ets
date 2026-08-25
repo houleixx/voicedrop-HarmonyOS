@@ -6,6 +6,7 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { bookCoverStore } from '../data/BookCoverStore';
 import { systemShare } from '@kit.ShareKit';
 import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
+import { BookWritingArticleSeed } from '../core/BookWritingSeed';
 import {
   ArticleEditEvent,
   ArticleEditFeedback,
@@ -149,6 +150,7 @@ struct Index {
   @StorageLink('foregroundSequence') @Watch('onForegroundSequence') private foregroundSequence: number = 0;
   @State private tab: number = HomeTabIndex.Recordings;
   @State private selectedBook: ShelfBook = new ShelfBook();
+  @State private bookWritingArticleSeed?: BookWritingArticleSeed = undefined;
   @State private recordings: Recording[] = [];
   @State private deletedRecordingNames: string[] = [];
   @State private posts: CommunityPost[] = [];
@@ -4462,6 +4464,11 @@ struct Index {
       await this.publishWechat();
     } else if (action === 'community') {
       await this.toggleCommunityShare();
+    } else if (action === 'book') {
+      const article: MinedArticle | undefined = this.article?.articles[this.selectedArticle];
+      if (!article) return;
+      this.bookWritingArticleSeed = new BookWritingArticleSeed(article.title, article.body);
+      this.navigateTo('books');
     } else if (action === 'xhs') {
       await this.shareToXhs();
     } else if (action === 'wechat') {
@@ -4495,6 +4502,8 @@ struct Index {
       Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
       this.detailMenuRow(this.communityShareId.length > 0 ? '从 VD 社区隐藏' : 'VD 社区可见',
         RI.TEAM, 'community')
+      Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
+      this.detailMenuRow('扩展成一本书', RI.BOOK_OPEN, 'book')
       Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
       this.detailMenuRow('分享', RI.SHARE_FORWARD, 'share')
       Divider().height(4).color('#E9E5DC').margin({ left: 14, right: 14 })
@@ -5094,7 +5103,8 @@ struct Index {
     else if (page === 'books') BookWritingPage({
       onBack: () => this.navigateBack(),
       onOpenShelf: () => { this.navigateBack(); this.selectHomeTab(HomeTabIndex.Books); },
-      onInvite: () => this.shareInvite()
+      onInvite: () => this.shareInvite(),
+      seedArticle: this.bookWritingArticleSeed
     })
     else if (page === 'bookReader') BookReaderPage({ book: this.selectedBook, onBack: () => this.navigateBack() })
     else if (page === 'about') AboutPage({
@@ -5151,7 +5161,7 @@ struct Index {
         }
         TabContent() {
           BooksShelfPage({
-            onWrite: () => this.navigateTo('books'),
+            onWrite: () => { this.bookWritingArticleSeed = undefined; this.navigateTo('books'); },
             onRead: (book: ShelfBook) => { this.selectedBook = book; this.navigateTo('bookReader'); }
           })
         }

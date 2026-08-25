@@ -4,12 +4,14 @@ import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { bookWritingService, BookWritingResult, BookWritingService } from '../data/BookWritingService';
 import { usageStore } from '../data/UsageStore';
 import { referralService, InviteLink } from '../data/ReferralService';
+import { BookWritingArticleSeed, BookWritingSeed } from '../core/BookWritingSeed';
 
 @Component
 export struct BookWritingPage {
   onBack: () => void = () => {};
   onOpenShelf: () => void = () => {};
   onInvite: () => void = () => {};
+  seedArticle?: BookWritingArticleSeed = undefined;
   @State private seed: string = '';
   @State private sending: boolean = false;
   @State private submitted: boolean = false;
@@ -28,10 +30,13 @@ export struct BookWritingPage {
     try { this.invite = await referralService.inviteLink(); } catch (_) {}
   }
   private shortfall(): number { return BookWritingService.shortfall(this.balance); }
-  private canSubmit(): boolean { return this.seed.trim().length > 0 && !this.sending && (this.balance === undefined || this.balance >= 320); }
+  private canSubmit(): boolean {
+    return BookWritingSeed.canSubmit(this.seed, this.seedArticle) && !this.sending && !this.submitted &&
+      (this.balance === undefined || this.balance >= 320);
+  }
   private safeAreaBottom(): number { return this.getUIContext().px2vp(this.safeAreaBottomPx); }
   private async start(): Promise<void> {
-    const value: string = this.seed.trim().substring(0, 20000);
+    const value: string = BookWritingSeed.compose(this.seed, this.seedArticle);
     if (!this.canSubmit()) return;
     this.sending = true; this.message = '';
     let result: BookWritingResult = new BookWritingResult(0, false, '没连上服务器，请检查网络后重试。');
@@ -164,9 +169,22 @@ export struct BookWritingPage {
             }.width('100%').alignItems(HorizontalAlign.Start)
           }
           Column({ space: 8 }) {
-          this.sectionLabel('中心思想')
-          Text('一句话说清这本书要讲明白的那一个问题或主张。想法越聚焦，书越好看；也可以贴一整篇文章当种子。').fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
-          TextArea({ text: this.seed, placeholder: '比如：为什么一切都在变乱？\n或：钱不脏，是我一直躲着它。' })
+          this.sectionLabel(this.seedArticle ? '补充要求（可选）' : '中心思想')
+          if (this.seedArticle) {
+            Column({ space: 5 }) {
+              Row({ space: 7 }) {
+                RemixIcon({ glyph: RI.FILE_TEXT, iconSize: 18, color: Theme.ACCENT })
+                Text(`《${this.seedArticle.title}》已作为种子`).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+              }.width('100%')
+              Text(BookWritingSeed.preview(this.seedArticle) + '……').fontSize(12).lineHeight(18)
+                .fontColor(Theme.SECONDARY).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+            }.padding(12).width('100%').backgroundColor(Theme.AMBER_BG).borderRadius(12).alignItems(HorizontalAlign.Start)
+            Text('可以补充这本书往哪儿写；不填就由写书代理自己定。文章内容已带上，不能在这里误删。')
+              .fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
+          } else {
+            Text('一句话说清这本书要讲明白的那一个问题或主张。想法越聚焦，书越好看；也可以贴一整篇文章当种子。').fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
+          }
+          TextArea({ text: this.seed, placeholder: this.seedArticle ? '比如：写成给孩子的绘本。（可留空）' : '比如：为什么一切都在变乱？\n或：钱不脏，是我一直躲着它。' })
             .height(150).fontSize(16).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
             .placeholderFont({ size: 14 })
             .padding({ left: 20, right: 20, top: 18, bottom: 18 }).backgroundColor(Theme.CARD)

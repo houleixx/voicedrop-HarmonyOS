@@ -39,6 +39,7 @@ import apiRoutePolicyTest from './ApiRoutePolicy.test';
 import homeTabPolicyTest from './HomeTabPolicy.test';
 import bookShelfLoadingPolicyTest from './BookShelfLoadingPolicy.test';
 import bookShelfCachePolicyTest from './BookShelfCachePolicy.test';
+import bookWritingSeedTest from './BookWritingSeed.test';
 import deviceLinkTransferTest from './DeviceLinkTransfer.test';
 import deviceLinkCryptoInteropTest from './DeviceLinkCryptoInterop.test';
 
@@ -84,6 +85,7 @@ export default function testsuite() {
   homeTabPolicyTest();
   bookShelfLoadingPolicyTest();
   bookShelfCachePolicyTest();
+  bookWritingSeedTest();
   deviceLinkTransferTest();
   deviceLinkCryptoInteropTest();
 }
