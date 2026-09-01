@@ -264,9 +264,19 @@ export struct BookReaderPage {
   @State private showMoreMenu: boolean = false;
   @State private showShareSheet: boolean = false;
   @State private showRevise: boolean = false;
+  @State private isMine: boolean = false;
+  @State private isHidden: boolean = false;
+  @State private changingHidden: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
   private currentPageUrl: string = '';
   private currentPageTitle: string = '';
+  aboutToAppear(): void {
+    // The shelf's mine flag is only a first-frame hint. Ownership may have
+    // changed since its cache was written, so menu permissions come from here.
+    this.isMine = this.book.mine;
+    this.isHidden = this.book.hidden;
+    this.loadOwnership().catch(() => {});
+  }
   private currentShare(): WechatBookShareTargetValue {
     return WechatBookShare.target(this.book.shareUrl(), this.currentPageUrl, this.currentPageTitle,
       this.book.title || this.book.main, this.book.author);
@@ -342,15 +352,44 @@ export struct BookReaderPage {
     this.showRevise = false;
     try { this.controller.refresh(true); } catch (_) {}
   }
+  private async loadOwnership(): Promise<void> {
+    const ownership = await booksService.ownership(this.book.slug);
+    this.isMine = ownership.mine;
+    this.isHidden = ownership.hidden;
+  }
+  private async toggleHidden(): Promise<void> {
+    if (!this.isMine || this.changingHidden) return;
+    const next: boolean = !this.isHidden;
+    this.changingHidden = true;
+    try {
+      await booksService.setHidden(this.book.slug, next);
+      this.isHidden = next;
+      promptAction.showToast({ message: next ? '已隐藏，书架上看不到了' : '已取消隐藏' });
+    } catch (error) {
+      const message: string = String(error);
+      if (message.includes('HTTP 403')) {
+        this.isMine = false;
+        promptAction.showToast({ message: '这不是你的书，改不了' });
+      } else {
+        promptAction.showToast({ message: '没改成，过会儿再试' });
+      }
+    } finally { this.changingHidden = false; }
+  }
+  private moreMenuIds(): string[] {
+    return this.isMine ? ['hidden', 'revise', 'share'] : ['share'];
+  }
   private runMoreAction(id: string): void {
     this.showMoreMenu = false;
-    if (id === 'revise') this.showRevise = true;
+    if (id === 'hidden') this.toggleHidden().catch(() => {});
+    else if (id === 'revise') this.showRevise = true;
     else if (id === 'share') this.showShareSheet = true;
   }
   private moreMenuLabel(id: string): string {
+    if (id === 'hidden') return this.isHidden ? '取消隐藏本书' : '隐藏本书';
     return id === 'revise' ? '修改这本书' : '分享';
   }
   private moreMenuGlyph(id: string): string {
+    if (id === 'hidden') return RI.CLOSE;
     return id === 'revise' ? RI.EDIT : RI.SHARE_FORWARD;
   }
   @Builder private moreMenuRow(id: string) {
@@ -363,9 +402,9 @@ export struct BookReaderPage {
   }
   @Builder private bookMoreMenu() {
     Column() {
-      ForEach(DetailShareUi.bookMenuIds(), (id: string, index: number) => {
+      ForEach(this.moreMenuIds(), (id: string, index: number) => {
         this.moreMenuRow(id)
-        if (index < DetailShareUi.bookMenuIds().length - 1) {
+        if (index < this.moreMenuIds().length - 1) {
           Divider().color('#E0D8CC').margin({ left: 14, right: 14 })
         }
       }, (id: string) => id)

@@ -4,12 +4,29 @@ import { Api } from '../core/Api';
 import { authStore } from './AuthStore';
 import { BookShelfCachePolicy } from '../core/BookShelfCachePolicy';
 
-interface ShelfBookWire { slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; }
+interface ShelfBookWire { slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; mine?: boolean; }
 interface ShelfIndexWire { books?: ShelfBookWire[]; }
+interface BookOwnershipWire { mine?: boolean; hidden?: boolean; }
+
+/** The server is authoritative for book ownership and visibility. */
+export class BookOwnership {
+  mine: boolean;
+  hidden: boolean;
+
+  constructor(wire: BookOwnershipWire = {}) {
+    this.mine = wire.mine === true;
+    this.hidden = wire.hidden === true;
+  }
+}
+
+class BookHiddenUpdate {
+  hidden: boolean;
+  constructor(hidden: boolean) { this.hidden = hidden; }
+}
 
 export class ShelfBook {
   slug: string; title: string; main: string; sub: string; c: string; c2: string; cover: boolean; chapters: number;
-  author: string; createdAt: number; coverAt: number; hidden: boolean;
+  author: string; createdAt: number; coverAt: number; hidden: boolean; mine: boolean;
   constructor(wire: ShelfBookWire = {}) {
     this.slug = wire.slug ?? ''; this.title = wire.title ?? ''; this.main = wire.main ?? wire.title ?? '未命名';
     this.sub = wire.sub ?? ''; this.c = wire.c ?? '#8B6652'; this.c2 = wire.c2 ?? '#4B342C';
@@ -17,6 +34,7 @@ export class ShelfBook {
     this.author = wire.author ?? ''; this.createdAt = Math.max(0, wire.createdAt ?? 0);
     this.coverAt = Math.max(0, wire.coverAt ?? 0);
     this.hidden = wire.hidden === true;
+    this.mine = wire.mine === true;
   }
   readerUrl(): string { return `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(this.slug)}/`; }
   shareUrl(): string { return `https://voicedrop.cn/books/${encodeURIComponent(this.slug)}/`; }
@@ -49,11 +67,30 @@ export class BooksService {
     }
     return books;
   }
+  async ownership(slug: string): Promise<BookOwnership> {
+    const response: HttpResponse = await httpClient.get(this.hiddenUrl(slug), authStore.bearer());
+    if (!response.ok()) throw new Error(`书籍归属加载失败 HTTP ${response.code}`);
+    return this.parseOwnership(response.text);
+  }
+  async setHidden(slug: string, hidden: boolean): Promise<void> {
+    const response: HttpResponse = await httpClient.postJson(this.hiddenUrl(slug), authStore.bearer(), new BookHiddenUpdate(hidden));
+    if (!response.ok()) throw new Error(`书籍隐藏状态更新失败 HTTP ${response.code}`);
+    // Revalidate the account-scoped shelf immediately. This keeps the cache used
+    // when returning to the shelf consistent with the confirmed server mutation.
+    await this.load();
+  }
   parse(raw: string): ShelfBook[] {
     try {
       const wire: ShelfIndexWire = JSON.parse(raw || '{}') as ShelfIndexWire;
       return (wire.books ?? []).map((item: ShelfBookWire) => new ShelfBook(item)).filter((item: ShelfBook) => item.slug.length > 0);
     } catch (_) { return []; }
+  }
+  parseOwnership(raw: string): BookOwnership {
+    try { return new BookOwnership(JSON.parse(raw || '{}') as BookOwnershipWire); }
+    catch (_) { return new BookOwnership(); }
+  }
+  private hiddenUrl(slug: string): string {
+    return `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(slug)}/hidden`;
   }
 }
 export const booksService: BooksService = new BooksService();
