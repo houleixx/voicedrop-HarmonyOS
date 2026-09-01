@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@ohos/hypium';
 import { CommunitySearch, CommunitySearchLayout } from '../../../main/ets/core/CommunitySearch';
+import { CommunityBook } from '../../../main/ets/core/CommunityBook';
 import {
   ManualBlock,
   ManualBlockKind,
@@ -27,6 +28,24 @@ export default function iosUpstreamFeaturesTest() {
     it('keepsCommunityToolbarHeightStableWhileSearching', 0, () => {
       expect(CommunitySearchLayout.toolbarHeight(false))
         .assertEqual(CommunitySearchLayout.toolbarHeight(true));
+    });
+
+    it('opensBookFeedItemsInTheShelfReader', 0, () => {
+      const book = CommunityBook.fromPost({
+        shareId: 'book-the-future', kind: 'book', title: '未来简史', excerpt: '摘要', preview: '一本书',
+        author: '作者', likes: 0, replies: 0, count: 9, coverPhotoKey: 'books/the-future/cover.jpg'
+      });
+      expect(book !== undefined).assertTrue();
+      expect(book?.slug).assertEqual('the-future');
+      expect(book?.readerUrl()).assertEqual('https://voicedrop.cn/books/the-future/');
+      expect(book?.chapters).assertEqual(9);
+      expect(book?.mine).assertFalse();
+      expect(CommunityBook.fromPost({
+        shareId: 'book-the-future', kind: 'article', title: '文章', excerpt: '', author: '', likes: 0, replies: 0
+      }) === undefined).assertTrue();
+      expect(CommunityBook.fromPost({
+        shareId: 'book-', kind: 'book', title: '坏数据', excerpt: '', author: '', likes: 0, replies: 0
+      }) === undefined).assertTrue();
     });
 
     it('keepsFeedbackAndBookSeedsWithinServerLimits', 0, () => {

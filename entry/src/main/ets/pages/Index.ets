@@ -68,6 +68,7 @@ import { communityTerms, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { CommunityLikeState } from '../core/CommunityLikeState';
 import { CommunityLikePresentation } from '../core/CommunityLikePresentation';
 import { CommunitySearch, CommunitySearchLayout } from '../core/CommunitySearch';
+import { CommunityBook } from '../core/CommunityBook';
 import { CommunityReplyUi } from '../core/CommunityReplyUi';
 import { CommunityShareUi } from '../core/CommunityShareUi';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
@@ -2660,6 +2661,8 @@ struct Index {
           .onError(() => this.fallbackCommunityPhoto(post.coverPhotoKey ?? ''))
       }
       Column({ space: 8 }) {
+        if (CommunityBook.fromPost(post)) Text(AppLocale.text('书籍')).fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5529')
+          .padding({ left: 8, right: 8, top: 2, bottom: 2 }).backgroundColor('#F4DFAC').borderRadius(10)
         if (post.kind === 'prompt') Text(AppLocale.text('提示词')).fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5529')
           .padding({ left: 8, right: 8, top: 2, bottom: 2 }).backgroundColor('#F4DFAC').borderRadius(10)
         Text(post.title || AppLocale.text('(无题)')).fontSize((post.coverPhotoKey ?? '').length > 0 ? 15 : 16)
@@ -2684,8 +2687,10 @@ struct Index {
       }.padding({ left: 12, right: 12, top: 11, bottom: 12 }).alignItems(HorizontalAlign.Start).width('100%')
     }.width('100%').backgroundColor(this.communityCardColor(post)).borderRadius(12)
       .border({ width: 1, color: Theme.BORDER, radius: 12 }).clip(true)
-      .onClick(() => this.openCommunityPost(post))
-      .gesture(LongPressGesture().onAction(() => { if (post.mine) this.unshareCommunityPost(post); }))
+      .onClick(() => this.openCommunityFeedItem(post))
+      .gesture(LongPressGesture().onAction(() => {
+        if (!CommunityBook.fromPost(post) && post.mine) this.unshareCommunityPost(post);
+      }))
   }
 
   @Builder
@@ -2816,6 +2821,20 @@ struct Index {
       if (loadSequence === this.communityDetailLoadSequence &&
         this.selectedPost?.shareId === shareId) this.communityDetailLoading = false;
     }
+  }
+
+  /** Books in the shared feed open the same reader used by the personal shelf. */
+  private async openCommunityFeedItem(post: CommunityPost): Promise<void> {
+    const book: ShelfBook | undefined = CommunityBook.fromPost(post);
+    if (book) {
+      this.selectedBook = book;
+      this.navigateTo('bookReader');
+      // Book posts are first-class feed items but do not have a community
+      // article snapshot, so record their view without fetching one.
+      communityStore.engage(post.shareId, 'view').catch(() => {});
+      return;
+    }
+    await this.openCommunityPost(post);
   }
 
   private async loadCommunityDetailRelations(post: CommunityPost, loadSequence: number): Promise<void> {
