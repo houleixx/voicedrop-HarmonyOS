@@ -1,9 +1,10 @@
 import { promptAction } from '@kit.ArkUI';
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import {
-  COMMUNITY_TERMS,
+  communityTerms,
   SUPPORT_EMAIL
 } from '../core/CommunityTerms';
 
@@ -29,13 +30,13 @@ export struct AboutPage {
         .backgroundColor(Theme.ACCENT_SOFT)
         .borderRadius(11)
       Column({ space: 2 }) {
-        Text(title)
+        Text(AppLocale.text(title))
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
           .lineHeight(24)
           .letterSpacing(0)
           .fontColor(Theme.INK)
-        Text(subtitle)
+        Text(AppLocale.text(subtitle))
           .fontSize(13)
           .lineHeight(19)
           .letterSpacing(0)
@@ -77,13 +78,13 @@ export struct AboutPage {
             this.divider()
             this.row('社区公约', '发布、举报与内容治理规则', RI.FLAG, () => {
               promptAction.showDialog({
-                title: '社区公约',
-                message: COMMUNITY_TERMS,
-                buttons: [{ text: '好', color: '#D8593B' }]
+                title: AppLocale.text('社区公约'),
+                message: communityTerms(AppLocale.isEnglish()),
+                buttons: [{ text: AppLocale.text('好'), color: '#D8593B' }]
               });
             })
             this.divider()
-            this.row('已屏蔽用户', `${this.blockedAuthorCount} 人`, RI.USER, this.onBlockedAuthors)
+            this.row('已屏蔽用户', `${this.blockedAuthorCount}${AppLocale.text('人')}`, RI.USER, this.onBlockedAuthors)
             this.divider()
             this.row('联系我们 / 内容投诉', SUPPORT_EMAIL, RI.CHAT, this.onContact)
           }

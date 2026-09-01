@@ -1,5 +1,6 @@
 import { appPreferences } from '../data/AppPreferences';
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 
 @Component
@@ -15,7 +16,7 @@ export struct BlockedAuthorsPage {
       PageHeader({ title: '社区屏蔽管理', onBack: this.onBack })
       if (this.authors.length === 0) {
         Column() {
-          Text('没有已屏蔽的作者')
+          Text(AppLocale.text('没有已屏蔽的作者'))
             .fontSize(16)
             .fontColor(Theme.SECONDARY)
             .textAlign(TextAlign.Center)
@@ -31,7 +32,7 @@ export struct BlockedAuthorsPage {
             ListItem() {
               Row() {
                 Text(author).fontSize(17).layoutWeight(1)
-                Button('解除屏蔽').fontSize(13).fontColor(Theme.ACCENT)
+                Button(AppLocale.text('解除屏蔽')).fontSize(13).fontColor(Theme.ACCENT)
                   .backgroundColor(Theme.ACCENT_SOFT).onClick(async () => {
                   await appPreferences.setAuthorBlocked(author, false);
                   this.authors = appPreferences.blockedAuthors();

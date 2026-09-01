@@ -42,6 +42,7 @@ import bookShelfCachePolicyTest from './BookShelfCachePolicy.test';
 import bookWritingSeedTest from './BookWritingSeed.test';
 import deviceLinkTransferTest from './DeviceLinkTransfer.test';
 import deviceLinkCryptoInteropTest from './DeviceLinkCryptoInterop.test';
+import appLanguageTest from './AppLanguage.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -88,4 +89,5 @@ export default function testsuite() {
   bookWritingSeedTest();
   deviceLinkTransferTest();
   deviceLinkCryptoInteropTest();
+  appLanguageTest();
 }

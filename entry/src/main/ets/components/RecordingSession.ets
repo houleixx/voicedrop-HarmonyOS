@@ -4,6 +4,7 @@ import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import {
   formatRecordingTime, waveBarFrac, waveBarHeight, waveBarColor, WAVEFORM_PATTERN
 } from '../core/RecordingUi';
+import { AppLocale } from '../core/AppLocale';
 
 @Component
 export struct RecordingSession {
@@ -28,24 +29,26 @@ export struct RecordingSession {
         Column({ space: 4 }) {
           Row({ space: 8 }) {
             Circle().width(9).height(9).fill(Theme.ACCENT_STRONG)
-            Text(this.interviewActive ? 'AI 采访中' : '正在录音')
+            Text(AppLocale.text(this.interviewActive ? 'AI 采访中' : '正在录音'))
               .fontSize(14).fontColor(Theme.SECONDARY).letterSpacing(2)
           }
           if (this.interviewActive && this.interviewStatus.length > 0) {
-            Text(this.interviewStatus).fontSize(11).fontColor(Theme.FAINT).letterSpacing(1)
+            Text(AppLocale.text(this.interviewStatus)).fontSize(11).fontColor(Theme.FAINT).letterSpacing(1)
           }
           Row({ space: 7 }) {
-            Text('AI生成').fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
-            Text('录音结束后将由人工智能转写并生成文章')
-              .fontSize(11).fontWeight(FontWeight.Medium).fontColor('#9B9388')
+            Text(AppLocale.text('AI生成')).fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
+            Text(AppLocale.text('录音结束后将由人工智能转写并生成文章'))
+              .fontSize(11).lineHeight(16).fontWeight(FontWeight.Medium).fontColor('#9B9388')
+              .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           }
-            .margin({ top: 8 })
-            .justifyContent(FlexAlign.Center)
-            .accessibilityText('AI生成，录音结束后将由人工智能转写并生成文章')
+            .margin({ top: 8, left: 20, right: 20 })
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
+            .accessibilityText(AppLocale.text('AI生成，录音结束后将由人工智能转写并生成文章'))
         }
         .width('100%')
-        .height(96)
-        .padding({ top: 18 })
+        .height(112)
+        .padding({ top: 16 })
         .alignItems(HorizontalAlign.Center)
 
         Blank().layoutWeight(1)
@@ -117,7 +120,7 @@ export struct RecordingSession {
             .borderRadius(27)
             .backgroundColor(this.interviewActive ? Theme.AMBER_BG : Theme.CARD)
             .border({ width: 1, color: this.interviewActive ? '#F1D09A' : Theme.BORDER })
-            Text('采访')
+            Text(AppLocale.text('采访'))
               .fontSize(11).letterSpacing(1.5)
               .fontColor(this.interviewActive ? '#B54708' : Theme.SECONDARY)
           }
@@ -144,7 +147,7 @@ export struct RecordingSession {
             }
             .width(82).height(82)
             .alignContent(Alignment.Center)
-            Text('点击停止')
+            Text(AppLocale.text('点击停止'))
               .fontSize(11).letterSpacing(1)
               .fontColor(Theme.SECONDARY)
           }
@@ -165,7 +168,7 @@ export struct RecordingSession {
             .borderRadius(27)
             .backgroundColor(Theme.CARD)
             .border({ width: 1, color: Theme.BORDER })
-            Text('拍照')
+            Text(AppLocale.text('拍照'))
               .fontSize(11).letterSpacing(1.5)
               .fontColor(Theme.SECONDARY)
           }
@@ -189,10 +192,10 @@ export struct RecordingSession {
           LoadingProgress()
             .width(52).height(52)
             .color(Theme.ACCENT_STRONG)
-          Text('正在保存录音…')
+          Text(AppLocale.text('正在保存录音…'))
             .fontSize(20).fontWeight(FontWeight.Bold)
             .fontColor(Theme.INK)
-          Text('请稍候，不要退出应用')
+          Text(AppLocale.text('请稍候，不要退出应用'))
             .fontSize(13)
             .fontColor(Theme.SECONDARY)
         }

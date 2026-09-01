@@ -6,6 +6,7 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { bookCoverStore } from '../data/BookCoverStore';
 import { systemShare } from '@kit.ShareKit';
 import { ArticleBody, ArticleBlock } from '../core/ArticleBody';
+import { AppLocale } from '../core/AppLocale';
 import { BookWritingArticleSeed } from '../core/BookWritingSeed';
 import {
   ArticleEditEvent,
@@ -63,15 +64,16 @@ import { FeedbackPage } from './FeedbackPage';
 import { HelpManualPage } from './HelpManualPage';
 import { AccountPage } from './AccountPage';
 import { AppPage } from './AppPage';
-import { COMMUNITY_TERMS, SUPPORT_EMAIL } from '../core/CommunityTerms';
+import { communityTerms, SUPPORT_EMAIL } from '../core/CommunityTerms';
 import { CommunityLikeState } from '../core/CommunityLikeState';
 import { CommunityLikePresentation } from '../core/CommunityLikePresentation';
 import { CommunitySearch, CommunitySearchLayout } from '../core/CommunitySearch';
 import { CommunityReplyUi } from '../core/CommunityReplyUi';
 import { CommunityShareUi } from '../core/CommunityShareUi';
 import { BlockedAuthorsPage } from './BlockedAuthorsPage';
-import { PrivacyPolicyPage, PRIVACY_TEXT } from './PrivacyPolicyPage';
+import { PrivacyPolicyPage, privacyText } from './PrivacyPolicyPage';
 import { PromptSettingsPage } from './PromptSettingsPage';
+import { LanguageSettingsPage } from './LanguageSettingsPage';
 import { SettingsPage, SettingsTarget } from './SettingsPage';
 import { SharedArticlePage } from './SharedArticlePage';
 import { StyleSettingsPage } from './StyleSettingsPage';
@@ -339,6 +341,8 @@ struct Index {
   private initialized: boolean = false;
   @Provide('pathStack') pathStack: NavPathStack = new NavPathStack();
   @State private settingsCacheRefreshVersion: number = 0;
+  @StorageLink('appLanguageRevision') private appLanguageRevision: number = 0;
+  @State private rebuildingHomeForLanguage: boolean = false;
 
   private navigateTo(target: AppPage): void {
     if (target === 'home') {
@@ -352,6 +356,12 @@ struct Index {
 
   private navigateBack(): void {
     if (this.pathStack.size() > 0) this.pathStack.pop();
+  }
+
+  private rebuildHomeForLanguage(): void {
+    this.pathStack.clear();
+    this.rebuildingHomeForLanguage = true;
+    setTimeout(() => this.rebuildingHomeForLanguage = false, 50);
   }
 
   private navigateHome(animated: boolean = true): void {
@@ -491,7 +501,7 @@ struct Index {
     photoService.initialize(this.context);
     this.restoreCachedHomeSnapshots();
     Promise.all([photoService.retryPending(), uploader.drainPending(), uploader.drainPendingTags()]).then((result: number[]) => {
-      if (result[1] > 0) { promptAction.showToast({ message: `已续传 ${result[1]} 条录音` }); this.refreshLibrary(); }
+      if (result[1] > 0) { promptAction.showToast({ message: `${AppLocale.text('已续传 ')}${result[1]}${AppLocale.text(' 条录音')}` }); this.refreshLibrary(); }
     }).catch(() => {});
     audioPlayback.initialize(this.context);
     audioPlayback.setProgressHandler((playing: boolean, progress: number, duration: number) => {
@@ -568,7 +578,7 @@ struct Index {
     if (!this.initialized) return;
     this.handleWechatCallback().catch((error: Error) => {
       this.wechatLoggingIn = false;
-      promptAction.showToast({ message: `微信登录失败：${error.message}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信登录失败：')}${error.message}` });
     });
   }
 
@@ -578,11 +588,11 @@ struct Index {
     try {
       if (!await WechatLogin.start(this.context)) {
         this.wechatLoggingIn = false;
-        promptAction.showToast({ message: '无法打开微信，请确认已安装微信' });
+        promptAction.showToast({ message: AppLocale.text('无法打开微信，请确认已安装微信') });
       }
     } catch (error) {
       this.wechatLoggingIn = false;
-      promptAction.showToast({ message: `无法打开微信：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('无法打开微信：')}${String(error)}` });
     }
   }
 
@@ -599,20 +609,20 @@ struct Index {
     AppStorage.setOrCreate<string>('wechatCode', ''); AppStorage.setOrCreate<string>('wechatMessage', '');
     const result: WechatAuthResult = await WechatAuthStore.exchange(code);
     if (!result.ok) {
-      promptAction.showToast({ message: `微信登录失败：${result.message()}` }); return;
+      promptAction.showToast({ message: `${AppLocale.text('微信登录失败：')}${result.message()}` }); return;
     }
     const previousScope: string = authStore.storageScope();
     const anonId: string = await DeviceLinkCrypto.accountId(authStore.anonymousBearer());
     const switchingAccount: boolean = WechatAuthResponse.requiresAccountSwitch(result.scope, anonId);
     let switched: boolean = false;
     if (switchingAccount) {
-      const confirmation = await promptAction.showDialog({ title: '该微信已关联另一个云端空间',
-        message: '是否切换到微信已绑定的云端空间？当前空间会保存在本机，退出微信登录后会恢复当前空间。',
+      const confirmation = await promptAction.showDialog({ title: AppLocale.text('该微信已关联另一个云端空间'),
+        message: AppLocale.text('是否切换到微信已绑定的云端空间？当前空间会保存在本机，退出微信登录后会恢复当前空间。'),
         buttons: [{ text: '保留当前空间', color: '#666666' }, { text: '切换到微信空间', color: '#D92D20' }] });
       if (confirmation.index !== 1) return;
       switched = await authStore.switchToWechatAccount(result.session);
     } else switched = await authStore.storeSession(result.session);
-    if (!switched) { promptAction.showToast({ message: '微信登录失败：无效会话' }); return; }
+    if (!switched) { promptAction.showToast({ message: AppLocale.text('微信登录失败：无效会话') }); return; }
     const accountChanged: boolean =
       ClientReliability.accountIdentityChanged(previousScope, authStore.storageScope());
     this.wechatLoggedIn = true;
@@ -623,7 +633,7 @@ struct Index {
       this.navigateHome();
       await this.refreshLibrary(false, false);
     }
-    promptAction.showToast({ message: result.scope === `users/${anonId}/` ? '已登录微信' : '已切换到微信空间' });
+    promptAction.showToast({ message: AppLocale.text(result.scope === `users/${anonId}/` ? '已登录微信' : '已切换到微信空间') });
   }
 
   private async handleStatusMessage(raw: string): Promise<void> {
@@ -712,7 +722,7 @@ struct Index {
       const pending: DeviceLinkPending | undefined = await DeviceLinkStore.pending();
       if (pending?.pairingId === pairingId) publicKey = pending.pubkey;
     }
-    if (!publicKey) { promptAction.showToast({ message: '登录请求已失效' }); return; }
+    if (!publicKey) { promptAction.showToast({ message: AppLocale.text('登录请求已失效') }); return; }
     this.releasingLinkId = pairingId;
     if (pairingId === this.pendingLinkId) {
       this.showDeviceLinkDialog = false;
@@ -733,7 +743,7 @@ struct Index {
         this.pendingLinkCode = '';
         this.pendingLinkReleased = false;
       }
-      promptAction.showToast({ message: '已安全发送账号' });
+      promptAction.showToast({ message: AppLocale.text('已安全发送账号') });
       return;
     }
     if (pairingId === this.pendingLinkId) {
@@ -741,7 +751,7 @@ struct Index {
       this.showDeviceLinkDialog = true;
       this.linkDialogShowing = true;
     }
-    promptAction.showToast({ message: '账号发送失败，请重试' });
+    promptAction.showToast({ message: AppLocale.text('账号发送失败，请重试') });
   }
 
   private async recoverPendingLink(): Promise<void> {
@@ -803,7 +813,7 @@ struct Index {
     if (route === 'web') { await this.openExternalUrl(raw); return; }
     if (route === 'article' && value) {
       const recording: Recording | undefined = this.recordings.find((item: Recording) => item.stem() === value);
-      if (recording) await this.openRecording(recording); else promptAction.showToast({ message: '没有找到这篇文章' });
+      if (recording) await this.openRecording(recording); else promptAction.showToast({ message: AppLocale.text('没有找到这篇文章') });
       return;
     }
     if (route === 'record' && !this.recording) {
@@ -906,7 +916,7 @@ struct Index {
         }
       }
     } catch (error) {
-      promptAction.showToast({ message: `分享导入失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('分享导入失败：')}${String(error)}` });
     } finally { this.importingShare = false; }
   }
 
@@ -933,7 +943,7 @@ struct Index {
         await this.refreshLibrary();
       }
     } catch (error) {
-      promptAction.showToast({ message: `文风提取失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('文风提取失败：')}${String(error)}` });
     } finally { this.importingShare = false; }
   }
 
@@ -946,15 +956,15 @@ struct Index {
       const options: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
       options.newFileNames = [name]; options.fileSuffixChoices = ['ZIP 压缩包|.zip'];
       const uris: string[] = await new picker.DocumentViewPicker(this.context).save(options);
-      if (uris.length === 0) { promptAction.showToast({ message: '已取消保存' }); return; }
+      if (uris.length === 0) { promptAction.showToast({ message: AppLocale.text('已取消保存') }); return; }
       const destination: fs.File = fs.openSync(uris[0], fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
       try {
         fs.copyFileSync(path, destination.fd);
       } finally {
         fs.closeSync(destination);
       }
-      promptAction.showToast({ message: '录音、文章、字幕和图片已导出' });
-    } catch (error) { promptAction.showToast({ message: `导出失败：${String(error)}` }); }
+      promptAction.showToast({ message: AppLocale.text('录音、文章、字幕和图片已导出') });
+    } catch (error) { promptAction.showToast({ message: `${AppLocale.text('导出失败：')}${String(error)}` }); }
     finally { this.exporting = false; }
   }
 
@@ -963,7 +973,7 @@ struct Index {
     try {
       await this.context.startAbility({ action: 'ohos.want.action.viewData',
         entities: ['entity.system.browsable'], uri: url });
-    } catch (_) { promptAction.showToast({ message: '无法打开这个链接' }); }
+    } catch (_) { promptAction.showToast({ message: AppLocale.text('无法打开这个链接') }); }
   }
 
   private async loadAppConfig(): Promise<void> {
@@ -978,27 +988,27 @@ struct Index {
     this.autoShareCommunity = value; this.savingAutoShare = true;
     try {
       if (!await settingsStore.saveConfig(value)) {
-        this.autoShareCommunity = previous; promptAction.showToast({ message: '自动分享配置保存失败' }); return;
+        this.autoShareCommunity = previous; promptAction.showToast({ message: AppLocale.text('自动分享配置保存失败') }); return;
       }
       await appPreferences.setBoolean('autoShareCommunity', value);
-      promptAction.showToast({ message: value ? '已开启自动分享到社区' : '已关闭自动分享到社区' });
+      promptAction.showToast({ message: AppLocale.text(value ? '已开启自动分享到社区' : '已关闭自动分享到社区') });
     } catch (_) {
-      this.autoShareCommunity = previous; promptAction.showToast({ message: '自动分享配置保存失败' });
+      this.autoShareCommunity = previous; promptAction.showToast({ message: AppLocale.text('自动分享配置保存失败') });
     } finally { this.savingAutoShare = false; }
   }
 
   private async shareInvite(): Promise<void> {
     if (!this.context || this.preparingInvite) return;
     this.preparingInvite = true;
-    promptAction.showToast({ message: '正在准备邀请链接…' });
+    promptAction.showToast({ message: AppLocale.text('正在准备邀请链接…') });
     try {
       const invite: InviteLink | undefined = await referralService.inviteLink();
-      if (!invite) { promptAction.showToast({ message: '邀请链接暂不可用' }); return; }
+      if (!invite) { promptAction.showToast({ message: AppLocale.text('邀请链接暂不可用') }); return; }
       const reward: string = invite.suanliInviter > 0 && invite.suanliInviter === invite.suanliFriend
         ? `，咱俩各得 ${invite.suanliInviter} 算力` : '';
       const text: string = `我在用 VoiceDrop，动动嘴就能写出好文章${reward}：${invite.url}`;
       await this.showTextShare(text, '邀请好友使用 VoiceDrop');
-    } catch (_) { promptAction.showToast({ message: '无法打开系统分享面板' }); }
+    } catch (_) { promptAction.showToast({ message: AppLocale.text('无法打开系统分享面板') }); }
     finally { this.preparingInvite = false; }
   }
 
@@ -1049,7 +1059,7 @@ struct Index {
     if (appPreferences.referralDone() || !appPreferences.referralWithinWindow()) return;
     const reason: string = await referralService.claim(source, token);
     if (['attributed', 'not-new', 'device-used', 'disabled'].includes(reason)) await appPreferences.markReferralDone();
-    if (reason === 'attributed') promptAction.showToast({ message: '邀请奖励已领取' });
+    if (reason === 'attributed') promptAction.showToast({ message: AppLocale.text('邀请奖励已领取') });
   }
 
   private async runReferralOnLaunch(): Promise<void> {
@@ -1131,7 +1141,7 @@ struct Index {
       this.applyCommunityFeed(feed, blocked);
       this.communityRemoteLoaded = true;
     }
-    catch (error) { this.errorText = `暂时无法加载社区：${String(error)}`; }
+    catch (error) { this.errorText = `${AppLocale.text('暂时无法加载社区：')}${String(error)}`; }
   }
 
   /** Show last successful account-scoped home data before the network refresh completes. */
@@ -1297,7 +1307,7 @@ struct Index {
   private async openRecording(recording: Recording): Promise<void> {
     if (this.recording || this.recordingTransitioning || Date.now() < this.recordingDetailOpenBlockedUntil) return;
     if (recording.saving) {
-      promptAction.showToast({ message: '录音正在保存，请稍候' });
+      promptAction.showToast({ message: AppLocale.text('录音正在保存，请稍候') });
       return;
     }
     this.selected = recording;
@@ -1374,7 +1384,7 @@ struct Index {
       if (feedback) {
         this.articleEditReply = feedback.text;
         this.articleEditReplyOk = feedback.ok;
-        if (!feedback.ok) promptAction.showToast({ message: `修改失败：${feedback.text}` });
+        if (!feedback.ok) promptAction.showToast({ message: `${AppLocale.text('修改失败：')}${feedback.text}` });
       }
       const updated: ArticleDoc | undefined = message.article ?? message.doc;
       if ((message.type === 'updated' || message.type === 'snapshot') && updated) {
@@ -1457,7 +1467,7 @@ struct Index {
     const recording: Recording = this.selected;
     const generated: ArticleVersion | undefined = this.generatedStyleVersion(styleVersion);
     this.showStyleRewrite = false;
-    if (generated) { await this.selectHistoryVersion(generated); promptAction.showToast({ message: `已切换到 v${styleVersion} 文风` }); return; }
+    if (generated) { await this.selectHistoryVersion(generated); promptAction.showToast({ message: `${AppLocale.text('已切换到 v')}${styleVersion}${AppLocale.text(' 文风')}` }); return; }
     this.restyleTargetStyleVersion = styleVersion;
     this.restyleFinishing = false; this.restylePreviewActive = true;
     await this.setRestyleNavigationBar(true);
@@ -1497,10 +1507,10 @@ struct Index {
         promptAction.showToast({ message: this.restyleTargetStyleVersion >= 0 ?
           `已切换到 v${this.restyleTargetStyleVersion} 文风` : '换文风成功' });
       } else {
-        promptAction.showToast({ message: '新文风文章暂不可读' });
+        promptAction.showToast({ message: AppLocale.text('新文风文章暂不可读') });
       }
     } catch (_) {
-      promptAction.showToast({ message: '新文风文章加载失败' });
+      promptAction.showToast({ message: AppLocale.text('新文风文章加载失败') });
     } finally {
       this.restylePreviewActive = false;
       this.restyleFinishing = false;
@@ -1564,7 +1574,7 @@ struct Index {
       const result = await manager.requestPermissionsFromUser(
         this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
       if (result.authResults[0] !== 0) {
-        promptAction.showToast({ message: '需要麦克风权限才能录音' });
+        promptAction.showToast({ message: AppLocale.text('需要麦克风权限才能录音') });
         return;
       }
       this.navigateHome(false);
@@ -1581,7 +1591,7 @@ struct Index {
       this.updateRecordingMeter();
       this.timer = setInterval(() => this.updateRecordingMeter(), RECORDING_METER_INTERVAL_MS);
     } catch (error) {
-      promptAction.showToast({ message: `录音启动失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('录音启动失败：')}${String(error)}` });
     } finally {
       this.recordingTransitioning = false;
     }
@@ -1637,11 +1647,11 @@ struct Index {
         this.recordings = RecordingListUi.cancelSaving(this.recordings, savingName);
         if (replyTarget.length > 0) {
           remainOnCommunityDetail = CommunityReplyUi.shouldRemainOnDetail(communityReply, false);
-          promptAction.showToast({ message: '时间太短，不足以产生文章' });
+          promptAction.showToast({ message: AppLocale.text('时间太短，不足以产生文章') });
         } else {
           await promptAction.showDialog({
-            title: '录音太短',
-            message: '时间太短，不足以产生文章，这条录音不会上传。',
+            title: AppLocale.text('录音太短'),
+            message: AppLocale.text('时间太短，不足以产生文章，这条录音不会上传。'),
             buttons: [{ text: '知道了', color: '#D92D20' }]
           });
         }
@@ -1668,7 +1678,7 @@ struct Index {
       this.recordings = RecordingListUi.cancelSaving(this.recordings, savingName);
       await photoService.discardCaptured(photos);
       remainOnCommunityDetail = CommunityReplyUi.shouldRemainOnDetail(communityReply, false);
-      promptAction.showToast({ message: `录音保存失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('录音保存失败：')}${String(error)}` });
     } finally {
       if (!remainOnCommunityDetail) this.navigateHome(false);
       this.recordingDetailOpenBlockedUntil = Date.now() + 600;
@@ -1692,7 +1702,7 @@ struct Index {
       // a late photo marker after its PUT succeeds.
       photoService.uploadCaptured(photos).catch(() => {});
       const uploaded: boolean = await uploader.upload(path);
-      if (!uploaded && showFailureToast) promptAction.showToast({ message: '上传失败，录音已保留' });
+      if (!uploaded && showFailureToast) promptAction.showToast({ message: AppLocale.text('上传失败，录音已保留') });
       if (uploaded) {
         this.recordings = RecordingListUi.applyStatus(this.recordings,
           audioName.endsWith('.m4a') ? audioName.substring(0, audioName.length - 4) : audioName, 'asr');
@@ -1701,7 +1711,7 @@ struct Index {
       }
       return uploaded;
     } catch (error) {
-      if (showFailureToast) promptAction.showToast({ message: `上传失败，录音已保留：${String(error)}` });
+      if (showFailureToast) promptAction.showToast({ message: `${AppLocale.text('上传失败，录音已保留：')}${String(error)}` });
       return false;
     }
   }
@@ -1719,7 +1729,7 @@ struct Index {
     } catch (error) {
       this.interviewActive = false;
       this.interviewStatus = '';
-      promptAction.showToast({ message: `AI 采访启动失败，普通录音继续：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('AI 采访启动失败，普通录音继续：')}${String(error)}` });
     }
   }
 
@@ -1727,11 +1737,11 @@ struct Index {
     if (!this.recording) return;
     try {
       const remaining: number = Math.max(0, 9 - this.capturedPhotos.length);
-      if (remaining === 0) { promptAction.showToast({ message: '每段录音最多添加 9 张照片' }); return; }
+      if (remaining === 0) { promptAction.showToast({ message: AppLocale.text('每段录音最多添加 9 张照片') }); return; }
       const added: CapturedPhoto[] = await photoService.pickForRecording(voiceRecorder.sessionTimestamp(), this.recordingSeconds, remaining);
       this.capturedPhotos = this.capturedPhotos.concat(added);
-      if (added.length > 0) promptAction.showToast({ message: `已加入 ${added.length} 张照片` });
-    } catch (error) { promptAction.showToast({ message: `照片读取失败：${String(error)}` }); }
+      if (added.length > 0) promptAction.showToast({ message: `${AppLocale.text('已加入 ')}${added.length}${AppLocale.text(' 张照片')}` });
+    } catch (error) { promptAction.showToast({ message: `${AppLocale.text('照片读取失败：')}${String(error)}` }); }
   }
 
   private async removeRecordingPhoto(photo: CapturedPhoto): Promise<void> {
@@ -1747,7 +1757,7 @@ struct Index {
       communityStore.share(recording.articleKey(), replyTo).then(async (shareId: string) => {
         if (shareId.length > 0) {
           await appPreferences.clearPendingReply(recording.name);
-          promptAction.showToast({ message: '语音回复已发布到 VD 社区' });
+          promptAction.showToast({ message: AppLocale.text('语音回复已发布到 VD 社区') });
         }
       }).finally(() => this.processingReplies.delete(recording.name));
     }
@@ -1770,7 +1780,7 @@ struct Index {
         promptAction.showToast({ message: CommunityShareUi.successMessage((pending.replyTo ?? '').length > 0) });
       }
     } catch (error) {
-      promptAction.showToast({ message: `社区分享失败：${ClientReliability.errorMessage(error as Object)}` });
+      promptAction.showToast({ message: `${AppLocale.text('分享社区失败：')}${ClientReliability.errorMessage(error as Object)}` });
     }
   }
 
@@ -1778,14 +1788,14 @@ struct Index {
     await appPreferences.savePendingCommunityShare(articleKey);
     await this.startWechatLogin();
     if (this.wechatLoggingIn) {
-      promptAction.showToast({ message: '请在微信中完成登录，登录后将自动分享到社区' });
+      promptAction.showToast({ message: AppLocale.text('请在微信中完成登录，登录后将自动分享到社区') });
     }
   }
 
   private async confirmCommunityShareWechatLogin(): Promise<boolean> {
     const result = await promptAction.showDialog({
-      title: '需要微信登录',
-      message: '分享到 VD 社区需要先完成微信登录，登录后才能分享。',
+      title: AppLocale.text('需要微信登录'),
+      message: AppLocale.text('分享到 VD 社区需要先完成微信登录，登录后才能分享。'),
       buttons: [{ text: '取消', color: '#666666' }, { text: '去登录', color: Theme.ACCENT_STRONG }]
     });
     return result.index === 1;
@@ -1825,7 +1835,7 @@ struct Index {
 
   @Builder
   private recordingDeleteAction(recording: Recording) {
-    Button(this.deletingRecordingName === recording.name ? '删除中…' : '删除')
+    Button(AppLocale.text(this.deletingRecordingName === recording.name ? '删除中…' : '删除'))
       .width(80)
       .height('100%')
       .fontSize(17)
@@ -1950,7 +1960,7 @@ struct Index {
   private pageLoadingState() {
     Column({ space: 14 }) {
       LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
-      Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
+      Text(AppLocale.text('正在加载...')).fontSize(16).fontColor(Theme.SECONDARY)
     }
       .height(180)
       .margin({ top: 50 })
@@ -1973,19 +1983,19 @@ struct Index {
     Scroll() {
       Row({ space: 20 }) {
         Column({ space: 5 }) {
-          Text('我的录音').fontSize(20).fontWeight(FontWeight.Medium)
+          Text(AppLocale.text('我的录音')).fontSize(20).fontWeight(FontWeight.Medium)
             .fontColor(this.tab === HomeTabIndex.Recordings && this.selectedTag.length === 0 ? Theme.INK : '#B8AE9E')
           Blank().width(78).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
             .opacity(this.tab === HomeTabIndex.Recordings && this.selectedTag.length === 0 ? 1 : 0)
         }.onClick(() => this.selectHomeTab(HomeTabIndex.Recordings))
         Column({ space: 5 }) {
-          Text('VD社区').fontSize(20).fontWeight(FontWeight.Medium)
+          Text(AppLocale.text('VD社区')).fontSize(20).fontWeight(FontWeight.Medium)
             .fontColor(this.tab === HomeTabIndex.Community ? Theme.INK : '#B8AE9E')
           Blank().width(72).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
             .opacity(this.tab === HomeTabIndex.Community ? 1 : 0)
         }.onClick(() => this.selectHomeTab(HomeTabIndex.Community))
         Column({ space: 5 }) {
-          Text('写书').fontSize(20).fontWeight(FontWeight.Medium)
+          Text(AppLocale.text('写书')).fontSize(20).fontWeight(FontWeight.Medium)
             .fontColor(this.tab === HomeTabIndex.Books ? Theme.INK : '#B8AE9E')
           Blank().width(41).height(3).backgroundColor(Theme.ACCENT_STRONG).borderRadius(2)
             .opacity(this.tab === HomeTabIndex.Books ? 1 : 0)
@@ -2022,7 +2032,7 @@ struct Index {
             List() {
               ListItem() {
                 Column() {
-                  Text(this.selectedTag ? `「${this.selectedTag}」标签下还没有文章` : '轻点下方按钮开始第一条录音')
+                  Text(this.selectedTag ? `「${this.selectedTag}」${AppLocale.text('标签下还没有文章')}` : AppLocale.text('轻点下方按钮开始第一条录音'))
                     .fontSize(16).fontColor(Theme.SECONDARY).textAlign(TextAlign.Center)
                 }.width('100%').height(180)
                   .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
@@ -2108,11 +2118,11 @@ struct Index {
           }
         }.layoutWeight(1).width('100%')
       }
-      if (this.errorText.length > 0) Text(this.errorText).fontSize(13).fontColor('#B42318').padding(12)
+      if (this.errorText.length > 0) Text(AppLocale.text(this.errorText)).fontSize(13).fontColor('#B42318').padding(12)
       if (this.pendingReplyTarget.length > 0) {
         Row() {
-          Text('正在准备语音回复，点击下面开始录音').fontSize(13).fontColor('#8A4B08').layoutWeight(1)
-          Button('取消').fontSize(12).backgroundColor(Color.Transparent).fontColor('#8A4B08')
+          Text(AppLocale.text('正在准备语音回复，点击下面开始录音')).fontSize(13).fontColor('#8A4B08').layoutWeight(1)
+          Button(AppLocale.text('取消')).fontSize(12).backgroundColor(Color.Transparent).fontColor('#8A4B08')
             .onClick(() => this.pendingReplyTarget = '')
         }.padding({ left: 18, right: 18, top: 8 }).width('100%')
       }
@@ -2139,7 +2149,7 @@ struct Index {
   @Builder
   private libraryCommandStatus() {
     Row() {
-      Text(this.displayedCommandFeedback().text).fontSize(13).fontWeight(FontWeight.Medium)
+      Text(AppLocale.text(this.displayedCommandFeedback().text)).fontSize(13).fontWeight(FontWeight.Medium)
         .fontColor(this.displayedCommandFeedback().tone === LibraryCommandTone.Error ? '#B42318' :
           (this.displayedCommandFeedback().tone === LibraryCommandTone.Active ? Theme.INK : Theme.SECONDARY))
         .textAlign(TextAlign.Center).padding({ left: 18, right: 18, top: 9, bottom: 9 })
@@ -2236,13 +2246,13 @@ struct Index {
     const text: string = value.trim();
     if (text.length === 0) { this.applyCommandFeedback(new LibraryCommandFeedback()); return; }
     if (!this.commandSession) {
-      this.applyCommandFeedback(new LibraryCommandFeedback('指令服务暂不可用，请稍后重试', LibraryCommandTone.Error));
+      this.applyCommandFeedback(new LibraryCommandFeedback(AppLocale.text('指令服务暂不可用，请稍后重试'), LibraryCommandTone.Error));
       return;
     }
     const sent: boolean = await this.commandSession.instruct(`${Date.now()}`, text, this.currentCommandRefs());
     this.applyCommandFeedback(sent
-      ? new LibraryCommandFeedback('正在执行图库指令…', LibraryCommandTone.Active)
-      : new LibraryCommandFeedback('发送失败，请稍后重试', LibraryCommandTone.Error));
+      ? new LibraryCommandFeedback(AppLocale.text('正在执行图库指令…'), LibraryCommandTone.Active)
+      : new LibraryCommandFeedback(AppLocale.text('发送失败，请稍后重试'), LibraryCommandTone.Error));
   }
 
   private commandTouchY(event: TouchEvent): number {
@@ -2335,7 +2345,7 @@ struct Index {
           this.commandRecognizing = false;
           this.commandGestureGate.cancel();
           this.applyCommandFeedback(
-            new LibraryCommandFeedback(state.length > 0 ? state : '听写失败', LibraryCommandTone.Error));
+            new LibraryCommandFeedback(AppLocale.text(state.length > 0 ? state : '听写失败'), LibraryCommandTone.Error));
         }
       } else if (state.length === 0 && this.commandRecognizing) {
         this.finalizeLibraryCommandTalk(generation);
@@ -2354,7 +2364,7 @@ struct Index {
         this.commandTalking = false;
         this.commandGestureGate.cancel();
         this.applyCommandFeedback(
-          new LibraryCommandFeedback(`听写启动失败：${String(error)}`, LibraryCommandTone.Error));
+          new LibraryCommandFeedback(`${AppLocale.text('听写启动失败：')}${String(error)}`, LibraryCommandTone.Error));
       }
       return false;
     }
@@ -2372,7 +2382,7 @@ struct Index {
       this.commandTalking = false;
       this.commandGestureGate.cancel();
       this.applyCommandFeedback(
-        new LibraryCommandFeedback('请先结束当前录音', LibraryCommandTone.Error));
+        new LibraryCommandFeedback(AppLocale.text('请先结束当前录音'), LibraryCommandTone.Error));
       return;
     }
     if (!this.microphonePermissionGranted()) {
@@ -2384,7 +2394,7 @@ struct Index {
         this.commandHoldPressed = false;
         this.commandGestureGate.cancel();
         this.applyCommandFeedback(
-          new LibraryCommandFeedback('需要麦克风权限才能使用语音指令', LibraryCommandTone.Error));
+          new LibraryCommandFeedback(AppLocale.text('需要麦克风权限才能使用语音指令'), LibraryCommandTone.Error));
         return;
       }
       if (generation !== this.commandDictationGeneration || !this.commandTalking ||
@@ -2399,7 +2409,7 @@ struct Index {
     if (!ready) {
       this.commandTalking = false;
       this.commandGestureGate.cancel();
-      this.applyCommandFeedback(new LibraryCommandFeedback('听写启动失败，请重试', LibraryCommandTone.Error));
+      this.applyCommandFeedback(new LibraryCommandFeedback(AppLocale.text('听写启动失败，请重试'), LibraryCommandTone.Error));
     }
   }
 
@@ -2474,9 +2484,9 @@ struct Index {
       if (target === 'edit') {
         this.editText = this.holdEditOriginalText;
         this.resetEditHold();
-        promptAction.showToast({ message: '请授权麦克风后再按住修改文章' });
+        promptAction.showToast({ message: AppLocale.text('请授权麦克风后再按住修改文章') });
       } else {
-        promptAction.showToast({ message: '需要麦克风权限才能听写' });
+        promptAction.showToast({ message: AppLocale.text('需要麦克风权限才能听写') });
       }
       return;
     }
@@ -2509,7 +2519,7 @@ struct Index {
         } else if ((state.includes('失败') || state.includes('关闭')) && !this.holdEditFinishing) {
           this.editText = this.holdEditOriginalText;
           this.resetEditHold();
-          promptAction.showToast({ message: `听写失败：${state.replace(/^听写/, '')}` });
+          promptAction.showToast({ message: `${AppLocale.text('听写失败：')}${state.replace(/^听写/, '')}` });
         }
       }
       if (state.length === 0 || state.includes('失败') || state.includes('关闭')) this.dictating = false;
@@ -2519,11 +2529,11 @@ struct Index {
       await this.dictation.start();
     } catch (error) {
       this.dictating = false;
-      this.dictationState = `听写启动失败：${String(error)}`;
+      this.dictationState = `${AppLocale.text('听写启动失败：')}${String(error)}`;
       if (target === 'edit') {
         this.editText = this.holdEditOriginalText;
         this.resetEditHold();
-        promptAction.showToast({ message: `听写失败：${String(error)}` });
+        promptAction.showToast({ message: `${AppLocale.text('听写失败：')}${String(error)}` });
       }
     }
   }
@@ -2564,7 +2574,7 @@ struct Index {
       this.holdEditShouldSend = false; this.editText = this.holdEditOriginalText;
       await this.dictation?.stop(); this.dictating = false; this.dictationState = '';
       this.resetEditHold();
-      promptAction.showToast({ message: '已取消语音修改' });
+      promptAction.showToast({ message: AppLocale.text('已取消语音修改') });
     } else if (this.dictating) {
       this.holdEditShouldSend = true; this.holdEditFinishing = true;
       this.holdEditPromptText = '正在识别…';
@@ -2582,7 +2592,7 @@ struct Index {
     this.resetEditHold();
     if (text.length === 0) {
       this.editText = '';
-      promptAction.showToast({ message: '没有识别到语音' });
+      promptAction.showToast({ message: AppLocale.text('没有识别到语音') });
       return;
     }
     this.editText = text;
@@ -2603,8 +2613,8 @@ struct Index {
       const message: CommandMessage = JSON.parse(raw) as CommandMessage;
       if (message.type === 'confirm' && message.id) {
         const id: string = message.id; const summary: string = message.summary ?? message.text ?? message.message ?? '确认执行这条图库指令？';
-        promptAction.showDialog({ title: '确认操作', message: summary,
-          buttons: [{ text: '取消', color: '#666666' }, { text: '删除', color: '#D92D20' }]
+        promptAction.showDialog({ title: AppLocale.text('确认操作'), message: summary,
+          buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('删除'), color: '#D92D20' }]
         }).then((result) => result.index === 1 ? this.commandSession?.confirm(id) : this.commandSession?.cancel(id));
         return;
       }
@@ -2650,9 +2660,9 @@ struct Index {
           .onError(() => this.fallbackCommunityPhoto(post.coverPhotoKey ?? ''))
       }
       Column({ space: 8 }) {
-        if (post.kind === 'prompt') Text('提示词').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5529')
+        if (post.kind === 'prompt') Text(AppLocale.text('提示词')).fontSize(11).fontWeight(FontWeight.Bold).fontColor('#6F5529')
           .padding({ left: 8, right: 8, top: 2, bottom: 2 }).backgroundColor('#F4DFAC').borderRadius(10)
-        Text(post.title || '(无题)').fontSize((post.coverPhotoKey ?? '').length > 0 ? 15 : 16)
+        Text(post.title || AppLocale.text('(无题)')).fontSize((post.coverPhotoKey ?? '').length > 0 ? 15 : 16)
           .fontColor(Theme.INK).maxLines((post.coverPhotoKey ?? '').length > 0 ? 2 : 3)
           .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         if ((post.coverPhotoKey ?? '').length === 0 && post.excerpt.length > 0) {
@@ -2660,10 +2670,10 @@ struct Index {
             .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         }
         Row({ space: 5 }) {
-          Text((post.author || '匿名').substring(0, 1)).fontSize(10).fontWeight(FontWeight.Bold)
+          Text((post.author || AppLocale.text('匿名')).substring(0, 1)).fontSize(10).fontWeight(FontWeight.Bold)
             .fontColor(Theme.WHITE).width(20).height(20).textAlign(TextAlign.Center)
             .backgroundColor(Theme.AMBER).borderRadius(10)
-          Text(post.author || '匿名').fontSize(12).fontColor(Theme.SECONDARY).maxLines(1).layoutWeight(1)
+          Text(post.author || AppLocale.text('匿名')).fontSize(12).fontColor(Theme.SECONDARY).maxLines(1).layoutWeight(1)
           RemixIcon({ glyph: post.liked ? RI.HEART_FILL : RI.HEART, iconSize: 12, color: Theme.ACCENT })
           Text(`${post.likes}`).fontSize(12).fontColor(Theme.ACCENT)
           if (post.replies > 0) {
@@ -2683,23 +2693,23 @@ struct Index {
     Column() {
       if (this.communitySearching) {
         Row({ space: 10 }) {
-          TextInput({ text: this.communitySearchQuery, placeholder: '搜索标题、作者或内容' })
+          TextInput({ text: this.communitySearchQuery, placeholder: AppLocale.text('搜索标题、作者或内容') })
             .height(34).layoutWeight(1).fontSize(14).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
             .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 0.5, color: Theme.BORDER })
             .onChange((value: string) => this.updateCommunitySearch(value))
-          Text('取消').fontSize(14).fontColor(Theme.INK).onClick(() => this.closeCommunitySearch())
+          Text(AppLocale.text('取消')).fontSize(14).fontColor(Theme.INK).onClick(() => this.closeCommunitySearch())
         }.height(CommunitySearchLayout.toolbarHeight(true)).padding({ left: 14, right: 18 }).width('100%')
       } else {
       Row({ space: 12 }) {
-        Text('推荐').fontSize(15).fontWeight(this.communityFilter === 'recommended' ? FontWeight.Bold : FontWeight.Normal)
+        Text(AppLocale.text('推荐')).fontSize(15).fontWeight(this.communityFilter === 'recommended' ? FontWeight.Bold : FontWeight.Normal)
           .fontColor(this.communityFilter === 'recommended' ? Theme.INK : Theme.SECONDARY)
           .padding({ left: 4, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.selectCommunityFilter('recommended'))
-        Text('最新').fontSize(15).fontWeight(this.communityFilter === 'latest' ? FontWeight.Bold : FontWeight.Normal)
+        Text(AppLocale.text('最新')).fontSize(15).fontWeight(this.communityFilter === 'latest' ? FontWeight.Bold : FontWeight.Normal)
           .fontColor(this.communityFilter === 'latest' ? Theme.INK : Theme.SECONDARY)
           .padding({ left: 4, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.selectCommunityFilter('latest'))
-        Text('回应').fontSize(15).fontWeight(this.communityFilter === 'replies' ? FontWeight.Bold : FontWeight.Normal)
+        Text(AppLocale.text('回应')).fontSize(15).fontWeight(this.communityFilter === 'replies' ? FontWeight.Bold : FontWeight.Normal)
           .fontColor(this.communityFilter === 'replies' ? Theme.INK : Theme.SECONDARY)
           .padding({ left: 4, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.selectCommunityFilter('replies'))
@@ -2861,12 +2871,12 @@ struct Index {
 
   private async unshareCommunityPost(post: CommunityPost): Promise<void> {
     if (!post.mine) return;
-    const result = await promptAction.showDialog({ title: '取消分享？', message: '取消后，这篇内容将从 VD 社区隐藏。',
+    const result = await promptAction.showDialog({ title: AppLocale.text('取消分享？'), message: AppLocale.text('取消后，这篇内容将从 VD 社区隐藏。'),
       buttons: [{ text: '取消', color: '#666666' }, { text: '取消分享', color: '#D92D20' }] });
     if (result.index !== 1) return;
     if (await communityStore.unshare(post.shareId)) {
-      promptAction.showToast({ message: '已取消分享' }); await this.refreshCommunity();
-    } else promptAction.showToast({ message: '取消分享失败，请稍后重试' });
+      promptAction.showToast({ message: AppLocale.text('已取消分享') }); await this.refreshCommunity();
+    } else promptAction.showToast({ message: AppLocale.text('取消分享失败，请稍后重试') });
   }
 
   private async importSelectedCommunityPrompt(): Promise<void> {
@@ -2875,7 +2885,7 @@ struct Index {
     this.promptImporting = true;
     const error: string = await promptStore.importCode(code);
     this.promptImporting = false;
-    promptAction.showToast({ message: error.length > 0 ? error : '已加入你的提示词' });
+    promptAction.showToast({ message: error.length > 0 ? error : AppLocale.text('已加入你的提示词') });
   }
 
   private selectedCommunityPromptOwned(): boolean {
@@ -2906,8 +2916,8 @@ struct Index {
     if (timestamp <= 0 || Number.isNaN(timestamp)) return '';
     const date: Date = new Date(timestamp);
     const now: Date = new Date();
-    if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    if (date.getFullYear() === now.getFullYear()) return AppLocale.dateShort(timestamp);
+    return AppLocale.monthDayWithYear(timestamp);
   }
 
   private detailTitleVisualUnits(title: string): number {
@@ -2932,7 +2942,7 @@ struct Index {
   @Builder
   private communityDetailSummary() {
     Column() {
-      Text(this.selectedPost?.title ?? '(无题)')
+      Text(this.selectedPost?.title ?? AppLocale.text('(无题)'))
         .fontSize(this.detailTitleFontSize(this.selectedPost?.title ?? '(无题)', 26))
         .fontWeight(FontWeight.Bold).fontColor(Theme.INK)
         .lineHeight(this.detailTitleLineHeight(this.selectedPost?.title ?? '(无题)', 26)).width('100%')
@@ -3019,7 +3029,7 @@ struct Index {
             Text(`${lineNumber}`)
               .fontSize(11).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
               .width(20).textAlign(TextAlign.End).position({ x: -24, y: 21 })
-            Text(`图${imageNumber}`)
+            Text(`${AppLocale.text('图')}${imageNumber}`)
               .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)
               .padding({ left: 8, right: 8, top: 3, bottom: 3 })
               .backgroundColor('#66000000').borderRadius(6).position({ x: 8, y: 44 })
@@ -3041,7 +3051,7 @@ struct Index {
           Row() {
             TextArea({
               text: this.paragraphEditText,
-              placeholder: '编辑这一段文字',
+              placeholder: AppLocale.text('编辑这一段文字'),
               controller: this.paragraphEditController
             })
               .id(PARAGRAPH_EDIT_INPUT_ID)
@@ -3220,7 +3230,7 @@ struct Index {
     if (!this.editSession || !this.article) return;
     const anchor: string = block.kind === 'photo' ? 'image' : 'text';
     const nodes: PromptNode[] = PromptTree.menu(promptStore.items(), anchor);
-    if (nodes.length === 0) { promptAction.showToast({ message: '请先在设置中添加快捷提示词' }); return; }
+    if (nodes.length === 0) { promptAction.showToast({ message: AppLocale.text('请先在设置中添加快捷提示词') }); return; }
     this.promptMenuNodes = nodes; this.promptMenuNested = false;
     const finger: FingerInfo | undefined = event?.fingerList.length ? event.fingerList[0] : undefined;
     // Use the actual finger position. Subtracting localY/localX yields the
@@ -3321,7 +3331,7 @@ struct Index {
 
   private copyPromptTarget(): void {
     pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(this.promptTargetValue));
-    this.showPromptMenu = false; promptAction.showToast({ message: '已拷贝' });
+    this.showPromptMenu = false; promptAction.showToast({ message: AppLocale.text('已拷贝') });
   }
 
   private editPromptTarget(): void {
@@ -3339,7 +3349,7 @@ struct Index {
       const articlePhotos: string[] = this.article.photos ?? [];
       const resolvedKey: string | undefined = ArticleBody.resolvePhotoKey(this.promptTargetValue, articlePhotos);
       if (!resolvedKey || resolvedKey.trim().length === 0) {
-        promptAction.showToast({ message: '这篇旧文章的图片信息不完整，无法编辑' });
+        promptAction.showToast({ message: AppLocale.text('这篇旧文章的图片信息不完整，无法编辑') });
         return;
       }
       const key: string = resolvedKey.trim();
@@ -3368,7 +3378,7 @@ struct Index {
           saved = await libraryStore.saveArticle(this.selected, migratedDoc);
         } catch (_) {}
         if (!saved) {
-          promptAction.showToast({ message: '旧文章图片标记升级失败，请重试' });
+          promptAction.showToast({ message: AppLocale.text('旧文章图片标记升级失败，请重试') });
           return;
         }
         this.article = migratedDoc;
@@ -3392,17 +3402,17 @@ struct Index {
     } catch (_) {}
     if (!sent) {
       this.finishPendingPhotoEdit(requestId);
-      promptAction.showToast({ message: '指令发送失败，请重试' });
+      promptAction.showToast({ message: AppLocale.text('指令发送失败，请重试') });
       return;
     }
     this.articleEditQueue = ArticleEditUi.enqueue(this.articleEditQueue, requestId, instruction);
-    promptAction.showToast({ message: '已加入修改队列' });
+    promptAction.showToast({ message: AppLocale.text('已加入修改队列') });
   }
 
   @Builder
   private configuredPromptRow(node: PromptNode) {
     Row() {
-      Text(node.label).fontSize(16).fontWeight(node.isGroup() ? FontWeight.Bold : FontWeight.Normal)
+      Text(node.isSystem() ? AppLocale.text(node.label) : node.label).fontSize(16).fontWeight(node.isGroup() ? FontWeight.Bold : FontWeight.Normal)
         .fontColor('#252525').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
       if (node.isGroup()) RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 21, color: Theme.FAINT })
     }.height(48).padding({ left: 18, right: 14 }).width('100%')
@@ -3428,13 +3438,13 @@ struct Index {
   private promptMenuBottomRows() {
     Column() {
       Row() {
-        Text('拷贝').fontSize(16).fontColor('#252525')
+        Text(AppLocale.text('拷贝')).fontSize(16).fontColor('#252525')
       }
         .height(48).padding({ left: 18, right: 18 }).width('100%')
         .onClick(() => this.copyPromptTarget())
       this.configuredPromptDivider()
       Row() {
-        Text('编辑').fontSize(16).fontColor('#252525')
+        Text(AppLocale.text('编辑')).fontSize(16).fontColor('#252525')
       }
         .height(48).padding({ left: 18, right: 18 }).width('100%')
         .onClick(() => this.editPromptTarget())
@@ -3446,7 +3456,7 @@ struct Index {
     Column() {
       if (this.promptMenuNested) {
         Row() {
-          Text('返回').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
+          Text(AppLocale.text('返回')).fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
         }
           .height(48).padding({ left: 18, right: 18 }).width('100%')
           .onClick(() => this.showPromptRoot())
@@ -3525,14 +3535,14 @@ struct Index {
   private detailToolbar() {
     Row() {
       if (this.paragraphEditing) {
-        Button('取消')
+        Button(AppLocale.text('取消'))
           .height(40).padding({ left: 4, right: 4 })
           .fontSize(15).fontColor(Theme.SECONDARY)
           .backgroundColor(Color.Transparent)
           .enabled(!this.paragraphEditSaving)
           .onClick(() => this.closeParagraphEdit())
         Blank()
-        Button(this.paragraphEditSaving ? '保存中…' : '完成')
+        Button(AppLocale.text(this.paragraphEditSaving ? '保存中…' : '完成'))
           .height(40).padding({ left: 4, right: 4 })
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
           .backgroundColor(Color.Transparent)
@@ -3637,9 +3647,7 @@ struct Index {
 
   private detailSubtitle(): string {
     if (!this.selected) return '';
-    const parsed = RecordingName.parse(this.selected.name);
-    if (!parsed) return '';
-    return `${parsed.month}月${parsed.day}日${parsed.hhmm.length > 0 ? ` ${parsed.hhmm}` : ''}`;
+    return this.selected.dateTimeLabel();
   }
 
   private detailSummaryTitle(): string {
@@ -3801,7 +3809,7 @@ struct Index {
           this.recordingDetailSummary(false)
           Column({ space: 14 }) {
             Text(this.detailLoadError).fontSize(16).fontColor(Theme.SECONDARY)
-            Button('重新加载').fontSize(14).height(38).backgroundColor(Theme.ACCENT_STRONG)
+            Button(AppLocale.text('重新加载')).fontSize(14).height(38).backgroundColor(Theme.ACCENT_STRONG)
               .onClick(() => {
                 if (this.selected) this.openRecording(this.selected);
               })
@@ -3815,8 +3823,8 @@ struct Index {
           this.recordingDetailSummary(false)
           Column({ space: 14 }) {
             LoadingProgress().width(36).height(36).color(Theme.ACCENT_STRONG)
-            Text(this.selected?.statusLabel() ?? '正在处理').fontSize(18).fontColor(Theme.INK)
-            Text('转写和文章生成完成后会自动刷新').fontSize(14).fontColor(Theme.SECONDARY)
+            Text(this.selected?.statusLabel() ?? AppLocale.text('正在处理')).fontSize(18).fontColor(Theme.INK)
+            Text(AppLocale.text('转写和文章生成完成后会自动刷新')).fontSize(14).fontColor(Theme.SECONDARY)
           }
             .layoutWeight(1)
             .width('100%')
@@ -3874,13 +3882,13 @@ struct Index {
               if (this.pendingQuestion()) {
                 Column({ space: 8 }) {
                   Row() {
-                    Text('追问').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A85D00').layoutWeight(1)
-                    Button('跳过').fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor(Theme.SECONDARY)
+                    Text(AppLocale.text('追问')).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A85D00').layoutWeight(1)
+                    Button(AppLocale.text('跳过')).fontSize(12).height(30).backgroundColor(Color.Transparent).fontColor(Theme.SECONDARY)
                       .onClick(() => this.skipQuestion())
                   }.width('100%')
                   Text(this.pendingQuestion()?.text ?? '')
                     .fontSize(16).fontWeight(FontWeight.Medium).lineHeight(24).fontColor(Theme.INK).width('100%')
-                  Text('在下方按住说话回答，内容会被织入正文最合适的位置。')
+                  Text(AppLocale.text('在下方按住说话回答，内容会被织入正文最合适的位置。'))
                     .fontSize(12).fontColor(Theme.SECONDARY).width('100%')
                 }
                   .padding(12).width('100%')
@@ -3919,7 +3927,7 @@ struct Index {
     try {
       await audioPlayback.toggle(this.selected.name);
     } catch (error) {
-      promptAction.showToast({ message: `播放失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('播放失败：')}${String(error)}` });
     } finally { this.playbackLoading = false; }
   }
 
@@ -3943,7 +3951,7 @@ struct Index {
       const target: ArticleVersion | undefined = targetHead === undefined ? undefined :
         freshHistory.versions.find((version: ArticleVersion) => version.v === targetHead);
       if (!target) {
-        promptAction.showToast({ message: delta < 0 ? '没有更早的版本' : '没有更新的版本' });
+        promptAction.showToast({ message: AppLocale.text(delta < 0 ? '没有更早的版本' : '没有更新的版本') });
         return;
       }
       const oldArticle: ArticleDoc = this.article;
@@ -3962,13 +3970,13 @@ struct Index {
         this.selectedArticle = oldSelectedArticle;
         this.history.head = oldHead;
         this.history = this.history;
-        promptAction.showToast({ message: '版本切换失败' });
+        promptAction.showToast({ message: AppLocale.text('版本切换失败') });
       } else {
         await libraryStore.cacheArticle(recording, this.article);
         this.warmArticlePhotos(this.article);
       }
     } catch (_) {
-      promptAction.showToast({ message: '版本切换失败' });
+      promptAction.showToast({ message: AppLocale.text('版本切换失败') });
     } finally {
       this.historySwitching = false;
     }
@@ -3998,7 +4006,7 @@ struct Index {
     if (this.paragraphEditing) return;
     if (this.holdEditPressed || this.holdEditFinishing || this.dictating ||
       this.articleEditQueue.length > 0) {
-      promptAction.showToast({ message: '当前修改完成后再精修' });
+      promptAction.showToast({ message: AppLocale.text('当前修改完成后再精修') });
       return;
     }
     const renderedBody: string = this.article.articles[this.selectedArticle].body;
@@ -4050,7 +4058,7 @@ struct Index {
     const nextBody: string = ArticleBody.replacingRenderedLine(
       this.paragraphEditLine, edited, this.paragraphEditRenderedBody, current.body);
     if (nextBody === current.body) {
-      promptAction.showToast({ message: '段落状态已变化，请重新长按编辑' });
+      promptAction.showToast({ message: AppLocale.text('段落状态已变化，请重新长按编辑') });
       return;
     }
     const articles: MinedArticle[] = this.article.articles.slice();
@@ -4079,7 +4087,7 @@ struct Index {
     if (!saved) {
       this.paragraphEditSaving = false;
       this.focusParagraphEditor();
-      promptAction.showToast({ message: '段落保存失败，请重试' });
+      promptAction.showToast({ message: AppLocale.text('段落保存失败，请重试') });
       return;
     }
     this.deferredParagraphArticle = undefined;
@@ -4087,7 +4095,7 @@ struct Index {
     this.warmArticlePhotos(nextDoc);
     this.closeParagraphEdit(false);
     this.history = await libraryStore.versionHistory(recording);
-    promptAction.showToast({ message: '这一段已保存' });
+    promptAction.showToast({ message: AppLocale.text('这一段已保存') });
   }
 
   private async selectHistoryVersion(version: ArticleVersion): Promise<void> {
@@ -4098,7 +4106,7 @@ struct Index {
       this.history.head = version.v; this.history = this.history; this.showHistoryBrowser = false;
       await libraryStore.cacheArticle(this.selected, this.article);
       this.warmArticlePhotos(this.article);
-    } else promptAction.showToast({ message: '版本切换失败' });
+    } else promptAction.showToast({ message: AppLocale.text('版本切换失败') });
   }
 
   private async toggleCommunityShare(): Promise<void> {
@@ -4106,12 +4114,12 @@ struct Index {
       if (!this.selected) return;
       if (this.communityShareId.length > 0) {
         ++this.communityShareGeneration;
-        promptAction.showToast({ message: '正在从 VD 社区隐藏…' });
+        promptAction.showToast({ message: AppLocale.text('正在从 VD 社区隐藏…') });
         if (await communityStore.unshare(this.communityShareId)) {
           this.communityShareId = '';
-          promptAction.showToast({ message: '已从 VD 社区隐藏' });
+          promptAction.showToast({ message: AppLocale.text('已从 VD 社区隐藏') });
         } else {
-          promptAction.showToast({ message: '从 VD 社区隐藏失败，请稍后重试' });
+          promptAction.showToast({ message: AppLocale.text('从 VD 社区隐藏失败，请稍后重试') });
         }
         return;
       }
@@ -4123,7 +4131,7 @@ struct Index {
         if (!accepted) return;
       }
       ++this.communityShareGeneration;
-      promptAction.showToast({ message: '正在设置 VD 社区可见…' });
+      promptAction.showToast({ message: AppLocale.text('正在设置 VD 社区可见…') });
       if (needsWechatLogin) {
         await this.startCommunityShareWechatLogin(articleKey);
         return;
@@ -4137,18 +4145,18 @@ struct Index {
         if (!await this.confirmCommunityShareWechatLogin()) return;
         await this.startCommunityShareWechatLogin(articleKey);
       } else {
-        promptAction.showToast({ message: result.error ? `分享社区失败：${result.error}` : '分享社区失败，请稍后再试' });
+        promptAction.showToast({ message: result.error ? `${AppLocale.text('分享社区失败：')}${result.error}` : AppLocale.text('分享社区失败，请稍后再试') });
       }
     } catch (error) {
-      promptAction.showToast({ message: `社区分享失败：${ClientReliability.errorMessage(error as Object)}` });
+      promptAction.showToast({ message: `${AppLocale.text('分享社区失败：')}${ClientReliability.errorMessage(error as Object)}` });
     }
   }
 
   private async confirmCommunityTerms(): Promise<boolean> {
     const result = await promptAction.showDialog({
-      title: '社区公约',
-      message: COMMUNITY_TERMS,
-      buttons: [{ text: '取消', color: '#666666' }, { text: '同意并继续', color: '#111111' }]
+      title: AppLocale.text('社区公约'),
+      message: communityTerms(AppLocale.isEnglish()),
+      buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('同意并继续'), color: '#111111' }]
     });
     if (result.index !== 1) return false;
     await appPreferences.setBoolean('communityTermsAccepted', true);
@@ -4164,7 +4172,7 @@ struct Index {
       const result = await manager.requestPermissionsFromUser(
         this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
       if (result.authResults[0] !== 0) {
-        promptAction.showToast({ message: '需要麦克风权限才能写回应' });
+        promptAction.showToast({ message: AppLocale.text('需要麦克风权限才能写回应') });
         return;
       }
       await voiceRecorder.start();
@@ -4183,7 +4191,7 @@ struct Index {
       this.pendingReplyTarget = '';
       this.communityReplyRecording = false;
       await voiceRecorder.cancel().catch(() => {});
-      promptAction.showToast({ message: `无法开始回应录音：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('无法开始回应录音：')}${String(error)}` });
     } finally {
       this.recordingTransitioning = false;
     }
@@ -4203,7 +4211,7 @@ struct Index {
     try {
       await voiceRecorder.cancel();
     } catch (error) {
-      promptAction.showToast({ message: `取消回应录音失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('取消回应录音失败：')}${String(error)}` });
     } finally {
       this.recordingTransitioning = false;
     }
@@ -4226,7 +4234,7 @@ struct Index {
     if (!this.selectedPost || !this.context) return;
     const articleIndex: number = 0;
     const article: MinedArticle | undefined = this.selectedPost.doc?.articles?.[articleIndex];
-    const title: string = article?.title || this.selectedPost.title || 'VoiceDrop 文章';
+    const title: string = article?.title || this.selectedPost.title || AppLocale.text('VoiceDrop 文章');
     const url: string = WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), articleIndex);
     if (!WechatCommunityShare.isWechatInstalled()) {
       await this.copyWechatFallback(title, url); return;
@@ -4234,11 +4242,11 @@ struct Index {
     try {
       const message: string = await WechatCommunityShare.send(
         this.context, this.selectedPost.shareId, articleIndex, title,
-        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, '来自 VD 社区')}`,
+        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, AppLocale.text('来自 VD 社区'))}`,
         this.articleSharePhotoUrl(this.selectedPost.doc, articleIndex));
       promptAction.showToast({ message: message });
     } catch (error) {
-      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信分享失败：')}${String(error)}` });
     }
   }
 
@@ -4247,10 +4255,10 @@ struct Index {
   }
 
   private communityShareTarget(id: string): ShareSheetTarget {
-    if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
-    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
-    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
-    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+    if (id === 'wechat') return new ShareSheetTarget(id, AppLocale.text('小程序卡片'), RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, AppLocale.text('朋友圈'), RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'copy') return new ShareSheetTarget(id, AppLocale.text('复制链接'), RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, AppLocale.text('其它分享'), RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
   }
 
   private runCommunityShareAction(id: string): void {
@@ -4265,7 +4273,7 @@ struct Index {
     if (!this.selectedPost || !this.context) return;
     const articleIndex: number = 0;
     const article: MinedArticle | undefined = this.selectedPost.doc?.articles?.[articleIndex];
-    const title: string = article?.title || this.selectedPost.title || 'VoiceDrop 社区文章';
+    const title: string = article?.title || this.selectedPost.title || AppLocale.text('VoiceDrop 社区文章');
     const url: string = WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), articleIndex);
     if (!WechatCommunityShare.isWechatInstalled()) {
       await this.copyWechatFallback(title, url); return;
@@ -4273,11 +4281,11 @@ struct Index {
     try {
       const message: string = await WechatCommunityShare.sendTimelineWithThumbnail(
         this.context, url, title,
-        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, '来自 VD 社区')}`,
+        `${this.communityAuthor(this.selectedPost)} · ${WechatShareContent.excerpt(article?.body, AppLocale.text('来自 VD 社区'))}`,
         this.articleSharePhotoUrl(this.selectedPost.doc, articleIndex));
       promptAction.showToast({ message: message });
     } catch (error) {
-      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信分享失败：')}${String(error)}` });
     }
   }
 
@@ -4286,9 +4294,9 @@ struct Index {
     try {
       await pasteboard.getSystemPasteboard().setData(
         pasteboard.createPlainTextData(WechatShareContent.withSection(Api.sharePage(this.selectedPost.shareId), 0)));
-      promptAction.showToast({ message: '链接已复制' });
+      promptAction.showToast({ message: AppLocale.text('链接已复制') });
     } catch (_) {
-      promptAction.showToast({ message: '复制失败' });
+      promptAction.showToast({ message: AppLocale.text('复制失败') });
     }
   }
 
@@ -4297,32 +4305,32 @@ struct Index {
     const post: CommunityPost = this.selectedPost;
     try {
       const result = await promptAction.showDialog({
-        title: '举报这篇分享？',
-        message: '举报后这篇会立即从社区下架，并在 24 小时内由人工审核处理。',
-        buttons: [{ text: '取消', color: '#666666' }, { text: '举报并下架', color: Theme.ACCENT_STRONG }]
+        title: AppLocale.text('举报这篇分享？'),
+        message: AppLocale.text('举报后这篇会立即从社区下架，并在 24 小时内由人工审核处理。'),
+        buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('举报并下架'), color: Theme.ACCENT_STRONG }]
       });
       if (result.index !== 1) return;
       if (await communityStore.report(post.shareId)) {
         this.communityDetailDirty = true;
         this.removeCommunityContent(post.shareId);
-        promptAction.showToast({ message: '已举报，内容已下架待审核' });
+        promptAction.showToast({ message: AppLocale.text('已举报，内容已下架待审核') });
         this.navigateHome();
       } else {
-        promptAction.showToast({ message: '举报失败，请稍后重试' });
+        promptAction.showToast({ message: AppLocale.text('举报失败，请稍后重试') });
       }
     } catch (error) {
-      promptAction.showToast({ message: `举报失败：${ClientReliability.errorMessage(error as Object)}` });
+      promptAction.showToast({ message: `${AppLocale.text('举报失败：')}${ClientReliability.errorMessage(error as Object)}` });
     }
   }
 
   private async regenerateArticle(): Promise<void> {
     if (!this.selected) return;
     if (await libraryStore.remine(this.selected)) {
-      promptAction.showToast({ message: '已开始重新生成文章' });
+      promptAction.showToast({ message: AppLocale.text('已开始重新生成文章') });
       this.navigateHome();
       await this.refreshLibrary();
     } else {
-      promptAction.showToast({ message: '重新生成失败' });
+      promptAction.showToast({ message: AppLocale.text('重新生成失败') });
     }
   }
 
@@ -4330,7 +4338,7 @@ struct Index {
     const target: Recording | undefined = recording ?? this.selected;
     if (!target || this.deletingRecordingName.length > 0) return;
     promptAction.showDialog({
-      title: '删除这条录音？',
+      title: AppLocale.text('删除这条录音？'),
       message: RecordingListUi.deleteMessage,
       buttons: [{ text: '取消', color: '#666666' }, { text: '删除', color: '#D92D20' }]
     }).then(async (result) => {
@@ -4340,7 +4348,7 @@ struct Index {
         uploader.discardPending(target.name);
         if (returnHome) await audioPlayback.stop();
         const ok: boolean = await libraryStore.delete(target);
-        promptAction.showToast({ message: ok ? '已删除' : '删除失败' });
+        promptAction.showToast({ message: AppLocale.text(ok ? '已删除' : '删除失败') });
         if (ok) {
           if (!this.deletedRecordingNames.includes(target.name)) {
             this.deletedRecordingNames = this.deletedRecordingNames.concat(target.name);
@@ -4350,7 +4358,7 @@ struct Index {
           if (returnHome) this.navigateHome();
         }
       } catch (_) {
-        promptAction.showToast({ message: '删除失败' });
+        promptAction.showToast({ message: AppLocale.text('删除失败') });
       } finally {
         this.deletingRecordingName = '';
       }
@@ -4365,7 +4373,7 @@ struct Index {
   private async shareRecordingToWechat(): Promise<void> {
     if (!this.context || !this.article || !this.selected) return;
     const url: string = await this.recordingShareUrl();
-    if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
+    if (url.length === 0) { promptAction.showToast({ message: AppLocale.text('无法生成分享链接') }); return; }
     const title: string = this.article.articles[this.selectedArticle]?.title ?? this.selected?.rowTitle() ?? 'VoiceDrop 文章';
     if (!WechatCommunityShare.isWechatInstalled()) {
       await this.copyWechatFallback(title, url); return;
@@ -4378,7 +4386,7 @@ struct Index {
         this.articleSharePhotoUrl(this.article, this.selectedArticle));
       promptAction.showToast({ message: message });
     } catch (error) {
-      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信分享失败：')}${String(error)}` });
     }
   }
 
@@ -4387,11 +4395,11 @@ struct Index {
   }
 
   private recordingShareTarget(id: string): ShareSheetTarget {
-    if (id === 'wechat') return new ShareSheetTarget(id, '小程序卡片', RI.WECHAT, '#07C160', '#FFFFFF', 26);
-    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
-    if (id === 'xhs') return new ShareSheetTarget(id, '小红书', '', '#FF2442', '#FFFFFF', 32, true);
-    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
-    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+    if (id === 'wechat') return new ShareSheetTarget(id, AppLocale.text('小程序卡片'), RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, AppLocale.text('朋友圈'), RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'xhs') return new ShareSheetTarget(id, AppLocale.text('小红书'), '', '#FF2442', '#FFFFFF', 32, true);
+    if (id === 'copy') return new ShareSheetTarget(id, AppLocale.text('复制链接'), RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, AppLocale.text('其它分享'), RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
   }
 
   private runRecordingShareAction(id: string): void {
@@ -4411,7 +4419,7 @@ struct Index {
   private async shareRecordingToTimeline(): Promise<void> {
     if (!this.selected || !this.article || !this.context) return;
     const url: string = await this.recordingShareUrl();
-    if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
+    if (url.length === 0) { promptAction.showToast({ message: AppLocale.text('无法生成分享链接') }); return; }
     const title: string = this.article.articles[Math.min(this.selectedArticle,
       this.article.articles.length - 1)]?.title ?? this.selected.rowTitle();
     if (!WechatCommunityShare.isWechatInstalled()) {
@@ -4425,18 +4433,18 @@ struct Index {
         this.articleSharePhotoUrl(this.article, this.selectedArticle));
       promptAction.showToast({ message: message });
     } catch (error) {
-      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信分享失败：')}${String(error)}` });
     }
   }
 
   private async copyRecordingLink(): Promise<void> {
     try {
       const url: string = await this.recordingShareUrl();
-      if (url.length === 0) { promptAction.showToast({ message: '复制失败' }); return; }
+      if (url.length === 0) { promptAction.showToast({ message: AppLocale.text('复制失败') }); return; }
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(url));
-      promptAction.showToast({ message: '链接已复制' });
+      promptAction.showToast({ message: AppLocale.text('链接已复制') });
     } catch (error) {
-      promptAction.showToast({ message: `复制失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('复制失败：')}${String(error)}` });
     }
   }
 
@@ -4454,8 +4462,8 @@ struct Index {
     try {
       await pasteboard.getSystemPasteboard().setData(
         pasteboard.createPlainTextData(`${title}\n${url}`));
-      promptAction.showToast({ message: '没检测到微信，链接在剪贴板里' });
-    } catch (_) { promptAction.showToast({ message: '未安装微信，复制链接失败' }); }
+      promptAction.showToast({ message: AppLocale.text('没检测到微信，链接在剪贴板里') });
+    } catch (_) { promptAction.showToast({ message: AppLocale.text('未安装微信，复制链接失败') }); }
   }
 
   private async runDetailMenuAction(action: string): Promise<void> {
@@ -4483,7 +4491,7 @@ struct Index {
   @Builder
   private detailMenuRow(label: string, glyph: string, action: string, danger: boolean = false) {
     Row() {
-      Text(label)
+      Text(AppLocale.text(label))
         .fontSize(14).fontWeight(FontWeight.Normal)
         .fontColor(danger ? Theme.ACCENT_STRONG : Theme.INK)
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -4535,7 +4543,7 @@ struct Index {
           }
         })
       if (this.communityReplyRecording) {
-        Text(`回应：${this.selectedPost?.title || '社区文章'}`)
+        Text(`${AppLocale.text('回应：')}${this.selectedPost?.title || AppLocale.text('社区文章')}`)
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.INK)
@@ -4613,7 +4621,7 @@ struct Index {
             Text(this.communityDetailError)
               .fontSize(15)
               .fontColor(Theme.SECONDARY)
-            Button('重新加载')
+            Button(AppLocale.text('重新加载'))
               .fontSize(14)
               .fontColor(Theme.WHITE)
               .height(38)
@@ -4636,8 +4644,8 @@ struct Index {
           if (this.selectedReplyParent) {
             Row({ space: 5 }) {
               RemixIcon({ glyph: RI.CHAT, iconSize: 15, color: Theme.ACCENT_STRONG })
-              Text('回应').fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
-              Text(this.selectedReplyParent!.title || '原文')
+              Text(AppLocale.text('回应')).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
+              Text(this.selectedReplyParent!.title || AppLocale.text('原文'))
                 .fontSize(13).fontColor(Theme.ACCENT_STRONG).maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
               RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 15, color: Theme.ACCENT_STRONG })
@@ -4649,26 +4657,28 @@ struct Index {
           if (this.selectedPost?.kind === 'prompt') {
             Column({ space: 12 }) {
               if ((this.selectedPost?.promptCode ?? '').length > 0) {
-                Text('一条 VoiceDrop 提示词 · 分享码')
+                Text(AppLocale.text('一条 VoiceDrop 提示词 · 分享码'))
                   .fontSize(13).fontColor(Theme.FAINT).width('100%').textAlign(TextAlign.Center)
                 Text(this.selectedPost?.promptCode ?? '')
                   .fontSize(38).fontWeight(FontWeight.Bold).letterSpacing(5)
                   .fontColor(Theme.INK).width('100%').textAlign(TextAlign.Center)
                   .padding({ top: 8, bottom: 8 })
               }
-              Text(this.selectedPost?.doc?.articles?.[0]?.body || '这条提示词暂不可读，请稍后刷新。')
+              Text(this.selectedPost?.doc?.articles?.[0]?.body || AppLocale.text('这条提示词暂不可读，请稍后刷新。'))
                 .fontSize(16).lineHeight(27).fontColor(Theme.INK).padding(15)
                 .backgroundColor('#F0ECE5').borderRadius(12).width('100%')
                 .copyOption(CopyOptions.LocalDevice)
-              Text('怎么用').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+              Text(AppLocale.text('怎么用')).fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
                 .margin({ top: 10 }).width('100%')
               if ((this.selectedPost?.promptCode ?? '').length > 0) {
-                Text(`在任意文章里长按屏幕按住说话，说「用 ${this.selectedPost?.promptCode ?? ''} 改这段」——AI 按这条提示词干活，只管这一次，不改你的设置。`)
+                Text(AppLocale.isEnglish()
+                  ? `Long-press in any article and say “Use ${this.selectedPost?.promptCode ?? ''} to revise this paragraph.” AI follows this prompt for this request only; your settings stay unchanged.`
+                  : `在任意文章里长按屏幕按住说话，说「用 ${this.selectedPost?.promptCode ?? ''} 改这段」——AI 按这条提示词干活，只管这一次，不改你的设置。`)
                   .fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY).width('100%')
               }
-              Text(this.selectedCommunityPromptOwned() ?
+              Text(AppLocale.text(this.selectedCommunityPromptOwned() ?
                 '这是你分享的提示词。把分享码发给朋友，或在 设置 → 提示词 里管理。' :
-                '想长期用：点下面「收下这条提示词」，之后长按菜单里随手可用。')
+                '想长期用：点下面「收下这条提示词」，之后长按菜单里随手可用。'))
                 .fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY).width('100%')
               if (!this.selectedCommunityPromptOwned() &&
                 (this.selectedPost?.promptCode ?? '').length > 0) {
@@ -4679,8 +4689,8 @@ struct Index {
                       iconSize: 21,
                       color: Color.White
                     })
-                    Text(this.selectedCommunityPromptImported() ? '已收下' :
-                      (this.promptImporting ? '正在导入…' : '收下这条提示词'))
+                    Text(AppLocale.text(this.selectedCommunityPromptImported() ? '已收下' :
+                      (this.promptImporting ? '正在导入…' : '收下这条提示词')))
                       .fontSize(16).fontWeight(FontWeight.Bold).fontColor(Color.White)
                   }.justifyContent(FlexAlign.Center)
                 }
@@ -4706,7 +4716,7 @@ struct Index {
           if (this.communityReplies.length > 0) {
             Row({ space: 12 }) {
               Divider().color('#DDD5C7').layoutWeight(1)
-              Text(`${this.communityReplies.length} 篇回应`)
+              Text(`${this.communityReplies.length}${AppLocale.text(' 篇回应')}`)
                 .fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A79F93').letterSpacing(1)
               Divider().color('#DDD5C7').layoutWeight(1)
             }.width('100%').margin({ top: 30, bottom: 2 })
@@ -4716,7 +4726,7 @@ struct Index {
                   Row() {
                     Text(this.communityAuthor(reply)).fontSize(13).fontWeight(FontWeight.Bold)
                       .fontColor(Theme.ACCENT_STRONG)
-                    Text(`  续文${this.communityDate(reply).length > 0 ? ` · ${this.communityDate(reply)}` : ''}`)
+                    Text(`  ${AppLocale.text('续文')}${this.communityDate(reply).length > 0 ? ` · ${this.communityDate(reply)}` : ''}`)
                       .fontSize(12).fontColor('#9A9387')
                   }.width('100%')
                   Text(reply.title || reply.excerpt)
@@ -4763,7 +4773,7 @@ struct Index {
   @Builder
   private communityMenuRow(label: string, glyph: string, action: string, danger: boolean = false) {
     Row() {
-      Text(label)
+      Text(AppLocale.text(label))
         .fontSize(14)
         .fontWeight(FontWeight.Normal)
         .fontColor(danger ? Theme.ACCENT_STRONG : Theme.INK)
@@ -4811,7 +4821,7 @@ struct Index {
     const requestId: string = `${Date.now()}`;
     const sent: boolean = await this.editSession.sendEdit(requestId, text, this.selectedArticle);
     if (!sent) {
-      promptAction.showToast({ message: '指令发送失败，请重试' });
+      promptAction.showToast({ message: AppLocale.text('指令发送失败，请重试') });
       return;
     }
     this.articleEditQueue = ArticleEditUi.enqueue(this.articleEditQueue, requestId, text);
@@ -4819,7 +4829,7 @@ struct Index {
       question.status = 'answered'; this.article = this.article;
       libraryStore.patchQuestion(this.selected, question.id, 'answered').catch(() => {});
     }
-    promptAction.showToast({ message: `已发送修改：${answer}` });
+    promptAction.showToast({ message: `${AppLocale.text('已发送修改：')}${answer}` });
   }
 
   private pendingQuestion(): FollowupQuestion | undefined {
@@ -4832,7 +4842,7 @@ struct Index {
     if (!question || !this.selected) return;
     question.status = 'skipped'; this.article = this.article;
     const ok: boolean = await libraryStore.patchQuestion(this.selected, question.id, 'skipped');
-    promptAction.showToast({ message: ok ? '已跳过追问' : '跳过状态同步失败' });
+    promptAction.showToast({ message: AppLocale.text(ok ? '已跳过追问' : '跳过状态同步失败') });
   }
 
   private togglePostLike(): void {
@@ -4870,7 +4880,7 @@ struct Index {
       await this.showTextShare(url, this.selectedPost.title || 'VoiceDrop 社区文章');
     } catch (_) {
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(url));
-      promptAction.showToast({ message: '分享链接已复制' });
+      promptAction.showToast({ message: AppLocale.text('分享链接已复制') });
     }
   }
 
@@ -4882,14 +4892,14 @@ struct Index {
       if (result.ok || result.already) {
         this.postFed = true;
         if (!result.already) this.postFeedCount++;
-        const message: string = result.already ? '已经投过这条了' :
-          `已投币：你 +${result.feederSuanli}，作者 +${result.authorSuanli} 算力`;
+        const message: string = result.already ? AppLocale.text('已经投过这条了') :
+          `${AppLocale.text('已投币：你 +')}${result.feederSuanli}${AppLocale.text('，作者 +')}${result.authorSuanli}${AppLocale.text(' 算力')}`;
         promptAction.showToast({ message: message });
-      } else if (result.error === 'cannot_feed_own') promptAction.showToast({ message: '不能给自己的内容投币' });
-      else if (result.error === 'pool_exhausted') promptAction.showToast({ message: '今日算力池已发完，明天再来' });
-      else if (result.needsWechatSignin()) { promptAction.showToast({ message: '投币需要先用微信登录' }); this.navigateTo('account'); }
-      else promptAction.showToast({ message: '投币失败，请稍后再试' });
-    } catch (error) { promptAction.showToast({ message: `投币失败：${String(error)}` }); }
+      } else if (result.error === 'cannot_feed_own') promptAction.showToast({ message: AppLocale.text('不能给自己的内容投币') });
+      else if (result.error === 'pool_exhausted') promptAction.showToast({ message: AppLocale.text('今日算力池已发完，明天再来') });
+      else if (result.needsWechatSignin()) { promptAction.showToast({ message: AppLocale.text('投币需要先用微信登录') }); this.navigateTo('account'); }
+      else promptAction.showToast({ message: AppLocale.text('投币失败，请稍后再试') });
+    } catch (error) { promptAction.showToast({ message: `${AppLocale.text('投币失败：')}${String(error)}` }); }
     finally { this.postFeeding = false; }
   }
 
@@ -4897,23 +4907,23 @@ struct Index {
     if (!this.selectedPost || this.selectedPost.author.trim().length === 0) return;
     const author: string = this.selectedPost.author;
     const result = await promptAction.showDialog({
-      title: '屏蔽此用户？',
-      message: `屏蔽后，你将不再看到 ${author} 的任何社区内容。可在「设置」>「关于」>「已屏蔽用户」中取消屏蔽。`,
-      buttons: [{ text: '取消', color: '#666666' }, { text: '屏蔽', color: Theme.ACCENT_STRONG }]
+      title: AppLocale.text('屏蔽此用户？'),
+      message: `${AppLocale.text('屏蔽后，你将不再看到 ')}${author}${AppLocale.text(' 的任何社区内容。可在「设置」>「关于」>「已屏蔽用户」中取消屏蔽。')}`,
+      buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('屏蔽'), color: Theme.ACCENT_STRONG }]
     });
     if (result.index !== 1) return;
     await appPreferences.setAuthorBlocked(author, true);
     this.blockedAuthorCount = appPreferences.blockedAuthors().length;
     this.communityDetailDirty = true;
     this.removeCommunityContent('', author);
-    promptAction.showToast({ message: '已屏蔽，TA 的内容将不再显示' });
+    promptAction.showToast({ message: AppLocale.text('已屏蔽，TA 的内容将不再显示') });
     this.navigateHome();
   }
 
   private async shareRecording(): Promise<void> {
     if (!this.selected || !this.article || !this.context) return;
     const url: string = await libraryStore.shareUrl(this.selected, this.selectedArticle);
-    if (url.length === 0) { promptAction.showToast({ message: '无法生成分享链接' }); return; }
+    if (url.length === 0) { promptAction.showToast({ message: AppLocale.text('无法生成分享链接') }); return; }
     const articleText: string = ArticleBody.shareText(this.article.articles);
     const text: string = `${articleText}\n\n${url}`.trim();
     const title: string = this.article.articles[Math.min(this.selectedArticle, this.article.articles.length - 1)]?.title ??
@@ -4922,7 +4932,7 @@ struct Index {
       await this.showTextShare(text, title);
     } catch (_) {
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(text));
-      promptAction.showToast({ message: '无法打开分享面板，文章和链接已复制' });
+      promptAction.showToast({ message: AppLocale.text('无法打开分享面板，文章和链接已复制') });
     }
   }
 
@@ -4931,13 +4941,13 @@ struct Index {
     this.wechatPublishing = true;
     try {
       if (!(await settingsStore.wechatBindStatus()).connected) {
-        promptAction.showToast({ message: '请先连接微信公众号' });
+        promptAction.showToast({ message: AppLocale.text('请先连接微信公众号') });
         this.navigateTo('wechat');
         return;
       }
       const response = await libraryStore.publishWechat(this.selected);
       if (response.code === 409) {
-        promptAction.showToast({ message: '请先连接微信公众号' });
+        promptAction.showToast({ message: AppLocale.text('请先连接微信公众号') });
         this.navigateTo('wechat');
       } else if (response.ok()) {
         const updated: ArticleDoc | undefined = await libraryStore.fetchArticle(this.selected);
@@ -4949,12 +4959,12 @@ struct Index {
           created = result.created ?? 0;
           changed = result.updated ?? 0;
         } catch (_) {}
-        promptAction.showToast({ message: created === 0 && changed > 0 ? '已更新草稿' : '已到草稿箱' });
+        promptAction.showToast({ message: AppLocale.text(created === 0 && changed > 0 ? '已更新草稿' : '已到草稿箱') });
       } else {
-        promptAction.showToast({ message: `发布失败 HTTP ${response.code}` });
+        promptAction.showToast({ message: `${AppLocale.text('发布失败 HTTP ')}${response.code})` });
       }
     } catch (error) {
-      promptAction.showToast({ message: `发布公众号失败：${ClientReliability.errorMessage(error as Object)}` });
+      promptAction.showToast({ message: `${AppLocale.text('发布公众号失败：')}${ClientReliability.errorMessage(error as Object)}` });
     } finally {
       this.wechatPublishing = false;
     }
@@ -4963,11 +4973,11 @@ struct Index {
   private async shareToXhs(): Promise<void> {
     if (!this.selected || !this.context || this.xhsPreparing) return;
     this.xhsPreparing = true;
-    promptAction.showToast({ message: '正在生成小红书素材…' });
+    promptAction.showToast({ message: AppLocale.text('正在生成小红书素材…') });
     try {
       const pack: XhsPack | undefined = await libraryStore.xhsPack(this.selected);
       if (!pack || pack.clipboardText().length === 0) {
-        promptAction.showToast({ message: '小红书素材生成失败，稍后再试' }); return;
+        promptAction.showToast({ message: AppLocale.text('小红书素材生成失败，稍后再试') }); return;
       }
       const text: string = pack.clipboardText();
       await pasteboard.getSystemPasteboard().setData(pasteboard.createPlainTextData(text));
@@ -4977,11 +4987,11 @@ struct Index {
       const saved: number = prepared.savedUris.length;
       promptAction.showToast({
         message: saved > 0
-          ? `文案已复制，${saved} 张图片已保存，请在分享面板中选择小红书`
-          : '文案已复制，图片已生成，请在分享面板中选择小红书'
+          ? `${AppLocale.text('文案已复制，')}${saved}${AppLocale.text(' 张图片已保存，请在分享面板中选择小红书')}`
+          : AppLocale.text('文案已复制，图片已生成，请在分享面板中选择小红书')
       });
-      await this.showImageShare(prepared.fileUris, pack.title || 'VoiceDrop 小红书素材');
-    } catch (error) { promptAction.showToast({ message: `小红书素材生成失败：${String(error)}` }); }
+      await this.showImageShare(prepared.fileUris, pack.title || AppLocale.text('VoiceDrop 小红书素材'));
+    } catch (error) { promptAction.showToast({ message: `${AppLocale.text('小红书素材生成失败：')}${String(error)}` }); }
     finally { this.xhsPreparing = false; }
   }
 
@@ -5008,9 +5018,9 @@ struct Index {
       ) ?? false;
       if (!sent) throw new Error('文章编辑服务尚未连接');
       this.articleEditQueue = ArticleEditUi.enqueue(this.articleEditQueue, requestId, instruction);
-      promptAction.showToast({ message: `${photos.length} 张图片已上传，正在插入文章` });
+      promptAction.showToast({ message: `${photos.length}${AppLocale.text(' 张图片已上传，正在插入文章')}` });
     } catch (error) {
-      promptAction.showToast({ message: `插图失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('插图失败：')}${String(error)}` });
     } finally {
       this.insertingPhotos = false;
     }
@@ -5044,7 +5054,7 @@ struct Index {
         await authStore.signOutWechat();
         this.wechatLoggedIn = false;
         await this.applyAccountIdentityChange(previousScope !== authStore.storageScope());
-        promptAction.showToast({ message: '已退出微信登录，已恢复原账号' });
+        promptAction.showToast({ message: AppLocale.text('已退出微信登录，已恢复原账号') });
       },
       onAccountChanged: () => { this.applyAccountIdentityChange(false).catch(() => {}); },
       onDeleted: () => { this.applyAccountIdentityChange(false).catch(() => {}); }
@@ -5056,7 +5066,7 @@ struct Index {
     try {
       await this.context.startAbility({ action: 'ohos.want.action.viewData',
         uri: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('VoiceDrop 反馈与投诉')}` });
-    } catch (_) { promptAction.showToast({ message: '无法打开邮件客户端' }); }
+    } catch (_) { promptAction.showToast({ message: AppLocale.text('无法打开邮件客户端') }); }
   }
 
   @Builder
@@ -5081,6 +5091,10 @@ struct Index {
       preparingInvite: this.preparingInvite,
       exporting: this.exporting,
       cacheRefreshVersion: this.settingsCacheRefreshVersion
+    })
+    else if (page === 'language') LanguageSettingsPage({
+      onBack: () => this.navigateBack(),
+      onLanguageSaved: () => this.rebuildHomeForLanguage()
     })
     else if (page === 'style') this.stylePage()
     else if (page === 'wechat') this.wechatPage()
@@ -5120,7 +5134,7 @@ struct Index {
       blockedAuthorCount: $blockedAuthorCount
     })
     else Column({ space: 8 }) {
-      Text('页面不存在').fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+      Text(AppLocale.text('页面不存在')).fontSize(18).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
       Text(page).fontSize(13).fontColor(Theme.SECONDARY)
     }.width('100%').height('100%').justifyContent(FlexAlign.Center)
   }
@@ -5150,7 +5164,7 @@ struct Index {
   @Builder
   private homeRoot() {
     Column() {
-      this.topBar('VoiceDrop 口述')
+      this.topBar(this.brandTitle())
       this.homeTabs()
       Tabs({ index: this.tab }) {
         TabContent() {
@@ -5178,6 +5192,12 @@ struct Index {
     }.width('100%').height('100%')
   }
 
+  private brandTitle(): string {
+    // Keep the cached home tab reactive to an in-app language change.
+    const language: string = this.appLanguageRevision >= 0 ? AppLocale.currentLanguage() : '';
+    return AppLocale.resolve(language, 'VoiceDrop 口述');
+  }
+
   private startupSurface(): PrivacyStartupSurface {
     return PrivacyStartup.surface(this.privacyResolved, !this.showPrivacy);
   }
@@ -5186,23 +5206,23 @@ struct Index {
   private privacyStartupPage() {
     Stack({ alignContent: Alignment.Center }) {
       Column({ space: 18 }) {
-        Text('欢迎使用 VoiceDrop').fontSize(24).fontWeight(FontWeight.Bold)
+        Text(AppLocale.text('欢迎使用 VoiceDrop')).fontSize(24).fontWeight(FontWeight.Bold)
         if (this.consentPolicyExpanded) {
           Scroll() {
-            Text(PRIVACY_TEXT).fontSize(14).lineHeight(23).fontColor('#333333').width('100%')
+            Text(privacyText()).fontSize(14).lineHeight(23).fontColor('#333333').width('100%')
           }.height('55%').width('100%').padding(12).backgroundColor('#F5F3EE').borderRadius(12)
-          Button('收起隐私政策').fontSize(14).fontColor('#555555').backgroundColor(Color.Transparent)
+          Button(AppLocale.text('收起隐私政策')).fontSize(14).fontColor('#555555').backgroundColor(Color.Transparent)
             .onClick(() => this.consentPolicyExpanded = false)
         } else {
-          Text('开始前，请阅读并同意隐私保护说明。录音仅在你主动点击后开始，并用于转写和生成文章；相册与相机仅在插图时使用。')
+          Text(AppLocale.text('开始前，请阅读并同意隐私保护说明。录音仅在你主动点击后开始，并用于转写和生成文章；相册与相机仅在插图时使用。'))
             .fontSize(16).lineHeight(25)
-          Button('查看完整隐私政策').fontSize(14).fontColor('#16825D').backgroundColor(Color.Transparent)
+          Button(AppLocale.text('查看完整隐私政策')).fontSize(14).fontColor('#16825D').backgroundColor(Color.Transparent)
             .onClick(() => this.consentPolicyExpanded = true)
         }
         Row({ space: 10 }) {
-          Button('退出使用').layoutWeight(1).backgroundColor('#E8E8E5').fontColor('#333333')
+          Button(AppLocale.text('退出使用')).layoutWeight(1).backgroundColor('#E8E8E5').fontColor('#333333')
             .onClick(() => this.context?.terminateSelf())
-          Button('同意并继续').layoutWeight(1).backgroundColor(Theme.ACCENT)
+          Button(AppLocale.text('同意并继续')).layoutWeight(1).backgroundColor(Theme.ACCENT)
             .onClick(() => this.acceptPrivacy())
         }.width('100%')
       }
@@ -5222,14 +5242,14 @@ struct Index {
   private deviceLinkDialog() {
     Stack({ alignContent: Alignment.Center }) {
       Column({ space: 0 }) {
-        Text('有新设备想登录你的账号')
+        Text(AppLocale.text('有新设备想登录你的账号'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.INK)
           .lineHeight(28)
           .textAlign(TextAlign.Center)
           .width('100%')
-        Text('在新设备上输入下面的验证码')
+        Text(AppLocale.text('在新设备上输入下面的验证码'))
           .fontSize(14)
           .fontColor(Theme.SECONDARY)
           .lineHeight(22)
@@ -5246,7 +5266,7 @@ struct Index {
           .textAlign(TextAlign.Center)
           .width('100%')
           .margin({ top: 16 })
-        Text('不是你本人操作？点「不是我」。')
+        Text(AppLocale.text('不是你本人操作？点「不是我」。'))
           .fontSize(12)
           .fontColor(Theme.FAINT)
           .lineHeight(18)
@@ -5254,7 +5274,7 @@ struct Index {
           .width('100%')
           .margin({ top: 12 })
         Row({ space: 12 }) {
-          Button('不是我', { type: ButtonType.Normal })
+          Button(AppLocale.text('不是我'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(48)
             .fontSize(15)
@@ -5264,7 +5284,7 @@ struct Index {
             .border({ width: 1, color: '#E1D3C4', radius: 12 })
             .borderRadius(12)
             .onClick(() => this.rejectLinkRequest().catch(() => {}))
-          Button('这是我', { type: ButtonType.Normal })
+          Button(AppLocale.text('这是我'), { type: ButtonType.Normal })
             .layoutWeight(1)
             .height(48)
             .fontSize(15)
@@ -5302,15 +5322,19 @@ struct Index {
     } else {
       Stack() {
       Navigation(this.pathStack) {
-        Column() {
-          this.homeRoot()
+        if (this.rebuildingHomeForLanguage) {
+          Column().width('100%').height('100%').backgroundColor(Theme.BG)
+        } else {
+          Column() {
+            this.homeRoot()
+          }
+            .width('100%')
+            .height('100%')
+            .justifyContent(FlexAlign.Start)
+            .alignItems(HorizontalAlign.Start)
+            .padding({ top: this.safeAreaTop() })
+            .backgroundColor(Theme.BG)
         }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Start)
-          .alignItems(HorizontalAlign.Start)
-          .padding({ top: this.safeAreaTop() })
-          .backgroundColor(Theme.BG)
       }
         .width('100%')
         .height('100%')
@@ -5410,13 +5434,13 @@ struct Index {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.showHistoryBrowser = false)
           Column({ space: 10 }) {
-            Row() { Text('文章版本').fontSize(20).fontWeight(FontWeight.Bold).layoutWeight(1); Button('关闭').onClick(() => this.showHistoryBrowser = false) }
+            Row() { Text(AppLocale.text('文章版本')).fontSize(20).fontWeight(FontWeight.Bold).layoutWeight(1); Button(AppLocale.text('关闭')).onClick(() => this.showHistoryBrowser = false) }
             Scroll() {
               Column({ space: 8 }) {
                 ForEach(this.history.versions.slice().reverse(), (version: ArticleVersion) => {
                   Row() {
                     Column({ space: 3 }) {
-                      Text(`版本 ${version.v}${version.v === this.history.head ? ' · 当前' : ''}`).fontSize(16).fontWeight(FontWeight.Medium)
+                      Text(`${AppLocale.text('版本 ')}${version.v}${version.v === this.history.head ? AppLocale.text(' · 当前') : ''}`).fontSize(16).fontWeight(FontWeight.Medium)
                       Text(version.savedAt ?? version.createdAt ?? version.source ?? '').fontSize(12).fontColor('#888888')
                     }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                     RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 21, color: Theme.FAINT })
@@ -5432,7 +5456,7 @@ struct Index {
       if (this.wechatPublishing) {
         Column({ space: 12 }) {
           LoadingProgress().width(30).height(30).color(Theme.WHITE)
-          Text('正在发布…').fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.WHITE)
+          Text(AppLocale.text('正在发布…')).fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.WHITE)
         }
           .padding({ left: 28, right: 28, top: 20, bottom: 20 })
           .backgroundColor('#CC2A2521').borderRadius(14).zIndex(220)
@@ -5443,7 +5467,7 @@ struct Index {
           Column() {
             Row() {
               Blank().width(44)
-              Text('换个风格重写')
+              Text(AppLocale.text('换个风格重写'))
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(Theme.INK)
@@ -5458,7 +5482,7 @@ struct Index {
             }.height(66).padding({ left: 8, right: 8 }).width('100%')
             Divider().color('#1A000000')
             Column() {
-              Text('选一个范文版本，把本文重写一遍，原文不变，可随时换回。')
+              Text(AppLocale.text('选一个范文版本，把本文重写一遍，原文不变，可随时换回。'))
                 .fontSize(14)
                 .lineHeight(22)
                 .fontColor(Theme.SECONDARY)
@@ -5467,7 +5491,7 @@ struct Index {
               if (this.styleRewriteLoading) {
                 Column({ space: 12 }) {
                   LoadingProgress().width(32).height(32).color(Theme.ACCENT_STRONG)
-                  Text('正在加载写作风格...').fontSize(14).fontColor(Theme.SECONDARY)
+                  Text(AppLocale.text('正在加载写作风格...')).fontSize(14).fontColor(Theme.SECONDARY)
                 }
                   .height(180)
                   .width('100%')
@@ -5476,7 +5500,7 @@ struct Index {
               } else if (this.styleRewriteError.length > 0) {
                 Column({ space: 10 }) {
                   Text(this.styleRewriteError).fontSize(14).fontColor(Theme.SECONDARY)
-                  Button('重新加载')
+                  Button(AppLocale.text('重新加载'))
                     .fontSize(13).fontColor(Theme.ACCENT_STRONG).backgroundColor(Color.Transparent)
                     .onClick(() => this.loadStyleRewriteHistory())
                 }
@@ -5485,7 +5509,7 @@ struct Index {
                   .justifyContent(FlexAlign.Center)
                   .alignItems(HorizontalAlign.Center)
               } else if (this.styleRewriteHistory.versions.length === 0) {
-                Text('暂无可用写作风格版本。')
+                Text(AppLocale.text('暂无可用写作风格版本。'))
                   .fontSize(14).fontColor(Theme.FAINT).height(160).width('100%')
                   .textAlign(TextAlign.Center)
               } else {
@@ -5510,7 +5534,7 @@ struct Index {
                               .textOverflow({ overflow: TextOverflow.Ellipsis })
                               .layoutWeight(1)
                             if (this.currentArticleStyleVersion() === version.v) {
-                              Text('当前')
+                              Text(AppLocale.text('当前'))
                                 .fontSize(11)
                                 .fontWeight(FontWeight.Bold)
                                 .fontColor(Theme.ACCENT_STRONG)
@@ -5589,7 +5613,7 @@ struct Index {
               .width(30)
               .height(30)
               .color(Theme.WHITE)
-            Text('正在重写')
+            Text(AppLocale.text('正在重写'))
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
               .fontColor(Theme.WHITE)
@@ -5611,29 +5635,29 @@ struct Index {
           Column({ space: 14 }) {
             Row() {
               Text(this.incomingShareTitle).fontSize(21).fontWeight(FontWeight.Bold).layoutWeight(1)
-              Button('关闭').fontSize(15).fontColor('#666666').backgroundColor(Color.Transparent)
+              Button(AppLocale.text('关闭')).fontSize(15).fontColor('#666666').backgroundColor(Color.Transparent)
                 .enabled(!this.importingShare).onClick(() => this.cancelIncomingShare())
             }.width('100%')
             Text(this.incomingShareDescription).fontSize(14).lineHeight(22).fontColor('#666666').width('100%')
             if (this.incomingShareKindValue === ShareImportKind.DATASET) {
               Row() {
-                Text(`已收集 ${this.shareDataset.count} 项 · ${this.shareDataset.totalChars} 字`)
+                Text(`${AppLocale.text('已收集 ')}${this.shareDataset.count}${AppLocale.text(' 项 · ')}${this.shareDataset.totalChars}${AppLocale.text(' 字')}`)
                   .fontSize(13).fontWeight(FontWeight.Medium).fontColor('#8A8175')
                 Blank()
-                Text(this.shareDataset.totalChars >= ShareImport.MIN_STYLE_CHARS ? '可以提取' :
-                  `还差 ${ShareImport.MIN_STYLE_CHARS - this.shareDataset.totalChars} 字`)
+                Text(AppLocale.text(this.shareDataset.totalChars >= ShareImport.MIN_STYLE_CHARS ? '可以提取' :
+                  `还差 ${ShareImport.MIN_STYLE_CHARS - this.shareDataset.totalChars} 字`))
                   .fontSize(12).fontColor(this.shareDataset.totalChars >= ShareImport.MIN_STYLE_CHARS ? '#4E7B55' : '#C0682E')
               }.width('100%')
               if (this.shareDataset.items.length > 0) {
                 Column() {
                   ForEach(this.shareDataset.items.slice(0, 4), (item: ShareDatasetItem) => {
                     Row({ space: 10 }) {
-                      Text(item.type === 'web' ? '网页' : (item.type === 'doc' ? '文档' : '文字'))
+                      Text(AppLocale.text(item.type === 'web' ? '网页' : (item.type === 'doc' ? '文档' : '文字')))
                         .fontSize(11).fontColor('#C0682E').width(34)
                       Column({ space: 2 }) {
-                        Text(item.title || item.source || '未命名语料').fontSize(14).fontColor('#2A2521')
+                        Text(item.title || item.source || AppLocale.text('未命名语料')).fontSize(14).fontColor('#2A2521')
                           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
-                        Text(`${item.chars} 字`).fontSize(11).fontColor('#A79F93')
+                        Text(`${item.chars}${AppLocale.text(' 字')}`).fontSize(11).fontColor('#A79F93')
                       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                     }.width('100%').padding({ top: 8, bottom: 8 })
                   }, (item: ShareDatasetItem) => item.id)
@@ -5653,17 +5677,17 @@ struct Index {
                     .backgroundColor(this.shareDatasetClearAfter ? '#D8593B' : '#FFFFFF')
                     .border({ width: 1, color: this.shareDatasetClearAfter ? '#D8593B' : '#E2D8C8' })
                     .borderRadius(6)
-                  Text('提取后清空数据集').fontSize(13).fontColor('#6B6357')
+                  Text(AppLocale.text('提取后清空数据集')).fontSize(13).fontColor('#6B6357')
                   Blank()
-                  Text('下次从零开始').fontSize(12).fontColor('#A79F93')
+                  Text(AppLocale.text('下次从零开始')).fontSize(12).fontColor('#A79F93')
                 }.width('100%')
               }.height(34).padding(0).backgroundColor(Color.Transparent)
                 .enabled(!this.importingShare).onClick(() => this.toggleShareDatasetClearAfter())
               Row({ space: 10 }) {
-                Button('继续收集').layoutWeight(1).height(50).fontColor('#2A2521').backgroundColor('#FFFFFF')
+                Button(AppLocale.text('继续收集')).layoutWeight(1).height(50).fontColor('#2A2521').backgroundColor('#FFFFFF')
                   .border({ width: 1, color: '#E2D8C8' }).enabled(!this.importingShare)
                   .onClick(() => this.cancelIncomingShare())
-                Button(this.importingShare ? '处理中…' : '提取文章风格')
+                Button(AppLocale.text(this.importingShare ? '处理中…' : '提取文章风格'))
                   .layoutWeight(1).height(50).fontColor(Color.White)
                   .backgroundColor(ShareImport.canExtract(this.shareDataset) ? '#D8593B' : '#D9B3A8')
                   .enabled(!this.importingShare && ShareImport.canExtract(this.shareDataset))
@@ -5671,10 +5695,10 @@ struct Index {
               }.width('100%')
             } else {
               Row({ space: 10 }) {
-                Button('取消').layoutWeight(1).height(50).fontColor('#333333').backgroundColor('#E8E8E5')
+                Button(AppLocale.text('取消')).layoutWeight(1).height(50).fontColor('#333333').backgroundColor('#E8E8E5')
                   .enabled(!this.importingShare).onClick(() => this.cancelIncomingShare())
-                Button(this.importingShare ? '处理中…' :
-                  (this.incomingShareKindValue === ShareImportKind.DATASET ? '加入数据集' : '开始生成文章'))
+                Button(AppLocale.text(this.importingShare ? '处理中…' :
+                  (this.incomingShareKindValue === ShareImportKind.DATASET ? '加入数据集' : '开始生成文章')))
                   .layoutWeight(1).height(50).fontColor(Color.White).backgroundColor('#D92D20')
                   .enabled(!this.importingShare).onClick(() => this.confirmIncomingShare())
               }.width('100%')

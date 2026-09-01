@@ -9,6 +9,7 @@ import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { PageHeader } from '../ui/PageHeader';
 import { PromptMarketFilter, PromptMarketFilters } from '../core/PromptMarketFilter';
+import { AppLocale } from '../core/AppLocale';
 
 class PromptShareEntry {
   id: string; state: PromptShareState;
@@ -123,8 +124,8 @@ export struct PromptSettingsView {
     this.importingMarketCode = item.code;
     const error: string = await promptStore.importCode(item.code);
     this.importingMarketCode = ''; this.items = promptStore.items();
-    if (error.length > 0) promptAction.showToast({ message: error});
-    else { this.closeMarketDetail(); promptAction.showToast({ message: '已加入提示词'}); }
+    if (error.length > 0) promptAction.showToast({ message: AppLocale.text(error)});
+    else { this.closeMarketDetail(); promptAction.showToast({ message: AppLocale.text('已加入提示词')}); }
   }
 
   private async openMarketDetail(item: PromptMarketItem): Promise<void> {
@@ -168,7 +169,7 @@ export struct PromptSettingsView {
   @Builder
   private marketSection() {
     Column({ space: 10 }) {
-      Text('社区提示词').fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
+      Text(AppLocale.text('社区提示词')).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY)
         .padding({ left: 2 }).width('100%')
       Row({ space: 8 }) {
         ForEach(this.marketFilters, (filter: PromptMarketFilter) => {
@@ -178,13 +179,13 @@ export struct PromptSettingsView {
       if (this.marketLoading && this.marketItems.length === 0) {
         Column({ space: 8 }) {
           LoadingProgress().width(24).height(24).color(Theme.ACCENT_STRONG)
-          Text('正在加载社区提示词…').fontSize(13).fontColor(Theme.FAINT)
+          Text(AppLocale.text('正在加载社区提示词…')).fontSize(13).fontColor(Theme.FAINT)
         }.height(88).justifyContent(FlexAlign.Center).width('100%')
       } else if (this.marketFailed && this.marketItems.length === 0) {
-        Button('社区提示词加载失败，点此重试').height(88).backgroundColor(Color.Transparent)
+        Button(AppLocale.text('社区提示词加载失败，点此重试')).height(88).backgroundColor(Color.Transparent)
           .fontColor(Theme.ACCENT).onClick(() => this.loadMarket())
       } else if (this.marketItems.length === 0) {
-        Text('暂无公开提示词').fontSize(13).fontColor(Theme.FAINT).height(88)
+        Text(AppLocale.text('暂无公开提示词')).fontSize(13).fontColor(Theme.FAINT).height(88)
           .width('100%').textAlign(TextAlign.Center)
       } else {
         Column() {
@@ -206,18 +207,18 @@ export struct PromptSettingsView {
                 .borderRadius(8)
               Column({ space: 3 }) {
                 Text(item.label).fontSize(15).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(`${item.author || '匿名'} · 导入 ${item.importCount}`).fontSize(12).fontColor(Theme.SECONDARY)
+                Text(AppLocale.isEnglish() ? `${item.author || AppLocale.text('匿名')} · Imported ${item.importCount}` : `${item.author || '匿名'} · 导入 ${item.importCount}`).fontSize(12).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               if (this.importingMarketCode === item.code) {
                 LoadingProgress().width(26).height(26).color(Theme.ACCENT_STRONG)
               }
               else if (PromptTree.containsImport(this.items, item.code)) {
                 Row({ space: 3 }) {
-                  Text('已导入').fontSize(12).fontColor(Theme.FAINT)
+                  Text(AppLocale.text('已导入')).fontSize(12).fontColor(Theme.FAINT)
                   RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 14, color: Theme.FAINT })
                 }
               } else {
-                Button('导入').fontSize(13).height(32).fontColor(Theme.ACCENT)
+                Button(AppLocale.text('导入')).fontSize(13).height(32).fontColor(Theme.ACCENT)
                   .backgroundColor(Color.White).border({ width: 1, color: '#EBC4B7', radius: 16 })
                   .onClick(() => this.importMarket(item))
               }
@@ -270,7 +271,7 @@ export struct PromptSettingsView {
   private async createGroup(): Promise<void> {
     const label: string = this.groupName.trim();
     if (label.length === 0) {
-      promptAction.showToast({ message: '请输入分组名字' });
+      promptAction.showToast({ message: AppLocale.text('请输入分组名字') });
       return;
     }
     if (this.creatingGroup) return;
@@ -283,7 +284,7 @@ export struct PromptSettingsView {
     const error: string = await promptStore.add(group);
     this.creatingGroup = false;
     if (error.length > 0) {
-      promptAction.showToast({ message: error });
+      promptAction.showToast({ message: AppLocale.text(error) });
       return;
     }
     this.items = promptStore.items();
@@ -315,12 +316,12 @@ export struct PromptSettingsView {
   }
 
   private async saveEditor(): Promise<void> {
-    if (this.editing.label.trim().length === 0) { promptAction.showToast({ message: '请输入名称'}); return; }
-    if (!this.editing.isGroup() && this.editing.prompt.trim().length === 0) { promptAction.showToast({ message: '请输入提示词内容'}); return; }
+    if (this.editing.label.trim().length === 0) { promptAction.showToast({ message: AppLocale.text('请输入名称')}); return; }
+    if (!this.editing.isGroup() && this.editing.prompt.trim().length === 0) { promptAction.showToast({ message: AppLocale.text('请输入提示词内容')}); return; }
     let error: string = '';
     if (this.originalId.length > 0) error = await promptStore.replace(this.originalId, this.editing);
     else error = await promptStore.add(this.editing, this.targetGroup.length > 0 ? this.targetGroup : undefined);
-    if (error.length > 0) promptAction.showToast({ message: error});
+    if (error.length > 0) promptAction.showToast({ message: AppLocale.text(error)});
     else { this.items = promptStore.items(); this.closeEditorPage(); }
   }
 
@@ -331,7 +332,7 @@ export struct PromptSettingsView {
     });
     if (result.index !== 1) return false;
     const error: string = await promptStore.remove(node.id); this.items = promptStore.items();
-    promptAction.showToast({ message: error.length > 0 ? error : '已删除'});
+    promptAction.showToast({ message: error.length > 0 ? AppLocale.text(error) : AppLocale.text('已删除')});
     return error.length === 0;
   }
 
@@ -361,7 +362,7 @@ export struct PromptSettingsView {
     const error: string = await promptStore.saveDraft(this.sortDraft);
     this.savingSort = false;
     if (error.length > 0) {
-      promptAction.showToast({ message: error });
+      promptAction.showToast({ message: AppLocale.text(error) });
       return;
     }
     this.items = promptStore.items();
@@ -534,13 +535,13 @@ export struct PromptSettingsView {
 
   private async previewImport(): Promise<void> {
     const code: string = PromptTree.extractShareCode(this.importInput);
-    if (!code) { promptAction.showToast({ message: '请输入分享链接或 7 位分享码'}); return; }
+    if (!code) { promptAction.showToast({ message: AppLocale.text('请输入分享链接或 7 位分享码')}); return; }
     this.importInput = code; this.importPreviewLoading = true;
     const result: PromptPreview | undefined = await promptStore.preview(code);
     if (PromptTree.extractShareCode(this.importInput) !== code) return;
     this.preview = result;
     this.importPreviewLoading = false;
-    if (!this.preview) promptAction.showToast({ message: '没有找到这个分享码'});
+    if (!this.preview) promptAction.showToast({ message: AppLocale.text('没有找到这个分享码')});
   }
 
   private updateImportInput(value: string): void {
@@ -552,10 +553,10 @@ export struct PromptSettingsView {
 
   private async importPrompt(): Promise<void> {
     const error: string = await promptStore.importCode(this.importInput);
-    if (error.length > 0) promptAction.showToast({ message: error});
+    if (error.length > 0) promptAction.showToast({ message: AppLocale.text(error)});
     else {
       this.items = promptStore.items(); this.preview = undefined; this.importInput = '';
-      this.closeImportSheet(); promptAction.showToast({ message: '导入成功'});
+      this.closeImportSheet(); promptAction.showToast({ message: AppLocale.text('导入成功')});
     }
   }
 
@@ -565,7 +566,7 @@ export struct PromptSettingsView {
     const previous: PromptShareState = this.shareState;
     const state: PromptShareState = await promptStore.setSharing(this.originalId, !previous.sharing);
     this.shareWorking = false;
-    if (state.error.length > 0) { promptAction.showToast({ message: state.error}); return; }
+    if (state.error.length > 0) { promptAction.showToast({ message: AppLocale.text(state.error)}); return; }
     this.shareState = state;
     this.shareEntries = this.shareEntries.filter((value: PromptShareEntry) => value.id !== this.originalId)
       .concat([new PromptShareEntry(this.originalId, state)]);
@@ -573,7 +574,7 @@ export struct PromptSettingsView {
 
   private copyShare(value: string): void {
     const data: pasteboard.PasteData = pasteboard.createPlainTextData(value);
-    pasteboard.getSystemPasteboard().setData(data); promptAction.showToast({ message: '已复制'});
+    pasteboard.getSystemPasteboard().setData(data); promptAction.showToast({ message: AppLocale.text('已复制')});
   }
 
   private async sharePrompt(code: string): Promise<void> {
@@ -582,14 +583,14 @@ export struct PromptSettingsView {
       const record: systemShare.SharedRecord = {
         utd: 'general.plain-text',
         content: Api.sharePage(code),
-        title: '分享提示词'
+        title: AppLocale.text('分享提示词')
       };
       const data: systemShare.SharedData = new systemShare.SharedData(record);
       await new systemShare.ShareController(data).show(context, {
         previewMode: systemShare.SharePreviewMode.DEFAULT
       });
     } catch (_) {
-      promptAction.showToast({ message: '无法打开系统分享面板' });
+      promptAction.showToast({ message: AppLocale.text('无法打开系统分享面板') });
     }
   }
 
@@ -650,7 +651,7 @@ export struct PromptSettingsView {
 
   @Builder
   private promptDeleteAction(node: PromptNode) {
-    Button('删除')
+    Button(AppLocale.text('删除'))
       .fontSize(14)
       .fontWeight(FontWeight.Bold)
       .fontColor(Color.White)
@@ -759,7 +760,7 @@ export struct PromptSettingsView {
             if (this.originLabel(node).length > 0) {
               this.originBadge(node)
             }
-            Text(`分组 · ${node.children.length} 项`).fontSize(12).fontColor(Theme.SECONDARY)
+            Text(`${AppLocale.text('分组 · ')}${node.children.length}${AppLocale.text('项')}`).fontSize(12).fontColor(Theme.SECONDARY)
           }.layoutWeight(1).constraintSize({ minWidth: 0 })
           if (!this.sorting) {
             RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
@@ -846,12 +847,12 @@ export struct PromptSettingsView {
       if (this.editorShareLoading) {
         Row({ space: 8 }) {
           LoadingProgress().width(20).height(20).color(Theme.ACCENT_STRONG)
-          Text('正在加载分享状态…').fontSize(13).fontColor(Theme.FAINT)
+          Text(AppLocale.text('正在加载分享状态…')).fontSize(13).fontColor(Theme.FAINT)
         }.height(44).width('100%')
       } else {
         Row() {
           Column({ space: 3 }) {
-            Text('分享这条提示词').fontSize(15).fontColor(Theme.INK)
+            Text(AppLocale.text('分享这条提示词')).fontSize(15).fontColor(Theme.INK)
             Text(this.shareState.sharing
               ? (this.shareState.borrowed ?
                 '转发中：这是原作者的分享码，关闭只停止转发，码不会失效' :
@@ -905,32 +906,32 @@ export struct PromptSettingsView {
             (this.editing.isGroup() ? '新建分组' : '提示词'),
           onBack: () => this.closeEditorPage()
         })
-        Button('保存')
+        Button(AppLocale.text('保存'))
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Color.White)
           .height(40).padding({ left: 19, right: 19 }).backgroundColor(Theme.ACCENT).borderRadius(11)
           .margin({ right: 16 }).onClick(() => this.saveEditor())
       }.height(56).width('100%')
       Scroll() {
         Column({ space: 7 }) {
-          Text(this.editing.isGroup() ? '分组名字' : '菜单里的名字')
+          Text(AppLocale.text(this.editing.isGroup() ? '分组名字' : '菜单里的名字'))
             .fontSize(14).fontColor(Theme.SECONDARY).width('100%')
-          TextInput({ text: this.editing.label, placeholder: this.editing.isGroup() ? '分组名字' : '菜单名称' })
+          TextInput({ text: this.editing.label, placeholder: AppLocale.text(this.editing.isGroup() ? '分组名字' : '菜单名称') })
             .height(54).fontSize(16).padding({ left: 14, right: 14 })
             .backgroundColor(Theme.CARD).border({ width: 1, color: '#E5DED2', radius: 12 }).borderRadius(12)
             .onChange((value: string) => {
               const next: PromptNode = this.editing.copy(); next.label = value; this.editing = next;
             })
           if (!this.editing.isGroup()) {
-            Text('提示词').fontSize(14).fontColor(Theme.SECONDARY).width('100%').margin({ top: 7 })
-            TextArea({ text: this.editing.prompt, placeholder: '写下长按后要执行的指令' })
+            Text(AppLocale.text('提示词')).fontSize(14).fontColor(Theme.SECONDARY).width('100%').margin({ top: 7 })
+            TextArea({ text: this.editing.prompt, placeholder: AppLocale.text('写下长按后要执行的指令') })
               .height(160).fontSize(16).lineHeight(23).padding(14)
               .backgroundColor(Theme.CARD).border({ width: 1, color: '#E5DED2', radius: 12 }).borderRadius(12)
               .onChange((value: string) => {
                 const next: PromptNode = this.editing.copy(); next.prompt = value; this.editing = next;
               })
             Row() {
-              Text('适用于').fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.INK).layoutWeight(1)
-              Text('决定在哪种长按里出现').fontSize(12).fontColor(Theme.FAINT)
+              Text(AppLocale.text('适用于')).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.INK).layoutWeight(1)
+              Text(AppLocale.text('决定在哪种长按里出现')).fontSize(12).fontColor(Theme.FAINT)
             }.width('100%').margin({ top: 7 })
             Row({ space: 16 }) {
               this.appliesCard('文字', 'text', RI.QUILL_PEN)
@@ -941,7 +942,7 @@ export struct PromptSettingsView {
             }
           }
           if (this.originalId.length > 0) {
-            Button(this.editing.isGroup() ? '删除分组' : '删除提示词')
+            Button(AppLocale.text(this.editing.isGroup() ? '删除分组' : '删除提示词'))
               .fontSize(14).fontColor('#B42318').backgroundColor('#FEECE8')
               .width('100%').height(46).margin({ top: 16 })
               .onClick(async () => {
@@ -968,14 +969,14 @@ export struct PromptSettingsView {
   private async restoreDefaults(): Promise<void> {
     this.closePromptSwipe();
     const result = await promptAction.showDialog({
-      title: '恢复默认提示词',
-      message: '会补回缺少的系统提示词，不会删除自建内容。',
-      buttons: [{ text: '取消', color: '#666666' }, { text: '恢复', color: Theme.ACCENT }]
+      title: AppLocale.text('恢复默认提示词'),
+      message: AppLocale.text('会补回缺少的系统提示词，不会删除自建内容。'),
+      buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('恢复'), color: Theme.ACCENT }]
     });
     if (result.index !== 1) return;
     const error: string = await promptStore.restoreDefaults();
     this.items = promptStore.items();
-    promptAction.showToast({ message: error.length > 0 ? error : '已恢复默认提示词' });
+    promptAction.showToast({ message: error.length > 0 ? AppLocale.text(error) : AppLocale.text('已恢复默认提示词') });
   }
 
   build() {
@@ -983,16 +984,16 @@ export struct PromptSettingsView {
       Column() {
         Stack({ alignContent: Alignment.End }) {
           if (this.sorting) {
-            Text('提示词')
+            Text(AppLocale.text('提示词'))
               .fontSize(23).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               .width('100%').height(56).textAlign(TextAlign.Center)
             Row() {
-              Text('取消')
+              Text(AppLocale.text('取消'))
                 .fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
                 .width(52).height(40).textAlign(TextAlign.Center)
                 .onClick(() => this.cancelSort())
               Blank()
-              Text(this.savingSort ? '保存中…' : '完成')
+              Text(AppLocale.text(this.savingSort ? '保存中…' : '完成'))
                 .fontSize(14).fontWeight(FontWeight.Bold)
                 .fontColor(this.savingSort ? Theme.FAINT : Theme.ACCENT)
                 .width(this.savingSort ? 72 : 52).height(40).textAlign(TextAlign.Center)
@@ -1017,21 +1018,21 @@ export struct PromptSettingsView {
         }.height(56).width('100%')
         Scroll() {
           Column({ space: 12 }) {
-            Text(this.sorting ? '长按提示词并拖动排序；拖到分组行可收进该组。' :
-              '一套指令，长按文字或图片时按『适用于』自动筛选。改过的系统项标『已自定义』，自己建的标『自建』，收下别人分享的标『导入』。')
+            Text(AppLocale.text(this.sorting ? '长按提示词并拖动排序；拖到分组行可收进该组。' :
+              '一套指令，长按文字或图片时按『适用于』自动筛选。改过的系统项标『已自定义』，自己建的标『自建』，收下别人分享的标『导入』。'))
               .fontSize(13).lineHeight(19).fontColor(Theme.SECONDARY).width('100%')
             if (this.loadWarning.length > 0) {
-              Text('加载失败，正在显示上次内容')
+              Text(AppLocale.text('加载失败，正在显示上次内容'))
                 .fontSize(13).fontColor('#A44C28').padding({ left: 12, right: 12, top: 9, bottom: 9 })
                 .backgroundColor('#FFEADB').borderRadius(9).width('100%')
             }
             if (this.loading) {
               Column({ space: 8 }) {
                 LoadingProgress().width(28).height(28).color(Theme.ACCENT_STRONG)
-                Text('正在加载提示词…').fontSize(12).fontColor(Theme.FAINT)
+                Text(AppLocale.text('正在加载提示词…')).fontSize(12).fontColor(Theme.FAINT)
               }.height(120).justifyContent(FlexAlign.Center).width('100%')
             } else if (this.visibleItems().length === 0) {
-              Text('还没有提示词，可点击右上角新建')
+              Text(AppLocale.text('还没有提示词，可点击右上角新建'))
                 .fontSize(15).fontColor(Theme.FAINT).height(140).width('100%').textAlign(TextAlign.Center)
             } else {
               Column() {
@@ -1049,8 +1050,8 @@ export struct PromptSettingsView {
                 Row() { RemixIcon({ glyph: RI.DOWNLOAD, iconSize: 21, color: Theme.ACCENT }) }
                   .width(44).height(44).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(10)
                 Column({ space: 3 }) {
-                  Text('输入魔法数字导入').fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                  Text('把别人分享的提示词存进你的菜单').fontSize(13).fontColor(Theme.SECONDARY)
+                  Text(AppLocale.text('输入魔法数字导入')).fontSize(16).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                  Text(AppLocale.text('把别人分享的提示词存进你的菜单')).fontSize(13).fontColor(Theme.SECONDARY)
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                 RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
               }
@@ -1062,10 +1063,10 @@ export struct PromptSettingsView {
                   this.preview = undefined;
                   this.openImportSheet();
                 })
-              Text('也可以在录音时直接对 VoiceDrop 说出数字，或点开 voicedrop.cn 链接自动跳转到这里。')
+              Text(AppLocale.text('也可以在录音时直接对 VoiceDrop 说出数字，或点开 voicedrop.cn 链接自动跳转到这里。'))
                 .fontSize(12).lineHeight(18).fontColor(Theme.FAINT)
                 .padding({ left: 4, right: 4, top: 8 }).width('100%')
-              Button('恢复默认提示词').fontSize(14).fontColor(Theme.ACCENT).height(52)
+              Button(AppLocale.text('恢复默认提示词')).fontSize(14).fontColor(Theme.ACCENT).height(52)
                 .backgroundColor(Color.Transparent).width('100%').onClick(() => this.restoreDefaults())
             }
           }
@@ -1093,14 +1094,14 @@ export struct PromptSettingsView {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.showNewMenu = false)
           Column({ space: 12 }) {
-            Text('新建').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            Text(AppLocale.text('新建')).fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               .width('100%').textAlign(TextAlign.Center).margin({ bottom: 2 })
             Row({ space: 12 }) {
               Row() { RemixIcon({ glyph: RI.EDIT, iconSize: 22, color: Theme.ACCENT }) }
                 .width(48).height(48).justifyContent(FlexAlign.Center).backgroundColor(Theme.ACCENT_SOFT).borderRadius(10)
               Column({ space: 3 }) {
-                Text('新建动作').fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                Text('一条提示词指令').fontSize(13).fontColor(Theme.SECONDARY)
+                Text(AppLocale.text('新建动作')).fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                Text(AppLocale.text('一条提示词指令')).fontSize(13).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
             }.height(82).padding({ left: 14, right: 12 }).backgroundColor(Theme.CARD)
@@ -1110,8 +1111,8 @@ export struct PromptSettingsView {
               Row() { RemixIcon({ glyph: RI.FOLDER, iconSize: 22, color: Theme.SECONDARY }) }
                 .width(48).height(48).justifyContent(FlexAlign.Center).backgroundColor('#F2EEE7').borderRadius(10)
               Column({ space: 3 }) {
-                Text('新建分组').fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                Text('收纳几个动作，菜单里成为二级子菜单').fontSize(13).fontColor(Theme.SECONDARY)
+                Text(AppLocale.text('新建分组')).fontSize(17).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                Text(AppLocale.text('收纳几个动作，菜单里成为二级子菜单')).fontSize(13).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
             }.height(82).padding({ left: 14, right: 12 }).backgroundColor(Theme.CARD)
@@ -1134,10 +1135,10 @@ export struct PromptSettingsView {
               if (!this.creatingGroup) this.showGroupDialog = false;
             })
           Column({ space: 14 }) {
-            Text('新建分组')
+            Text(AppLocale.text('新建分组'))
               .fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               .width('100%').textAlign(TextAlign.Center)
-            TextInput({ text: this.groupName, placeholder: '分组名字' })
+            TextInput({ text: this.groupName, placeholder: AppLocale.text('分组名字') })
               .height(54).fontSize(17).padding({ left: 14, right: 14 })
               .defaultFocus(true)
               .backgroundColor(Theme.CARD)
@@ -1145,13 +1146,13 @@ export struct PromptSettingsView {
               .borderRadius(12)
               .onChange((value: string) => this.groupName = value)
             Row({ space: 10 }) {
-              Button('取消')
+              Button(AppLocale.text('取消'))
                 .layoutWeight(1).height(44)
                 .fontSize(15).fontColor(Theme.SECONDARY)
                 .backgroundColor('#F2EEE7')
                 .enabled(!this.creatingGroup)
                 .onClick(() => this.showGroupDialog = false)
-              Button(this.creatingGroup ? '创建中…' : '创建')
+              Button(AppLocale.text(this.creatingGroup ? '创建中…' : '创建'))
                 .layoutWeight(1).height(44)
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor(Color.White)
                 .backgroundColor(Theme.ACCENT)
@@ -1171,24 +1172,24 @@ export struct PromptSettingsView {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.closeImportSheet())
           Column({ space: 13 }) {
-            Text('导入提示词').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            Text(AppLocale.text('导入提示词')).fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               .width('100%').textAlign(TextAlign.Center)
-            Text('输入 7 位魔法数字，或粘贴分享链接').fontSize(14).fontColor(Theme.FAINT)
+            Text(AppLocale.text('输入 7 位魔法数字，或粘贴分享链接')).fontSize(14).fontColor(Theme.FAINT)
               .width('100%').textAlign(TextAlign.Center)
-            TextInput({ text: this.importInput, placeholder: '7 位魔法数字' })
+            TextInput({ text: this.importInput, placeholder: AppLocale.text('7 位魔法数字') })
               .height(58).fontSize(18).textAlign(TextAlign.Center).backgroundColor(Theme.CARD)
               .border({ width: 1, color: '#E6DDD1', radius: 12 }).borderRadius(12)
               .onChange((value: string) => this.updateImportInput(value))
-            Button(this.importPreviewLoading ? '正在读取…' : (this.preview ? '加入我的提示词' : '读取提示词'))
+            Button(AppLocale.text(this.importPreviewLoading ? '正在读取…' : (this.preview ? '加入我的提示词' : '读取提示词')))
               .fontSize(17).fontWeight(FontWeight.Bold).fontColor(Color.White)
               .height(54).width('100%').backgroundColor(Theme.ACCENT).borderRadius(12)
               .enabled(!this.importPreviewLoading)
               .onClick(() => { if (this.preview) this.importPrompt(); else this.previewImport(); })
             if (this.preview) {
-              Text(`将导入「${this.preview!.label}」`).fontSize(13).fontColor(Theme.SECONDARY)
+              Text(AppLocale.isEnglish() ? `Will import “${this.preview!.label}”` : `将导入「${this.preview!.label}」`).fontSize(13).fontColor(Theme.SECONDARY)
                 .width('100%').textAlign(TextAlign.Center)
             }
-            Text('导入后是你自己的副本，可改名、改内容、随时删除；原作者之后的修改不影响你。')
+            Text(AppLocale.text('导入后是你自己的副本，可改名、改内容、随时删除；原作者之后的修改不影响你。'))
               .fontSize(13).lineHeight(19).fontColor(Theme.FAINT).width('100%').textAlign(TextAlign.Center)
           }.padding({ left: 16, right: 16, top: 22, bottom: 26 }).backgroundColor('#FFFBF6')
             .borderRadius({ topLeft: 22, topRight: 22 }).width('100%')
@@ -1198,11 +1199,11 @@ export struct PromptSettingsView {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.moveNodeId = '')
           Column({ space: 8 }) {
-            Text('移动到').fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+            Text(AppLocale.text('移动到')).fontSize(20).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               .width('100%').textAlign(TextAlign.Center).margin({ bottom: 4 })
             Row({ space: 12 }) {
               RemixIcon({ glyph: RI.FILE_TEXT, iconSize: 20, color: Theme.SECONDARY })
-              Text('顶层菜单').fontSize(16).fontColor(Theme.INK).layoutWeight(1)
+              Text(AppLocale.text('顶层菜单')).fontSize(16).fontColor(Theme.INK).layoutWeight(1)
               RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
             }.height(54).padding({ left: 14, right: 14 }).backgroundColor(Theme.CARD).borderRadius(12)
               .onClick(() => this.moveSortNode(''))
@@ -1210,7 +1211,7 @@ export struct PromptSettingsView {
               Row({ space: 12 }) {
                 RemixIcon({ glyph: RI.FOLDER, iconSize: 20, color: Theme.SECONDARY })
                 Text(group.label).fontSize(16).fontColor(Theme.INK).layoutWeight(1)
-                Text(`${group.children.length} 项`).fontSize(12).fontColor(Theme.FAINT)
+                Text(`${group.children.length}${AppLocale.text('项')}`).fontSize(12).fontColor(Theme.FAINT)
                 RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 17, color: Theme.FAINT })
               }.height(54).padding({ left: 14, right: 14 }).backgroundColor(Theme.CARD).borderRadius(12)
                 .onClick(() => this.moveSortNode(group.id))
@@ -1245,39 +1246,39 @@ export struct PromptSettingsView {
                 Text(this.marketDetail!.label)
                   .fontSize(23).fontWeight(FontWeight.Bold).fontColor(Theme.INK).width('100%')
                 Row({ space: 8 }) {
-                  Text((this.marketDetail!.author || '友').substring(0, 1))
+                  Text((this.marketDetail!.author || (AppLocale.isEnglish() ? 'F' : '友')).substring(0, 1))
                     .fontSize(11).fontWeight(FontWeight.Bold).fontColor(Color.White)
                     .width(24).height(24).textAlign(TextAlign.Center)
                     .backgroundColor('#D8A25B').borderRadius(12)
-                  Text(this.marketDetail!.author || '匿名分享者')
+                  Text(this.marketDetail!.author || AppLocale.text('匿名分享者'))
                     .fontSize(13).fontColor(Theme.SECONDARY)
                 }.width('100%')
                 Row() {
                   Column({ space: 2 }) {
                     Text(`${this.marketDetail!.importCount}`).fontSize(18).fontWeight(FontWeight.Bold)
-                    Text('被导入').fontSize(11).fontColor(Theme.FAINT)
+                    Text(AppLocale.text('被导入')).fontSize(11).fontColor(Theme.FAINT)
                   }.layoutWeight(1)
                   Divider().vertical(true).height(30).color(Theme.DIVIDER)
                   Column({ space: 2 }) {
                     Text(this.marketApplies(this.marketDetail!)).fontSize(18).fontWeight(FontWeight.Bold)
-                    Text('适用于').fontSize(11).fontColor(Theme.FAINT)
+                    Text(AppLocale.text('适用于')).fontSize(11).fontColor(Theme.FAINT)
                   }.layoutWeight(1)
                 }
                   .height(78).backgroundColor(Theme.CARD)
                   .border({ width: 1, color: Theme.BORDER, radius: 5 })
                   .borderRadius(5).width('100%')
-                Text('提示词全文')
+                Text(AppLocale.text('提示词全文'))
                   .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).width('100%')
                 if (this.marketPreviewLoading) {
                   Row({ space: 8 }) {
                     LoadingProgress().width(22).height(22).color(Theme.ACCENT_STRONG)
-                    Text('加载中…').fontSize(14).fontColor(Theme.SECONDARY)
+                    Text(AppLocale.text('加载中…')).fontSize(14).fontColor(Theme.SECONDARY)
                   }
                     .padding(14).backgroundColor(Theme.CARD)
                     .border({ width: 1, color: Theme.BORDER, radius: 5 })
                     .borderRadius(5).width('100%')
                 } else {
-                  Text(this.marketPreview?.prompt || '（全文加载失败）')
+                  Text(this.marketPreview?.prompt || AppLocale.text('（全文加载失败）'))
                     .fontSize(14).lineHeight(22).fontColor('#5B5349')
                     .padding(14).backgroundColor(Theme.CARD)
                     .border({ width: 1, color: Theme.BORDER, radius: 5 })
@@ -1285,7 +1286,7 @@ export struct PromptSettingsView {
                 }
                 if (this.marketDetail!.exampleInput.length > 0 ||
                   this.marketDetail!.exampleOutput.length > 0) {
-                  Text('效果示例')
+                  Text(AppLocale.text('效果示例'))
                     .fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).width('100%')
                   if (this.marketDetail!.exampleInput.length > 0) {
                     Text(this.marketDetail!.exampleInput)

@@ -8,6 +8,7 @@ import {
   ManualSectionSelection
 } from '../core/ManualMarkdown';
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 
 @Component
@@ -185,7 +186,7 @@ export struct HelpManualPage {
               .backgroundColor(this.activeSection === index ? Theme.ACCENT_SOFT : Theme.CARD)
               .borderRadius(10)
               .border({ width: 0.5, color: this.activeSection === index ? '#EDC7B8' : Theme.BORDER })
-              .accessibilityText(`跳到${label}`)
+              .accessibilityText(`${AppLocale.text('跳到')}${label}`)
               .onClick(() => this.scrollToSection(index))
           }, (label: string) => label)
         }.padding({ left: 16, right: 10, top: 4, bottom: 8 })
@@ -222,8 +223,8 @@ export struct HelpManualPage {
         }
         if (this.loadFailed) {
           Column({ space: 14 }) {
-            Text('使用手册暂时无法读取').fontSize(17).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
-            Text('请重新打开应用').fontSize(14).fontColor(Theme.SECONDARY)
+            Text(AppLocale.text('使用手册暂时无法读取')).fontSize(17).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
+            Text(AppLocale.text('请重新打开应用')).fontSize(14).fontColor(Theme.SECONDARY)
           }
         }
       }.layoutWeight(1).width('100%')

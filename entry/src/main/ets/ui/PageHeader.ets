@@ -1,5 +1,6 @@
 import { VoiceDropTheme as Theme } from './VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from './RemixIcon';
+import { AppLocale } from '../core/AppLocale';
 
 /** Shared title bar for every secondary page. */
 @Component
@@ -7,6 +8,8 @@ export struct PageHeader {
   @Prop title: string = '';
   @Prop actionGlyph: string = '';
   @Prop actionLabel: string = '';
+  @Prop actionText: string = '';
+  @Prop actionTextFilled: boolean = false;
   @Prop actionFilled: boolean = true;
   @Prop rightInset: number = 16;
   onBack: () => void = () => {};
@@ -14,7 +17,7 @@ export struct PageHeader {
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      Text(this.title)
+      Text(AppLocale.text(this.title))
         .fontSize(23)
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.INK)
@@ -35,7 +38,25 @@ export struct PageHeader {
           .stateEffect(false)
           .onClick(this.onBack)
         Blank()
-        if (this.actionGlyph.length > 0) {
+        if (this.actionText.length > 0) {
+          Button(this.actionText)
+            .height(40)
+            .padding({ left: 12, right: 12 })
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.actionTextFilled ? Theme.WHITE : Theme.ACCENT)
+            .backgroundColor(this.actionTextFilled ? Theme.ACCENT : Theme.CARD)
+            .border({
+              width: this.actionTextFilled ? 0 : 1,
+              color: this.actionTextFilled ? Color.Transparent : Theme.BORDER,
+              radius: 11
+            })
+            .borderRadius(11)
+            .clip(true)
+            .stateEffect(false)
+            .accessibilityText(this.actionLabel || this.actionText)
+            .onClick(this.onAction)
+        } else if (this.actionGlyph.length > 0) {
           Button({ type: ButtonType.Normal }) {
             RemixIcon({
               glyph: this.actionGlyph,

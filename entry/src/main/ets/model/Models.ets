@@ -1,4 +1,5 @@
 import { RecordingName } from '../core/RecordingName';
+import { AppLocale } from '../core/AppLocale';
 
 export interface RecordingRowPayload {
   name: string;
@@ -56,15 +57,15 @@ export class Recording {
   dateTimeLabel(): string { return RecordingName.dateTimeLabel(this.name); }
   durationLabel(): string { return RecordingName.parse(this.name)?.duration ?? ''; }
   statusLabel(): string {
-    if (this.saving) return '正在保存';
-    if (this.uploading) return '正在上传';
-    if (this.hasArticles) return '已成文';
-    if (this.isEmpty) return '无语音';
-    if (this.phase === 'asr') return '听录音';
-    if (this.phase === 'mining') return '挖文章';
-    if (this.blockReason === 'too-long') return '录音过长';
-    if (this.blockReason === 'no-credit') return '余额不足';
-    return '待处理';
+    if (this.saving) return AppLocale.text('正在保存');
+    if (this.uploading) return AppLocale.text('正在上传');
+    if (this.hasArticles) return AppLocale.text('已成文');
+    if (this.isEmpty) return AppLocale.text('无语音');
+    if (this.phase === 'asr') return AppLocale.text('听录音');
+    if (this.phase === 'mining') return AppLocale.text('挖文章');
+    if (this.blockReason === 'too-long') return AppLocale.text('录音过长');
+    if (this.blockReason === 'no-credit') return AppLocale.text('余额不足');
+    return AppLocale.text('待处理');
   }
 }
 

@@ -1,6 +1,7 @@
 import { ArticleBlock, ArticleBody } from '../core/ArticleBody';
 import { ArticleDoc, MinedArticle } from '../model/Models';
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 import { AiGeneratedLabel } from '../ui/AiGeneratedLabel';
 
 @Component
@@ -33,7 +34,7 @@ export struct SharedArticlePage {
     Column() {
       PageHeader({ title: '分享的文章', onBack: this.onBack })
       if (!this.article || this.article.articles.length === 0) {
-        Text('这篇分享已不可用').fontSize(16).fontColor('#888888').margin({ top: 80 })
+        Text(AppLocale.text('这篇分享已不可用')).fontSize(16).fontColor('#888888').margin({ top: 80 })
       } else {
         Scroll() {
           Column({ space: 12 }) {

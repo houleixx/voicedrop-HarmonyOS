@@ -5,6 +5,7 @@ import { bookWritingService, BookWritingResult, BookWritingService } from '../da
 import { usageStore } from '../data/UsageStore';
 import { referralService, InviteLink } from '../data/ReferralService';
 import { BookWritingArticleSeed, BookWritingSeed } from '../core/BookWritingSeed';
+import { AppLocale } from '../core/AppLocale';
 
 @Component
 export struct BookWritingPage {
@@ -30,6 +31,29 @@ export struct BookWritingPage {
     try { this.invite = await referralService.inviteLink(); } catch (_) {}
   }
   private shortfall(): number { return BookWritingService.shortfall(this.balance); }
+  private feedCreditTitle(): string {
+    const credits: number = this.invite?.suanliFeedAuthor ?? 0;
+    if (AppLocale.isEnglish()) {
+      return credits > 0 ? `Have friends boost your article — earn about ${credits} credits each time` :
+        'Have friends boost your article — earn credits every time';
+    }
+    return credits > 0 ? `请朋友给你的文章「加油」——一次约得 ${credits} 算力` :
+      '请朋友给你的文章「加油」——作者每次都得算力';
+  }
+  private inviteCreditTitle(): string {
+    const credits: number = this.invite?.suanliInviter ?? 0;
+    if (AppLocale.isEnglish()) {
+      return credits > 0 ? `Invite friends to VoiceDrop — earn about ${credits} credits per install` :
+        'Invite friends to VoiceDrop — earn credits for every install';
+    }
+    return credits > 0 ? `邀请朋友装 VoiceDrop——装一个约得 ${credits} 算力` :
+      '邀请朋友装 VoiceDrop——每装一个你都得算力';
+  }
+  private submitLabel(): string {
+    if (this.sending) return AppLocale.text('提交中…');
+    if (this.shortfall() === 0) return AppLocale.text('开始写书 · 320 算力');
+    return AppLocale.isEnglish() ? `Need ${this.shortfall()} more credits` : `算力不够 · 还差 ${this.shortfall()}`;
+  }
   private canSubmit(): boolean {
     return BookWritingSeed.canSubmit(this.seed, this.seedArticle) && !this.sending && !this.submitted &&
       (this.balance === undefined || this.balance >= 320);
@@ -52,7 +76,7 @@ export struct BookWritingPage {
     }
   }
   @Builder private sectionLabel(label: string) {
-    Text(label).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#9A948B').letterSpacing(2).width('100%')
+    Text(AppLocale.text(label)).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#9A948B').letterSpacing(2).width('100%')
   }
   @Builder private earnRow(glyph: string, tileColor: string, iconColor: string, title: string, copy: string) {
     Row({ space: 12 }) {
@@ -67,8 +91,8 @@ export struct BookWritingPage {
         .borderRadius(10)
         .margin({ top: 5 })
       Column({ space: 3 }) {
-        Text(title).fontSize(14).fontWeight(FontWeight.Bold).lineHeight(20).fontColor(Theme.INK).width('100%')
-        Text(copy).fontSize(12.5).lineHeight(19).fontColor(Theme.SECONDARY).width('100%')
+        Text(AppLocale.text(title)).fontSize(14).fontWeight(FontWeight.Bold).lineHeight(20).fontColor(Theme.INK).width('100%')
+        Text(AppLocale.text(copy)).fontSize(12.5).lineHeight(19).fontColor(Theme.SECONDARY).width('100%')
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').alignItems(VerticalAlign.Top)
   }
@@ -77,8 +101,8 @@ export struct BookWritingPage {
       Text(number).width(28).height(28).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
         .textAlign(TextAlign.Center).backgroundColor('#F9E5DE').borderRadius(9)
       Column({ space: 1 }) {
-        Text(title).fontSize(14.5).fontWeight(FontWeight.Bold).lineHeight(20).fontColor(Theme.INK).width('100%')
-        Text(copy).fontSize(12.5).lineHeight(18).fontColor(Theme.SECONDARY).width('100%')
+        Text(AppLocale.text(title)).fontSize(14.5).fontWeight(FontWeight.Bold).lineHeight(20).fontColor(Theme.INK).width('100%')
+        Text(AppLocale.text(copy)).fontSize(12.5).lineHeight(18).fontColor(Theme.SECONDARY).width('100%')
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ left: 12, right: 12, top: 9, bottom: 9 }).alignItems(VerticalAlign.Top)
   }
@@ -87,7 +111,7 @@ export struct BookWritingPage {
   }
   build() {
     Column() {
-      PageHeader({ title: '写书', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('写书'), onBack: this.onBack })
       if (this.submitted) Column({ space: 16 }) {
         Row() {
           RemixIcon({ glyph: RI.CHECK, iconSize: 34, color: Color.White })
@@ -95,9 +119,9 @@ export struct BookWritingPage {
           .width(56).height(56)
           .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .backgroundColor(Theme.GREEN).borderRadius(28)
-        Text('开始写了！').fontSize(22).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-        Text('现在可以关掉 App。书通常 10–30 分钟写完，过稿一章、上架一章——下拉刷新「写书」书架就能看到。').fontSize(15).lineHeight(24).fontColor(Theme.SECONDARY).textAlign(TextAlign.Center)
-        Button('好').width(150).height(48).fontColor(Color.White).backgroundColor(Theme.ACCENT).onClick(this.onOpenShelf)
+        Text(AppLocale.text('开始写了！')).fontSize(22).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+        Text(AppLocale.text('现在可以关掉 App。书通常 10–30 分钟写完，过稿一章、上架一章——下拉刷新「写书」书架就能看到。')).fontSize(15).lineHeight(24).fontColor(Theme.SECONDARY).textAlign(TextAlign.Center)
+        Button(AppLocale.text('好')).width(150).height(48).fontColor(Color.White).backgroundColor(Theme.ACCENT).onClick(this.onOpenShelf)
       }
         .layoutWeight(1)
         .padding({ left: 30, right: 30, top: 48, bottom: 30 })
@@ -106,12 +130,12 @@ export struct BookWritingPage {
       else {
         Scroll() { Column({ space: 18 }) {
           Row({ space: 9 }) {
-            Text('AI生成')
+            Text(AppLocale.text('AI生成'))
               .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
               .padding({ left: 7, right: 7, top: 2, bottom: 2 })
               .backgroundColor(Theme.ACCENT_SOFT).borderRadius(11)
-              .accessibilityText('AI生成内容')
-            Text('本功能使用人工智能生成书籍内容')
+              .accessibilityText(AppLocale.text('AI生成内容'))
+            Text(AppLocale.text('本功能使用人工智能生成书籍内容'))
               .fontSize(12).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
           }
             .width('100%').constraintSize({ minHeight: 34 })
@@ -124,18 +148,18 @@ export struct BookWritingPage {
                 RemixIcon({ glyph: RI.FLASHLIGHT, iconSize: 22, color: Theme.AMBER })
                   .translate({ y: -2 })
                 Text('320').fontSize(34).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-                Text('算力').fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ top: 12 })
+                Text(AppLocale.text('算力')).fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ top: 12 })
               }.alignItems(VerticalAlign.Center)
-              Text('写一本书的价钱，提交时一次扣清').fontSize(12.5).fontColor('#928A80')
+              Text(AppLocale.text('写一本书的价钱，提交时一次扣清')).fontSize(12.5).fontColor('#928A80')
             }.alignItems(HorizontalAlign.Start)
             Blank()
             if (this.balance === undefined) {
-              Text('加载中…').fontSize(13).fontColor(Theme.FAINT)
+              Text(AppLocale.text('加载中…')).fontSize(13).fontColor(Theme.FAINT)
             } else {
               Column({ space: 3 }) {
                 Text(`${Math.round(this.balance)}`).fontSize(24).fontWeight(FontWeight.Bold)
                   .fontColor(this.shortfall() > 0 ? '#C64232' : Theme.GREEN)
-                Text('你现在的算力').fontSize(12.5).fontColor('#928A80')
+                Text(AppLocale.text('你现在的算力')).fontSize(12.5).fontColor('#928A80')
               }.alignItems(HorizontalAlign.End)
             }
           }.width('100%').padding({ left: 18, right: 18, top: 16, bottom: 16 })
@@ -144,20 +168,16 @@ export struct BookWritingPage {
             Column({ space: 8 }) {
               this.sectionLabel('算力不够？')
               Column({ space: 14 }) {
-                Text(`还差 ${this.shortfall()} 算力，两条来路：`)
+                Text(`${AppLocale.text('还差 ')}${this.shortfall()}${AppLocale.text(' 算力，两条来路：')}`)
                   .fontSize(14).fontWeight(FontWeight.Bold).lineHeight(21).fontColor(Theme.INK).width('100%')
                 this.earnRow(RI.FLASHLIGHT, Theme.AMBER_BG, Theme.AMBER,
-                  (this.invite?.suanliFeedAuthor ?? 0) > 0
-                    ? `请朋友给你的文章「加油」——一次约得 ${this.invite!.suanliFeedAuthor} 算力`
-                    : '请朋友给你的文章「加油」——作者每次都得算力',
+                  this.feedCreditTitle(),
                   '把文章分享到 VD社区或发给朋友，读的人点「加油」你就进账')
                 this.earnRow(RI.TEAM, Theme.ACCENT_SOFT, Theme.ACCENT,
-                  (this.invite?.suanliInviter ?? 0) > 0
-                    ? `邀请朋友装 VoiceDrop——装一个约得 ${this.invite!.suanliInviter} 算力`
-                    : '邀请朋友装 VoiceDrop——每装一个你都得算力',
+                  this.inviteCreditTitle(),
                   '朋友通过你的链接安装，双方都到账')
                 if ((this.invite?.url ?? '').length > 0) {
-                  Button('把邀请链接发给朋友')
+                  Button(AppLocale.text('把邀请链接发给朋友'))
                     .width('100%').height(44).fontSize(15).fontWeight(FontWeight.Bold).fontColor(Color.White)
                     .backgroundColor(Theme.ACCENT).borderRadius(12).onClick(this.onInvite)
                 }
@@ -174,17 +194,17 @@ export struct BookWritingPage {
             Column({ space: 5 }) {
               Row({ space: 7 }) {
                 RemixIcon({ glyph: RI.FILE_TEXT, iconSize: 18, color: Theme.ACCENT })
-                Text(`《${this.seedArticle.title}》已作为种子`).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                Text(AppLocale.isEnglish() ? `“${this.seedArticle.title}”${AppLocale.text('已作为种子')}` : `《${this.seedArticle.title}》已作为种子`).fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
               }.width('100%')
               Text(BookWritingSeed.preview(this.seedArticle) + '……').fontSize(12).lineHeight(18)
                 .fontColor(Theme.SECONDARY).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
             }.padding(12).width('100%').backgroundColor(Theme.AMBER_BG).borderRadius(12).alignItems(HorizontalAlign.Start)
-            Text('可以补充这本书往哪儿写；不填就由写书代理自己定。文章内容已带上，不能在这里误删。')
+            Text(AppLocale.text('可以补充这本书往哪儿写；不填就由写书代理自己定。文章内容已带上，不能在这里误删。'))
               .fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
           } else {
-            Text('一句话说清这本书要讲明白的那一个问题或主张。想法越聚焦，书越好看；也可以贴一整篇文章当种子。').fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
+            Text(AppLocale.text('一句话说清这本书要讲明白的那一个问题或主张。想法越聚焦，书越好看；也可以贴一整篇文章当种子。')).fontSize(13).lineHeight(20).fontColor(Theme.SECONDARY).width('100%')
           }
-          TextArea({ text: this.seed, placeholder: this.seedArticle ? '比如：写成给孩子的绘本。（可留空）' : '比如：为什么一切都在变乱？\n或：钱不脏，是我一直躲着它。' })
+          TextArea({ text: this.seed, placeholder: AppLocale.text(this.seedArticle ? '比如：写成给孩子的绘本。（可留空）' : '比如：为什么一切都在变乱？\n或：钱不脏，是我一直躲着它。') })
             .height(150).fontSize(16).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
             .placeholderFont({ size: 14 })
             .padding({ left: 20, right: 20, top: 18, bottom: 18 }).backgroundColor(Theme.CARD)
@@ -204,7 +224,7 @@ export struct BookWritingPage {
           }.width('100%').backgroundColor(Theme.CARD).borderRadius(12)
             .border({ width: 0.5, color: Theme.BORDER })
           }.width('100%').alignItems(HorizontalAlign.Start)
-          if (this.message.length > 0) Text(this.message).fontSize(13).fontColor('#D64532').width('100%')
+          if (this.message.length > 0) Text(AppLocale.text(this.message)).fontSize(13).fontColor('#D64532').width('100%')
         }.padding({ left: 16, right: 16, top: 4, bottom: 30 }).width('100%').alignItems(HorizontalAlign.Start) }
           .layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         Column({ space: 9 }) {
@@ -213,8 +233,7 @@ export struct BookWritingPage {
               if (this.sending) {
                 LoadingProgress().width(20).height(20).color(Color.White)
               }
-              Text(this.sending ? '提交中…' :
-                (this.shortfall() > 0 ? `算力不够 · 还差 ${this.shortfall()}` : '开始写书 · 320 算力'))
+              Text(this.submitLabel())
                 .fontSize(16).fontWeight(FontWeight.Bold).fontColor(Color.White)
             }.justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           }
@@ -222,7 +241,7 @@ export struct BookWritingPage {
             .backgroundColor(this.sending || this.canSubmit() ? Theme.ACCENT : '#B8B0A1').borderRadius(12)
             .shadow({ radius: 10, color: this.sending || this.canSubmit() ? '#30D8593B' : '#18000000', offsetY: 4 })
             .enabled(this.canSubmit()).onClick(() => this.start())
-          Text('AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架')
+          Text(AppLocale.text('AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架'))
             .fontSize(12.5).fontColor('#928A80').textAlign(TextAlign.Center)
         }.padding({ left: 16, right: 16, top: 12, bottom: 10 + this.safeAreaBottom() }).width('100%')
           .backgroundColor(Theme.BG).border({ width: { top: 1 }, color: '#E6DED2' })

@@ -1,5 +1,3 @@
-import { Api } from './Api';
-
 interface WechatBindStatusWire {
   connected?: boolean;
   account_name?: string;
@@ -59,6 +57,9 @@ export class WechatQrCropRegion {
 }
 
 export class WechatBinding {
+  private static readonly AUTH_SCAN_PREFIX: string = 'https://voicedrop.cn/files/api/wechat/scan?state=';
+  private static readonly AUTH_SUCCESS_URL: string = 'https://voicedrop.cn/files/api/wechat/auth-success';
+  private static readonly AUTH_CALLBACK_PREFIX: string = 'https://voicedrop.cn/files/api/wechat/auth-callback?';
   static bindStatusCache(raw: string): WechatBindStatus | undefined {
     if (raw.length === 0) return undefined;
     try {
@@ -115,9 +116,8 @@ export class WechatBinding {
     try {
       const wire: WechatAuthorizationWire = JSON.parse(responseBody) as WechatAuthorizationWire;
       const value: string = wire.scan_url?.trim() ?? '';
-      const prefix: string = `${Api.FILES}/wechat/scan?state=`;
-      if (!value.startsWith(prefix)) return '';
-      const state: string = value.substring(prefix.length);
+      if (!value.startsWith(WechatBinding.AUTH_SCAN_PREFIX)) return '';
+      const state: string = value.substring(WechatBinding.AUTH_SCAN_PREFIX.length);
       return /^[A-Za-z0-9._~-]+$/.test(state) ? value : '';
     } catch (_) {
       return '';
@@ -125,7 +125,7 @@ export class WechatBinding {
   }
 
   static authorizationPage(scanUrl: string, scanHtml: string): WechatAuthorizationPage {
-    const scanPrefix: string = `${Api.FILES}/wechat/scan?state=`;
+    const scanPrefix: string = WechatBinding.AUTH_SCAN_PREFIX;
     if (!scanUrl.startsWith(scanPrefix) || !/^[A-Za-z0-9._~-]+$/.test(scanUrl.substring(scanPrefix.length))) {
       return new WechatAuthorizationPage();
     }
@@ -147,14 +147,14 @@ export class WechatBinding {
   }
 
   static isTrustedAuthorizationNavigation(value: string): boolean {
-    return value.startsWith(`${Api.FILES}/wechat/scan?state=`) ||
+    return value.startsWith(WechatBinding.AUTH_SCAN_PREFIX) ||
       WechatBinding.isTrustedAuthorizationUrl(value) || WechatBinding.isTrustedVoiceDropAuthorizationRedirect(value);
   }
 
   private static isTrustedVoiceDropAuthorizationRedirect(value: string): boolean {
-    const successUrl: string = `${Api.FILES}/wechat/auth-success`;
+    const successUrl: string = WechatBinding.AUTH_SUCCESS_URL;
     if (value === successUrl || value.startsWith(`${successUrl}#`)) return true;
-    const callbackPrefix: string = `${Api.FILES}/wechat/auth-callback?`;
+    const callbackPrefix: string = WechatBinding.AUTH_CALLBACK_PREFIX;
     if (!value.startsWith(callbackPrefix)) return false;
     const fields: string[] = value.substring(callbackPrefix.length).split('#')[0].split('&');
     return WechatBinding.hasQueryValue(fields, 'state') && WechatBinding.hasQueryValue(fields, 'auth_code');

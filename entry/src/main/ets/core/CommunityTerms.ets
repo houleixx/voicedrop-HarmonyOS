@@ -15,3 +15,15 @@ export const COMMUNITY_TERMS: string = `发布到 VD社区，表示你同意以�
 • ${COMMUNITY_TERM_CONTROL}
 
 ${COMMUNITY_TERM_AGREEMENT}`;
+
+export function communityTerms(isEnglish: boolean): string {
+  if (!isEnglish) return COMMUNITY_TERMS;
+  return `By publishing to VD Community, you agree to these Community Guidelines:
+
+• You are responsible for what you publish and have the right to publish it.
+• Objectionable content is prohibited, including sexual or explicit content, graphic violence, hate or discrimination, harassment or bullying, illegal content, and self-harm. VoiceDrop has zero tolerance for objectionable content and abuse.
+• Reported violations are removed immediately and handled within 24 hours; repeated or serious violations result in account removal.
+• You can report inappropriate content or block people you do not want to see at any time.
+
+By continuing, you acknowledge and agree to these Community Guidelines and the End User License Agreement (EULA). For contact or content complaints, email ${SUPPORT_EMAIL}.`;
+}

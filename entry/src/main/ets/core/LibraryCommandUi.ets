@@ -1,3 +1,5 @@
+import { AppLocale } from './AppLocale';
+
 export enum LibraryCommandTone {
   Hidden,
   Normal,
@@ -77,33 +79,33 @@ export class LibraryCommandUi {
   static feedbackForEvent(event: LibraryCommandEvent): LibraryCommandFeedback {
     if (event.type === 'status') {
       return event.state === 'working'
-        ? new LibraryCommandFeedback('正在执行图库指令…', LibraryCommandTone.Active)
+        ? new LibraryCommandFeedback(AppLocale.text('正在执行图库指令…'), LibraryCommandTone.Active)
         : new LibraryCommandFeedback();
     }
     if (event.type === 'updated') {
-      return new LibraryCommandFeedback('图库指令已完成', LibraryCommandTone.Normal);
+      return new LibraryCommandFeedback(AppLocale.text('图库指令已完成'), LibraryCommandTone.Normal);
     }
     if (event.type === 'reply') {
       const text: string = (event.text ?? '').trim();
       if (LibraryCommandUi.isQuietMessage(text)) return new LibraryCommandFeedback();
-      return new LibraryCommandFeedback(text.length > 0 ? text : '指令已完成', LibraryCommandTone.Normal);
+      return new LibraryCommandFeedback(text.length > 0 ? text : AppLocale.text('指令已完成'), LibraryCommandTone.Normal);
     }
     if (event.type === 'error') {
       const text: string = (event.message ?? '').trim();
-      return new LibraryCommandFeedback(text.length > 0 ? text : '图库指令执行失败', LibraryCommandTone.Error);
+      return new LibraryCommandFeedback(text.length > 0 ? text : AppLocale.text('图库指令执行失败'), LibraryCommandTone.Error);
     }
     return new LibraryCommandFeedback();
   }
 
   static recordButtonLabel(talking: boolean, canceled: boolean): string {
-    if (!talking) return '轻点录音 · 长按说话';
-    return canceled ? '上滑取消 · 松开放弃' : '松开发送 · 上滑取消';
+    if (!talking) return AppLocale.text('轻点录音 · 长按说话');
+    return AppLocale.text(canceled ? '上滑取消 · 松开放弃' : '松开发送 · 上滑取消');
   }
 
   static dictationFeedback(transcript: string, canceled: boolean): LibraryCommandFeedback {
-    if (canceled) return new LibraryCommandFeedback('松手取消图库指令', LibraryCommandTone.Error);
+    if (canceled) return new LibraryCommandFeedback(AppLocale.text('松手取消图库指令'), LibraryCommandTone.Error);
     const text: string = transcript.trim();
-    return new LibraryCommandFeedback(text.length > 0 ? text : '在听…', LibraryCommandTone.Active);
+    return new LibraryCommandFeedback(text.length > 0 ? text : AppLocale.text('在听…'), LibraryCommandTone.Active);
   }
 
   /**
@@ -129,7 +131,7 @@ export class LibraryCommandUi {
 
   /** Feedback shown after the user releases and we are waiting for the final ASR result. */
   static recognizingFeedback(): LibraryCommandFeedback {
-    return new LibraryCommandFeedback('正在识别…', LibraryCommandTone.Active);
+    return new LibraryCommandFeedback(AppLocale.text('正在识别…'), LibraryCommandTone.Active);
   }
 
   /** Feedback for the last queued command text (shown when not actively talking). */

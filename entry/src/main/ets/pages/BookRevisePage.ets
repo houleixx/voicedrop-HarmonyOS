@@ -4,6 +4,7 @@ import { ShelfBook } from '../data/BooksService';
 import { umengAnalytics } from '../data/UmengAnalytics';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
+import { AppLocale } from '../core/AppLocale';
 
 const BOOK_REVISE_POLL_MS: number = 6000;
 const BOOK_REVISE_SHEET_ENTER_MS: number = 280;
@@ -147,7 +148,7 @@ export struct BookRevisePage {
     const date: Date = new Date(ms);
     const minute: string = date.getMinutes() < 10 ? `0${date.getMinutes()}` : `${date.getMinutes()}`;
     const hour: string = date.getHours() < 10 ? `0${date.getHours()}` : `${date.getHours()}`;
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${hour}:${minute}`;
+    return `${AppLocale.dateShort(ms)} ${hour}:${minute}`;
   }
 
   @Builder
@@ -173,7 +174,7 @@ export struct BookRevisePage {
   private entry(entry: BookThreadEntry) {
     Column({ space: 8 }) {
       Column({ space: 3 }) {
-        Text(entry.kind === 'create' ? '开书种子' : '修改指令').fontSize(11).fontColor(Theme.FAINT)
+        Text(AppLocale.text(entry.kind === 'create' ? '开书种子' : '修改指令')).fontSize(11).fontColor(Theme.FAINT)
         Text(entry.instruction).fontSize(15).lineHeight(22).fontColor(Color.White)
           .padding({ left: 13, right: 13, top: 10, bottom: 10 })
           .constraintSize({ maxWidth: '88%' }).backgroundColor(Theme.ACCENT).borderRadius(12)
@@ -194,9 +195,9 @@ export struct BookRevisePage {
         }, (entry: BookThreadEntry) => `${entry.ts}-${entry.kind}`)
         if (this.errorText.length > 0) {
           Column({ space: 8 }) {
-            Text(this.errorText).fontSize(13).lineHeight(19).fontColor(Theme.ACCENT_STRONG).width('100%')
+            Text(AppLocale.text(this.errorText)).fontSize(13).lineHeight(19).fontColor(Theme.ACCENT_STRONG).width('100%')
             if (this.thread.length === 0) {
-              Button('重试').height(36).fontSize(14).fontColor(Theme.ACCENT)
+              Button(AppLocale.text('重试')).height(36).fontSize(14).fontColor(Theme.ACCENT)
                 .backgroundColor(Theme.ACCENT_SOFT).onClick(() => this.load(true))
             }
           }.width('100%').alignItems(HorizontalAlign.Start)
@@ -209,7 +210,7 @@ export struct BookRevisePage {
   private inputBar() {
     Column({ space: 7 }) {
       Row({ space: 10 }) {
-        TextArea({ text: this.input, placeholder: '想怎么改这本书？比如：第三章开头太啰嗦，删一半' })
+        TextArea({ text: this.input, placeholder: AppLocale.text('想怎么改这本书？比如：第三章开头太啰嗦，删一半') })
           .layoutWeight(1).height(76).fontSize(15).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
           .padding({ left: 12, right: 12, top: 10, bottom: 10 }).backgroundColor(Theme.CARD)
           .borderRadius(12).border({ width: 1.5, color: Theme.ACCENT })
@@ -221,8 +222,8 @@ export struct BookRevisePage {
           .width(42).height(42).padding(0).backgroundColor(this.canSend() ? Theme.ACCENT : '#B8B0A1')
           .enabled(this.canSend()).onClick(() => this.send())
       }.width('100%').alignItems(VerticalAlign.Bottom)
-      Text(this.running() ? '有一个修改正在进行，等它改完再提下一个' :
-        `每次修改 ${BookReviseContract.PRICE} 算力 · 提交后可以关掉，改完这里会留下修改说明`)
+      Text(this.running() ? AppLocale.text('有一个修改正在进行，等它改完再提下一个') :
+        `${AppLocale.text('每次修改 ')}${BookReviseContract.PRICE}${AppLocale.text(' 算力 · 提交后可以关掉，改完这里会留下修改说明')}`)
         .fontSize(12).lineHeight(18).fontColor(Theme.FAINT).textAlign(TextAlign.Center).width('100%')
     }
       .padding({ left: 16, right: 16, top: 10, bottom: 10 + this.safeAreaBottom() }).width('100%')
@@ -239,7 +240,7 @@ export struct BookRevisePage {
         .onClick(() => this.close())
       Column() {
         Stack({ alignContent: Alignment.Center }) {
-          Text(`修改《${this.book.main}》`)
+          Text(`${AppLocale.text('修改《')}${this.book.main}${AppLocale.text('》')}`)
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor(Theme.INK)
@@ -256,14 +257,14 @@ export struct BookRevisePage {
               .padding(0)
               .backgroundColor(Color.Transparent)
               .stateEffect(false)
-              .accessibilityText('关闭修改书')
+              .accessibilityText(AppLocale.text('关闭修改书'))
               .onClick(() => this.close())
           }.width('100%').padding({ left: 14, right: 14 })
         }.width('100%').height(50)
         if (this.loading && this.thread.length === 0 && this.denied.length === 0) {
           Column({ space: 12 }) {
             LoadingProgress().width(34).height(34).color(Theme.ACCENT_STRONG)
-            Text('正在加载修改记录…').fontSize(14).fontColor(Theme.SECONDARY)
+            Text(AppLocale.text('正在加载修改记录…')).fontSize(14).fontColor(Theme.SECONDARY)
           }
             .layoutWeight(1)
             .width('100%')
@@ -273,7 +274,7 @@ export struct BookRevisePage {
         } else if (this.denied.length > 0) {
           Column({ space: 12 }) {
             RemixIcon({ glyph: RI.INFORMATION, iconSize: 42, color: Theme.FAINT })
-            Text(this.denied).fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY)
+            Text(AppLocale.text(this.denied)).fontSize(14).lineHeight(22).fontColor(Theme.SECONDARY)
               .textAlign(TextAlign.Center).padding({ left: 36, right: 36 })
           }
             .layoutWeight(1)

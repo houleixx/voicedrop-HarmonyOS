@@ -1,5 +1,6 @@
 import { authStore } from './AuthStore';
 import { httpClient, HttpResponse } from '../net/HttpClient';
+import { AppLocale } from '../core/AppLocale';
 
 export class BookSeedBody {
   seed: string;
@@ -57,7 +58,7 @@ export class BookWritingService {
       const need: string = BookWritingService.formatSuanli(body.need_suanli, BookWritingService.BOOK_SUANLI);
       const have: string = BookWritingService.formatSuanli(body.suanli, 0);
       return new BookWritingResult(code, false,
-        `算力不足：写一本书要 ${need} 算力，你现在有 ${have}。`, body.suanli);
+        AppLocale.bookWritingCreditsInsufficient(need, have), body.suanli);
     }
     if (code === 401) return new BookWritingResult(code, false, '身份校验没过，请稍后重试。');
     return new BookWritingResult(code, false, code > 0

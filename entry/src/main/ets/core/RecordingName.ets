@@ -1,3 +1,5 @@
+import { AppLocale } from './AppLocale';
+
 export interface ParsedRecordingName {
   sessionTs: string;
   month: number;
@@ -62,20 +64,29 @@ export class RecordingName {
     const parsed: ParsedRecordingName | undefined = RecordingName.parse(name);
     if (!parsed) return RecordingName.stem(name);
     const weekdayMap: Record<string, string> = {
-      'Sun': '周日', 'Mon': '周一', 'Tue': '周二', 'Wed': '周三', 'Thu': '周四', 'Fri': '周五', 'Sat': '周六'
+      'Sun': 'Sunday', 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday'
     };
     const periodMap: Record<string, string> = {
+      'EarlyMorning': 'Early morning', 'Morning': 'Morning', 'Noon': 'Noon', 'Afternoon': 'Afternoon',
+      'Evening': 'Evening', 'Night': 'Night', 'LateNight': 'Late night'
+    };
+    const chineseWeekdayMap: Record<string, string> = {
+      'Sun': '周日', 'Mon': '周一', 'Tue': '周二', 'Wed': '周三', 'Thu': '周四', 'Fri': '周五', 'Sat': '周六'
+    };
+    const chinesePeriodMap: Record<string, string> = {
       'EarlyMorning': '清晨', 'Morning': '上午', 'Noon': '中午', 'Afternoon': '下午',
       'Evening': '傍晚', 'Night': '晚上', 'LateNight': '深夜'
     };
-    const base: string = `${weekdayMap[parsed.weekday] ?? parsed.weekday}·${periodMap[parsed.period] ?? parsed.period}`;
+    const base: string = AppLocale.isEnglish() ?
+      `${weekdayMap[parsed.weekday] ?? parsed.weekday} · ${periodMap[parsed.period] ?? parsed.period}` :
+      `${chineseWeekdayMap[parsed.weekday] ?? parsed.weekday}·${chinesePeriodMap[parsed.period] ?? parsed.period}`;
     return parsed.place.length > 0 ? `${base} · ${parsed.place}` : base;
   }
 
   static dateTimeLabel(name: string): string {
     const parsed: ParsedRecordingName | undefined = RecordingName.parse(name);
     if (!parsed) return '';
-    return `${parsed.month}月${parsed.day}日 ${parsed.hhmm}`;
+    return `${AppLocale.monthDay(parsed.month, parsed.day)} ${parsed.hhmm}`;
   }
 
   private static two(value: number): string { return value.toString().padStart(2, '0'); }

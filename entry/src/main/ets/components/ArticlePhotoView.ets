@@ -1,5 +1,6 @@
 import { PhotoLoadIntent, PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
+import { AppLocale } from '../core/AppLocale';
 
 type ArticlePhotoState = 'loading' | 'loaded' | 'making' | 'loadFailed' | 'failed';
 
@@ -199,12 +200,12 @@ export struct ArticlePhotoView {
           .backgroundColor('#F3EEE4')
           .borderRadius(12)
       } else if (this.state === 'making') {
-        this.placeholder('正在制作中', '约 1 分钟完成')
+        this.placeholder(AppLocale.text('正在制作中'), AppLocale.text('约 1 分钟完成'))
       } else if (this.state === 'loadFailed' || this.state === 'failed') {
         Column({ space: 10 }) {
-          Text(this.state === 'loadFailed' ? '图片加载失败' : '暂时无法显示')
+          Text(AppLocale.text(this.state === 'loadFailed' ? '图片加载失败' : '暂时无法显示'))
             .fontSize(13).fontWeight(FontWeight.Bold).fontColor('#8A7B60')
-          Button('重试').fontSize(12).fontColor('#C0682E').backgroundColor(Color.Transparent)
+          Button(AppLocale.text('重试')).fontSize(12).fontColor('#C0682E').backgroundColor(Color.Transparent)
             .onClick(() => this.retry())
         }
           .justifyContent(FlexAlign.Center)

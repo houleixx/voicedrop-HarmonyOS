@@ -15,6 +15,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
 import { BookRevisePage } from './BookRevisePage';
+import { AppLocale } from '../core/AppLocale';
 
 @Component
 struct CachedBookCoverImage {
@@ -107,7 +108,7 @@ export struct BooksShelfPage {
   }
   private async load(): Promise<void> {
     try { this.books = await booksService.load(); this.error = ''; }
-    catch (_) { if (this.books.length === 0) this.error = '书架加载失败，下拉重试'; }
+    catch (_) { if (this.books.length === 0) this.error = AppLocale.text('书架加载失败，下拉重试'); }
     finally { this.loading = false; this.refreshing = false; }
   }
   private shelfItemCount(): number { return this.books.length + 1; }
@@ -129,7 +130,7 @@ export struct BooksShelfPage {
         .fontColor(Color.White).textAlign(TextAlign.Center)
         .backgroundColor(Theme.ACCENT_STRONG).borderRadius(16)
         .shadow({ radius: 5, color: '#4DE5392E', offsetY: 3 })
-      Text('写书').fontSize(15).fontWeight(FontWeight.Medium).letterSpacing(1).fontColor('#6F685D')
+      Text(AppLocale.text('写书')).fontSize(15).fontWeight(FontWeight.Medium).letterSpacing(1).fontColor('#6F685D')
     }
       .width('100%').aspectRatio(0.7)
       .justifyContent(FlexAlign.Center)
@@ -168,7 +169,7 @@ export struct BooksShelfPage {
         .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 5, bottomRight: 5 }).clip(true)
         .shadow({ radius: 2, color: '#333C2D1E', offsetY: 2 })
       if (book.hidden) {
-        Text('隐藏')
+        Text(AppLocale.text('隐藏'))
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
           .fontColor(Color.White)
@@ -186,7 +187,7 @@ export struct BooksShelfPage {
       if (index === 0) {
         this.writeCover()
         Column() {
-          Text('写一本新书').fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
+          Text(AppLocale.text('写一本新书')).fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
             .maxLines(1).width('100%')
         }.height(40).width('100%').alignItems(HorizontalAlign.Start)
       } else if (index <= this.books.length) {
@@ -194,7 +195,7 @@ export struct BooksShelfPage {
         Column({ space: 1 }) {
           Text(this.books[index - 1].main).fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium)
             .fontColor(Theme.INK).maxLines(1).width('100%')
-          Text(this.books[index - 1].chapters > 0 ? `${this.books[index - 1].chapters} 章` : this.books[index - 1].sub)
+          Text(this.books[index - 1].chapters > 0 ? `${this.books[index - 1].chapters}${AppLocale.text('章')}` : this.books[index - 1].sub)
             .fontSize(12.5).fontColor('#A89E8E').maxLines(1).width('100%')
         }.height(40).width('100%').alignItems(HorizontalAlign.Start)
       }
@@ -222,12 +223,12 @@ export struct BooksShelfPage {
       if (BookShelfLoadingPolicy.shouldShowExclusiveLoading(this.loading, this.books.length)) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(Theme.ACCENT_STRONG)
-          Text('正在整理书架…').fontSize(14).fontColor(Theme.SECONDARY)
+          Text(AppLocale.text('正在整理书架…')).fontSize(14).fontColor(Theme.SECONDARY)
         }
           .layoutWeight(1).width('100%')
           .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
       }
-      else if (this.error.length > 0 && this.books.length === 0) Text(this.error).layoutWeight(1).width('100%').textAlign(TextAlign.Center).fontColor(Theme.SECONDARY)
+      else if (this.error.length > 0 && this.books.length === 0) Text(AppLocale.text(this.error)).layoutWeight(1).width('100%').textAlign(TextAlign.Center).fontColor(Theme.SECONDARY)
       else Stack({ alignContent: Alignment.Top }) {
         Refresh({ refreshing: this.refreshing, builder: () => { this.refreshPlaceholder() } }) {
           List() {
@@ -289,14 +290,14 @@ export struct BookReaderPage {
       if (!WechatCommunityShare.isWechatInstalled()) {
         await pasteboard.getSystemPasteboard().setData(
           pasteboard.createPlainTextData(`${share.title}\n${share.url}`));
-        promptAction.showToast({ message: '没检测到微信，链接在剪贴板里' });
+        promptAction.showToast({ message: AppLocale.text('没检测到微信，链接在剪贴板里') });
         return;
       }
-      if (this.book.cover) promptAction.showToast({ message: '正在准备微信分享…' });
+      if (this.book.cover) promptAction.showToast({ message: AppLocale.text('正在准备微信分享…') });
       const message: string = await WechatCommunityShare.sendBook(context, this.book, share, target);
       promptAction.showToast({ message: message });
     } catch (error) {
-      promptAction.showToast({ message: `微信分享失败：${String(error)}` });
+      promptAction.showToast({ message: `${AppLocale.text('微信分享失败：')}${String(error)}` });
     }
   }
   private async shareBookWithSystem(): Promise<void> {
@@ -314,7 +315,7 @@ export struct BookReaderPage {
         previewMode: systemShare.SharePreviewMode.DEFAULT
       });
     } catch (_) {
-      promptAction.showToast({ message: '无法打开系统分享面板' });
+      promptAction.showToast({ message: AppLocale.text('无法打开系统分享面板') });
     }
   }
   private async copyBookLink(): Promise<void> {
@@ -322,19 +323,19 @@ export struct BookReaderPage {
     try {
       await pasteboard.getSystemPasteboard().setData(
         pasteboard.createPlainTextData(this.currentShare().url));
-      promptAction.showToast({ message: '链接已复制' });
+      promptAction.showToast({ message: AppLocale.text('链接已复制') });
     } catch (_) {
-      promptAction.showToast({ message: '复制失败' });
+      promptAction.showToast({ message: AppLocale.text('复制失败') });
     }
   }
   private shareTargets(): ShareSheetTarget[] {
     return DetailShareUi.targetIds('book').map((id: string) => this.shareTarget(id));
   }
   private shareTarget(id: string): ShareSheetTarget {
-    if (id === 'friend') return new ShareSheetTarget(id, '微信好友', RI.WECHAT, '#07C160', '#FFFFFF', 26);
-    if (id === 'timeline') return new ShareSheetTarget(id, '朋友圈', RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
-    if (id === 'copy') return new ShareSheetTarget(id, '复制链接', RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
-    return new ShareSheetTarget(id, '其它分享', RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
+    if (id === 'friend') return new ShareSheetTarget(id, AppLocale.text('微信好友'), RI.WECHAT, '#07C160', '#FFFFFF', 26);
+    if (id === 'timeline') return new ShareSheetTarget(id, AppLocale.text('朋友圈'), RI.CAMERA_LENS, '#07C160', '#FFFFFF', 27);
+    if (id === 'copy') return new ShareSheetTarget(id, AppLocale.text('复制链接'), RI.LINK, '#F3F1ED', Theme.SECONDARY, 23);
+    return new ShareSheetTarget(id, AppLocale.text('其它分享'), RI.SHARE_FORWARD, '#F3F1ED', Theme.SECONDARY, 24);
   }
   private runShareAction(id: string): void {
     if (id === 'friend') this.shareBook('friend').catch(() => {});
@@ -364,14 +365,14 @@ export struct BookReaderPage {
     try {
       await booksService.setHidden(this.book.slug, next);
       this.isHidden = next;
-      promptAction.showToast({ message: next ? '已隐藏，书架上看不到了' : '已取消隐藏' });
+      promptAction.showToast({ message: AppLocale.text(next ? '已隐藏，书架上看不到了' : '已取消隐藏') });
     } catch (error) {
       const message: string = String(error);
       if (message.includes('HTTP 403')) {
         this.isMine = false;
-        promptAction.showToast({ message: '这不是你的书，改不了' });
+        promptAction.showToast({ message: AppLocale.text('这不是你的书，改不了') });
       } else {
-        promptAction.showToast({ message: '没改成，过会儿再试' });
+        promptAction.showToast({ message: AppLocale.text('没改成，过会儿再试') });
       }
     } finally { this.changingHidden = false; }
   }
@@ -385,8 +386,8 @@ export struct BookReaderPage {
     else if (id === 'share') this.showShareSheet = true;
   }
   private moreMenuLabel(id: string): string {
-    if (id === 'hidden') return this.isHidden ? '取消隐藏本书' : '隐藏本书';
-    return id === 'revise' ? '修改这本书' : '分享';
+    if (id === 'hidden') return AppLocale.text(this.isHidden ? '取消隐藏本书' : '隐藏本书');
+    return AppLocale.text(id === 'revise' ? '修改这本书' : '分享');
   }
   private moreMenuGlyph(id: string): string {
     if (id === 'hidden') return RI.CLOSE;
@@ -421,7 +422,7 @@ export struct BookReaderPage {
         PageHeader({
           title: this.book.main,
           actionGlyph: RI.MORE,
-          actionLabel: '更多',
+          actionLabel: AppLocale.text('更多'),
           actionFilled: false,
           rightInset: DetailShareUi.MENU_RIGHT_INSET,
           onBack: () => {
@@ -457,7 +458,7 @@ export struct BookReaderPage {
             Column() {
               Column({ space: 14 }) {
                 LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)
-                Text('正在加载...').fontSize(16).fontColor(Theme.SECONDARY)
+                Text(AppLocale.text('正在加载...')).fontSize(16).fontColor(Theme.SECONDARY)
               }
                 .height(180).margin({ top: 50 }).width('100%')
                 .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)

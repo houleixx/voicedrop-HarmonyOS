@@ -1,6 +1,7 @@
 import { KeyboardAvoidMode, promptAction } from '@kit.ArkUI';
 import { settingsStore, StyleHistory, StyleSettings, StyleVersion } from '../data/SettingsStore';
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 
@@ -54,13 +55,13 @@ export struct StyleSettingsPage {
       const value: string = line.trim();
       if (value.length > 0) return value;
     }
-    return '未命名风格';
+    return AppLocale.text('未命名风格');
   }
 
   private currentLabel(): string {
     const head: StyleVersion | undefined =
       this.history.versions.find((version: StyleVersion) => version.v === this.selectedHead);
-    return head ? this.styleName(head.style) : '当前风格';
+    return head ? this.styleName(head.style) : AppLocale.text('当前风格');
   }
 
   private selectVersion(version: StyleVersion): void {
@@ -76,7 +77,7 @@ export struct StyleSettingsPage {
     const switchingVersion: boolean =
       this.selectedHead >= 0 && nextStyle === this.selectedHeadStyle.trim();
     if (switchingVersion && this.selectedHead === this.savedHead) {
-      promptAction.showToast({ message: '写作风格已保存' });
+      promptAction.showToast({ message: AppLocale.text('写作风格已保存') });
       return;
     }
     this.saving = true;
@@ -93,15 +94,15 @@ export struct StyleSettingsPage {
       this.saving = false;
     }
     if (styleOk) {
-      promptAction.showToast({ message: switchingVersion ? '写作风格版本已切换' : '写作风格已保存' });
+      promptAction.showToast({ message: AppLocale.text(switchingVersion ? '写作风格版本已切换' : '写作风格已保存') });
       try {
         await this.reload();
       } catch (_) {
-        promptAction.showToast({ message: '写作风格刷新失败，请重新进入页面' });
+        promptAction.showToast({ message: AppLocale.text('写作风格刷新失败，请重新进入页面') });
       }
     } else {
       promptAction.showToast({
-        message: switchingVersion ? '写作风格版本切换失败，请重试' : '写作风格保存失败，请重试'
+        message: AppLocale.text(switchingVersion ? '写作风格版本切换失败，请重试' : '写作风格保存失败，请重试')
       });
     }
   }
@@ -132,7 +133,7 @@ export struct StyleSettingsPage {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(`共 ${this.history.versions.length} 版`)
+      Text(`${AppLocale.text('共 ')}${this.history.versions.length}${AppLocale.text(' 版')}`)
         .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.FAINT)
@@ -160,7 +161,7 @@ export struct StyleSettingsPage {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(`${version.style.length} 字`)
+      Text(`${version.style.length}${AppLocale.text(' 字')}`)
         .fontSize(12)
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.FAINT)
@@ -188,10 +189,10 @@ export struct StyleSettingsPage {
       if (this.loading) {
         Column({ space: 8 }) {
           LoadingProgress().width(26).height(26).color(Theme.ACCENT_STRONG)
-          Text('正在加载写作风格…').fontSize(12).fontColor(Theme.FAINT)
+          Text(AppLocale.text('正在加载写作风格…')).fontSize(12).fontColor(Theme.FAINT)
         }.height(112).justifyContent(FlexAlign.Center)
       } else if (this.history.versions.length === 0) {
-        Text('暂无可选风格版本。先保存一份写作风格。')
+        Text(AppLocale.text('暂无可选风格版本。先保存一份写作风格。'))
           .fontSize(12)
           .fontColor(Theme.FAINT)
           .padding(14)
@@ -220,7 +221,7 @@ export struct StyleSettingsPage {
                 .width(28)
                 .height(28)
                 .color(Theme.ACCENT)
-              Text('正在加载写作风格…')
+              Text(AppLocale.text('正在加载写作风格…'))
                 .fontSize(13)
                 .fontColor(Theme.SECONDARY)
             }
@@ -234,7 +235,7 @@ export struct StyleSettingsPage {
           } else {
             TextArea({
               text: this.style,
-              placeholder: '例如：温柔克制，段落短一点，多保留现场细节，结尾自然收束。'
+              placeholder: AppLocale.text('例如：温柔克制，段落短一点，多保留现场细节，结尾自然收束。')
             })
               .width('100%')
               .height('100%')
@@ -266,7 +267,7 @@ export struct StyleSettingsPage {
         .justifyContent(FlexAlign.Start)
         .alignItems(HorizontalAlign.Start)
       Column() {
-        Button(this.saving ? '保存中…' : '保存')
+        Button(AppLocale.text(this.saving ? '保存中…' : '保存'))
           .fontSize(17)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.White)

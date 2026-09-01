@@ -1,6 +1,7 @@
 import { PageHeader } from '../ui/PageHeader';
+import { AppLocale } from '../core/AppLocale';
 
-export const PRIVACY_TEXT: string = 'VoiceDrop 隐私政策\n\n' +
+export const PRIVACY_TEXT_ZH: string = 'VoiceDrop 隐私政策\n\n' +
   '更新日期：2026年7月31日\n生效日期：2026年7月31日\n\n' +
   '欢迎使用 VoiceDrop。本应用由百姓网股份有限公司提供。我们重视你的个人信息和隐私安全。本政策说明我们在提供录音转写、文章生成、社区、设备配对等功能时如何处理信息。你可以只使用匿名身份；拒绝非必要权限不会影响浏览和已生成内容的基本功能。\n\n' +
   '一、我们处理的信息\n\n' +
@@ -26,6 +27,36 @@ export const PRIVACY_TEXT: string = 'VoiceDrop 隐私政策\n\n' +
   '功能或法律要求变化时，我们可能更新本政策，并通过应用内提示或页面公示重要变更。对隐私政策、个人信息权利或安全问题有疑问，请联系：hello@voicedrop.cn。\n\n' +
   '在线版本：https://voicedrop.cn/privacy/';
 
+export const PRIVACY_TEXT_EN: string = 'VoiceDrop Privacy Policy\n\n' +
+  'Updated: July 31, 2026\nEffective: July 31, 2026\n\n' +
+  'Welcome to VoiceDrop. This app is provided by Baixing.com Co., Ltd. We value your personal information and privacy. This policy explains how we handle information when providing recording transcription, article creation, Community, device pairing, and related features. You may use an anonymous identity only; declining non-essential permissions does not affect browsing or basic use of content already created.\n\n' +
+  '1. Information we process\n\n' +
+  '1) Recordings and voice. We use the microphone only when you actively record, dictate, revise by voice, reply by voice, or start a live interview. Audio is uploaded to VoiceDrop services for speech recognition, article creation, revision, and playback.\n\n' +
+  '2) Articles and activity data. We process transcripts, generated articles, titles, tags, editing instructions, prompts, version history, follow-up answers, and publishing status to provide writing, sync, recovery, and export features.\n\n' +
+  '3) Images and files. We read content only when you actively take a photo, select from your album, insert an illustration, or share a file from another app. Selected images may be uploaded and embedded in articles; imported text or documents may be used to extract your writing style.\n\n' +
+  '4) Account information. On first use, an anonymous token is created to distinguish your cloud space. If you sign in with WeChat, we retain the server-issued sign-in session and necessary public WeChat identity information. If you authorize a WeChat Official Account, WeChat provides VoiceDrop services with the identifier and authorization token required to publish drafts; the app does not ask you to enter an Official Account AppSecret.\n\n' +
+  '5) Community and interaction. Articles and prompts are public only when you actively share them or enable Auto-share to VD Community. Public content may include the author name, title, body, images, reply relationships, likes, and credit-sending status. You may unshare, report content, or block authors.\n\n' +
+  '6) Device and operation information. To complete app analytics, deep links, device pairing, troubleshooting, and security protection, we may process app version, system type, device brand and model, screen and network information, request time, network errors, anonymous device identifiers, and random device-pairing identifiers. The app does not read contacts, SMS, or precise location.\n\n' +
+  '2. Permissions\n\n' +
+  'Microphone permission is used for recording and voice interaction; camera permission is used when you actively take an illustration photo; album/media access is used when you actively choose images or files; network permission is used for upload, sync, creation, Community, and analytics. Permissions are requested when the relevant feature is used and can be withdrawn in system settings. Withdrawal affects only features that depend on that permission.\n\n' +
+  '3. Use, sharing, and entrusted processing\n\n' +
+  'We process information only to provide the features above, keep services secure, respond to your requests, and fulfill legal obligations. Speech recognition, cloud storage, content generation, or message delivery may be technically processed by bound cloud-service providers. Unless we obtain your separate consent, complete sharing or publishing initiated by you, comply with law, or protect personal and property safety, we do not sell or disclose your personal information to unrelated third parties.\n\n' +
+  'For launch, activity, retention, and feature analytics, we integrate the Umeng Mobile Analytics SDK provided by Umeng Tongxin (Beijing) Technology Co., Ltd. The SDK may process OAID, anonymous device identifiers, device brand and model, OS version, screen and carrier/network information, IP address, app version, channel, and usage events. It initializes only after you agree to this policy. Umeng privacy policy: https://www.umeng.com/page/policy/.\n\n' +
+  'When you actively tap Sign in with WeChat, the app uses Tencent WeChat OpenSDK to start authorization, passes VoiceDrop\'s AppID, authorization scope, and a random request identifier to WeChat, and receives a one-time authorization code. VoiceDrop services complete sign-in binding using that code. This process is not started unless you tap WeChat sign-in. WeChat privacy policy: https://weixin.qq.com/cgi-bin/readtemplate?lang=zh_CN&t=weixin_agreement&s=privacy.\n\n' +
+  '4. Storage and security\n\n' +
+  'The app stores necessary preferences, anonymous tokens, sign-in sessions, pending uploads, and cache locally. The cloud stores recordings, articles, and associated data you upload until you delete content, delete your account, or the business retention period expires. Device-pairing migration uses X25519, HKDF-SHA256, and AES-256-GCM end-to-end encryption. We use access controls, encryption in transit, and least-privilege measures, but internet services cannot guarantee absolute security.\n\n' +
+  '5. Your rights\n\n' +
+  'You can view, revise, export, and delete recordings, articles, writing styles, prompts, and Community shares in the app; sign out, withdraw permissions, unblock authors, and permanently delete your account in Settings → Account. After account deletion succeeds, the app clears local identity and pending queues and creates a new anonymous space. If you cannot complete a request yourself, contact us by email below.\n\n' +
+  '6. Children\'s privacy\n\n' +
+  'This service is mainly for adults. Minors should use it only after a guardian has read and agreed to this policy, and should not enter unnecessary sensitive information about themselves or others. If we discover that minor information was collected without suitable consent, we will delete it as soon as required by law.\n\n' +
+  '7. Policy updates and contact\n\n' +
+  'We may update this policy when features or legal requirements change, and will notify you of material changes through in-app notices or publication on this page. For privacy, personal-information rights, or security questions, contact hello@voicedrop.cn.\n\n' +
+  'Online version: https://voicedrop.cn/privacy/';
+
+export function privacyText(): string {
+  return AppLocale.isEnglish() ? PRIVACY_TEXT_EN : PRIVACY_TEXT_ZH;
+}
+
 @Component
 export struct PrivacyPolicyPage {
   onBack: () => void = () => {};
@@ -34,7 +65,7 @@ export struct PrivacyPolicyPage {
     Column() {
       PageHeader({ title: '隐私政策', onBack: this.onBack })
       Scroll() {
-        Text(PRIVACY_TEXT).fontSize(16).lineHeight(28)
+        Text(privacyText()).fontSize(16).lineHeight(28)
           .padding({ left: 16, right: 16, top: 6, bottom: 16 }).width('100%')
       }
         .layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })

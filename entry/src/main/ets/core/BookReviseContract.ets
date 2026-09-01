@@ -1,3 +1,5 @@
+import { AppLocale } from './AppLocale';
+
 export class BookThreadEntry {
   ts: number;
   kind: string;
@@ -98,18 +100,18 @@ export class BookReviseContract {
             BookReviseContract.number(item.ts), String(item.kind ?? ''), String(item.instruction ?? ''),
             String(item.status ?? ''), item.reply, item.error));
         const slug: string = String(wire.slug ?? '');
-        if (slug.length === 0) return new BookHistoryResult(code, false, false, '服务器数据不完整，请稍后重试。');
+        if (slug.length === 0) return new BookHistoryResult(code, false, false, AppLocale.text('服务器数据不完整，请稍后重试。'));
         const running: boolean = wire.running === true || entries.some((entry: BookThreadEntry) => entry.status === 'running');
         return new BookHistoryResult(code, true, false, '', new BookThread(slug, wire.author, running, entries));
       } catch (_) {
-        return new BookHistoryResult(code, false, false, '服务器数据不完整，请稍后重试。');
+        return new BookHistoryResult(code, false, false, AppLocale.text('服务器数据不完整，请稍后重试。'));
       }
     }
-    if (code === 403) return new BookHistoryResult(code, false, true, '只有这本书的主人能修改。');
-    if (code === 404) return new BookHistoryResult(code, false, true, '这本书是早期写的，还没登记主人，暂时不能在线修改。');
-    if (code === 401) return new BookHistoryResult(code, false, true, '登录状态已失效，请重新登录后再试。');
+    if (code === 403) return new BookHistoryResult(code, false, true, AppLocale.text('只有这本书的主人能修改。'));
+    if (code === 404) return new BookHistoryResult(code, false, true, AppLocale.text('这本书是早期写的，还没登记主人，暂时不能在线修改。'));
+    if (code === 401) return new BookHistoryResult(code, false, true, AppLocale.text('登录状态已失效，请重新登录后再试。'));
     return new BookHistoryResult(code, false, false,
-      code > 0 ? `服务器返回 ${code}，请稍后重试。` : '没连上服务器，请检查网络后重试。');
+      code > 0 ? AppLocale.serverError(code) : AppLocale.text('没连上服务器，请检查网络后重试。'));
   }
 
   static revise(code: number, responseText: string): BookReviseResult {
@@ -119,14 +121,14 @@ export class BookReviseContract {
     if (code === 402) {
       const need: string = BookReviseContract.formatSuanli(wire.need_suanli, BookReviseContract.PRICE);
       const have: string = BookReviseContract.formatSuanli(wire.suanli, 0);
-      return new BookReviseResult(code, false, `算力不足：改一次要 ${need} 算力，你现在有 ${have}。`, 0, wire.suanli);
+      return new BookReviseResult(code, false, AppLocale.bookCreditsInsufficient(need, have), 0, wire.suanli);
     }
-    if (code === 403) return new BookReviseResult(code, false, '只有这本书的主人能修改。');
-    if (code === 404) return new BookReviseResult(code, false, '这本书是早期写的，还没登记主人，暂时不能在线修改。');
-    if (code === 409) return new BookReviseResult(code, false, '上一个修改还在进行，等它改完再提。');
-    if (code === 401) return new BookReviseResult(code, false, '身份校验没过，请稍后重试。');
+    if (code ===403) return new BookReviseResult(code, false, AppLocale.text('只有这本书的主人能修改。'));
+    if (code ===404) return new BookReviseResult(code, false, AppLocale.text('这本书是早期写的，还没登记主人，暂时不能在线修改。'));
+    if (code ===409) return new BookReviseResult(code, false, AppLocale.text('上一个修改还在进行，等它改完再提。'));
+    if (code ===401) return new BookReviseResult(code, false, AppLocale.text('身份校验没过，请稍后重试。'));
     return new BookReviseResult(code, false,
-      code > 0 ? `服务器返回 ${code}，请稍后重试。` : '没连上服务器，请检查网络后重试。');
+      code > 0 ? AppLocale.serverError(code) : AppLocale.text('没连上服务器，请检查网络后重试。'));
   }
 
   static isRunning(entries: BookThreadEntry[]): boolean {
@@ -141,14 +143,14 @@ export class BookReviseContract {
 
   static replyText(entry: BookThreadEntry): string {
     if (entry.status === 'running') {
-      return entry.kind === 'create' ? '正在写这本书…' : '正在修改…（改完这里会出现修改说明）';
+      return AppLocale.text(entry.kind === 'create' ? '正在写这本书…' : '正在修改…（改完这里会出现修改说明）');
     }
     if (entry.status === 'failed') {
-      return entry.kind === 'create' ? '这本书当时没写完就中断了' : '这次修改没有完成（没扣的算力不会少），可以再试一次';
+      return AppLocale.text(entry.kind === 'create' ? '这本书当时没写完就中断了' : '这次修改没有完成（没扣的算力不会少），可以再试一次');
     }
     const reply: string = (entry.reply ?? '').trim();
     if (reply.length > 0) return reply;
-    return entry.kind === 'create' ? '书写好了，上架在「写书」书架。' : '改好了。';
+    return AppLocale.text(entry.kind === 'create' ? '书写好了，上架在「写书」书架。' : '改好了。');
   }
 
   static instruction(seed: string): string { return seed.trim().substring(0, 4000); }

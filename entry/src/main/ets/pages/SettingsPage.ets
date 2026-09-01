@@ -2,6 +2,7 @@ import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { settingsStore, StyleSettings } from '../data/SettingsStore';
 import { appCacheStore } from '../data/AppCacheStore';
 import { CacheMaintenance } from '../core/CacheMaintenance';
+import { AppLocale } from '../core/AppLocale';
 import { PageHeader } from '../ui/PageHeader';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
@@ -33,7 +34,7 @@ struct NameEditorDialog {
     Column() {
       Row() {
         Blank().width(44)
-        Text('名字')
+        Text(AppLocale.text('名字'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.INK)
@@ -55,7 +56,7 @@ struct NameEditorDialog {
         .alignItems(VerticalAlign.Center)
       Divider().strokeWidth(1).color(Theme.DIVIDER)
       Column({ space: 10 }) {
-        TextInput({ text: this.name, placeholder: '你的名字' })
+        TextInput({ text: this.name, placeholder: AppLocale.text('你的名字') })
           .height(54)
           .defaultFocus(true)
           .fontSize(17)
@@ -67,13 +68,13 @@ struct NameEditorDialog {
           .enabled(!this.saving)
           .onChange((value: string) => this.name = value.substring(0, 20))
           .onSubmit(() => this.submit())
-        Text('这个名字会出现在文章署名，以及挖文章时对你的称呼。随时可改。')
+        Text(AppLocale.text('这个名字会出现在文章署名，以及挖文章时对你的称呼。随时可改。'))
           .fontSize(13)
           .fontColor(Theme.SECONDARY)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Button(this.saving ? '保存中…' : '完成')
+        Button(AppLocale.text(this.saving ? '保存中…' : '完成'))
           .height(54)
           .width('100%')
           .margin({ top: 8 })
@@ -96,7 +97,7 @@ struct NameEditorDialog {
   }
 }
 
-export type SettingsTarget = 'account' | 'usage' | 'style' | 'prompts' | 'wechat' | 'about';
+export type SettingsTarget = 'account' | 'usage' | 'style' | 'prompts' | 'wechat' | 'language' | 'about';
 
 @Component
 export struct SettingsPage {
@@ -167,9 +168,9 @@ export struct SettingsPage {
   private async clearCache(): Promise<void> {
     if (this.cacheClearing) return;
     const result = await promptAction.showDialog({
-      title: '清除缓存？',
-      message: '只会清除可重新下载的文章、图片和社区详情缓存，不会删除录音、待上传内容、账户、设置或服务器数据。',
-      buttons: [{ text: '取消', color: Theme.SECONDARY }, { text: '清除', color: Theme.ACCENT_STRONG }]
+      title: AppLocale.text('清除缓存？'),
+      message: AppLocale.text('只会清除可重新下载的文章、图片和社区详情缓存，不会删除录音、待上传内容、账户、设置或服务器数据。'),
+      buttons: [{ text: AppLocale.text('取消'), color: Theme.SECONDARY }, { text: AppLocale.text('清除'), color: Theme.ACCENT_STRONG }]
     });
     if (result.index !== 1 || !this.pageActive || this.cacheClearing) return;
     this.cacheClearing = true;
@@ -177,9 +178,9 @@ export struct SettingsPage {
     this.cacheSizeText = '清理中…';
     try {
       await appCacheStore.clear();
-      if (this.pageActive) promptAction.showToast({ message: '缓存已清除' });
+      if (this.pageActive) promptAction.showToast({ message: AppLocale.text('缓存已清除') });
     } catch (_) {
-      if (this.pageActive) promptAction.showToast({ message: '缓存清除失败，请重试' });
+      if (this.pageActive) promptAction.showToast({ message: AppLocale.text('缓存清除失败，请重试') });
     } finally {
       if (this.pageActive) {
         this.cacheClearing = false;
@@ -203,14 +204,14 @@ export struct SettingsPage {
   private async saveName(name: string): Promise<boolean> {
     try {
       if (!await settingsStore.saveName(name)) {
-        promptAction.showToast({ message: '名字保存失败，请重试' });
+        promptAction.showToast({ message: AppLocale.text('名字保存失败，请重试') });
         return false;
       }
       this.currentName = name;
-      promptAction.showToast({ message: '名字已保存' });
+      promptAction.showToast({ message: AppLocale.text('名字已保存') });
       return true;
     } catch (_) {
-      promptAction.showToast({ message: '名字保存失败，请重试' });
+      promptAction.showToast({ message: AppLocale.text('名字保存失败，请重试') });
       return false;
     }
   }
@@ -231,8 +232,8 @@ export struct SettingsPage {
     Row({ space: 12 }) {
       this.settingIcon(glyph, tileColor, iconColor)
       Column({ space: 2 }) {
-        Text(title).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-        Text(subtitle).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+        Text(AppLocale.text(title)).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text(AppLocale.text(subtitle)).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       if (trailingText.length > 0) {
         Text(trailingText).fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
@@ -251,8 +252,8 @@ export struct SettingsPage {
     Row({ space: 12 }) {
       this.settingIcon(RI.USER, Theme.TILE_NEUTRAL, Theme.SECONDARY)
       Column({ space: 2 }) {
-        Text('名字').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-        Text('署名和挖文章时对你的称呼').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+        Text(AppLocale.text('名字')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text(AppLocale.text('署名和挖文章时对你的称呼')).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       if (this.currentName.length > 0) {
         Text(this.currentName)
@@ -277,8 +278,8 @@ export struct SettingsPage {
     Row({ space: 12 }) {
       this.settingIcon(RI.DELETE_BIN_LINE, Theme.TILE_NEUTRAL, Theme.SECONDARY)
       Column({ space: 2 }) {
-        Text('清除缓存').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-        Text('文章与图片缓存').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+        Text(AppLocale.text('清除缓存')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+        Text(AppLocale.text('文章与图片缓存')).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Text(this.cacheSizeText).fontSize(14).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
       RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
@@ -302,7 +303,7 @@ export struct SettingsPage {
 
   @Builder
   private section(label: string) {
-    Text(label)
+    Text(AppLocale.text(label))
       .fontSize(14)
       .fontWeight(FontWeight.Medium)
       .lineHeight(20)
@@ -327,8 +328,8 @@ export struct SettingsPage {
           Row({ space: 12 }) {
             this.settingIcon(RI.TEAM, Theme.ACCENT_SOFT, Theme.ACCENT)
             Column({ space: 2 }) {
-              Text('邀请好友').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-              Text('生成专属邀请链接并通过系统分享').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+              Text(AppLocale.text('邀请好友')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+              Text(AppLocale.text('生成专属邀请链接并通过系统分享')).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
           }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
@@ -353,8 +354,8 @@ export struct SettingsPage {
             Row({ space: 12 }) {
               this.settingIcon(RI.TEAM, Theme.SETTINGS_GREEN_BG, Theme.GREEN)
               Column({ space: 2 }) {
-                Text('自动分享到 VD 社区').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-                Text('挖出新文章后自动发到社区').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+                Text(AppLocale.text('自动分享到 VD 社区')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+                Text(AppLocale.text('挖出新文章后自动发到社区')).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               Toggle({ type: ToggleType.Switch, isOn: this.autoShareCommunity }).enabled(!this.savingAutoShare)
                 .selectedColor(Theme.ACCENT).onChange(this.onAutoShareChange)
@@ -366,13 +367,16 @@ export struct SettingsPage {
             Row({ space: 12 }) {
               this.settingIcon(RI.DOWNLOAD, Theme.TILE_NEUTRAL, Theme.SECONDARY)
               Column({ space: 2 }) {
-                Text('导出数据').fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
-                Text('所有录音、文章、字幕和图片打包下载').fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
+                Text(AppLocale.text('导出数据')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).letterSpacing(0).fontColor(Theme.INK)
+                Text(AppLocale.text('所有录音、文章、字幕和图片打包下载')).fontSize(13).lineHeight(19).letterSpacing(0).fontColor(Theme.SECONDARY)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
               RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
             }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
               .alignItems(VerticalAlign.Center).width('100%')
               .enabled(!this.exporting).onClick(this.onExport)
+            this.divider()
+            this.row('语言', '跟随系统或固定为中文、English', 'language', RI.GLOBE_LINE,
+              Theme.TILE_NEUTRAL, Theme.SECONDARY)
             this.divider()
             this.cacheRow()
             this.divider()

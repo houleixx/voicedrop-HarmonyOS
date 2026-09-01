@@ -1,10 +1,11 @@
 import { VoiceDropTheme as Theme } from './VoiceDropTheme';
+import { AppLocale } from '../core/AppLocale';
 
 /** Compact disclosure used beside metadata on AI-generated article pages. */
 @Component
 export struct AiGeneratedLabel {
   build() {
-    Text('AI生成')
+    Text(AppLocale.text('AI生成'))
       .fontSize(12)
       .fontWeight(FontWeight.Medium)
       .fontColor(Theme.ACCENT)
@@ -12,6 +13,6 @@ export struct AiGeneratedLabel {
       .backgroundColor(Theme.ACCENT_SOFT)
       .border({ width: 0.5, color: '#EBC6B9' })
       .borderRadius(11)
-      .accessibilityText('AI生成内容')
+      .accessibilityText(AppLocale.text('AI生成内容'))
   }
 }

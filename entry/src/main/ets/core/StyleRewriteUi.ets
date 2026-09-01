@@ -1,4 +1,5 @@
 import { ArticleBody } from './ArticleBody';
+import { AppLocale } from './AppLocale';
 
 export class StyleRewriteUi {
   static readonly ARTICLE_RELOAD_ATTEMPTS: number = 3;
@@ -25,22 +26,23 @@ export class StyleRewriteUi {
       let epoch: number = Number(trimmed);
       if (trimmed.length === 10) epoch *= 1000;
       const date: Date = new Date(epoch);
-      if (date.getTime() > 0) return `${date.getMonth() + 1}月${date.getDate()}日`;
+      if (date.getTime() > 0) return AppLocale.dateShort(epoch);
     }
     const dateMatch: RegExpMatchArray | null = trimmed.match(/\d{4}[-/](\d{1,2})[-/](\d{1,2})/);
-    if (dateMatch) return `${Number(dateMatch[1])}月${Number(dateMatch[2])}日`;
+    if (dateMatch) return AppLocale.monthDay(Number(dateMatch[1]), Number(dateMatch[2]));
     return trimmed;
   }
 
   static metadata(style?: string, savedAt?: string | number, source?: string): string {
     const value: string = StyleRewriteUi.styleText(style, source);
     const date: string = StyleRewriteUi.shortDate(savedAt);
-    return `${value.length} 字${date.length > 0 ? ` · ${date}` : ''}`;
+    return `${value.length}${AppLocale.text(' 字')}${date.length > 0 ? ` · ${date}` : ''}`;
   }
 
   static actionLabel(styleVersion: number, generated: boolean): string {
-    if (styleVersion < 0) return '选一个版本';
-    return generated ? `切换到 v${styleVersion} 风格` : `用 v${styleVersion} 重写本文`;
+    if (styleVersion < 0) return AppLocale.text('选一个版本');
+    return generated ? `${AppLocale.text('切换到 v')}${styleVersion}${AppLocale.text(' 风格')}` :
+      `${AppLocale.text('用 v')}${styleVersion}${AppLocale.text(' 重写本文')}`;
   }
 
   static navigationBarColor(blocking: boolean): string {

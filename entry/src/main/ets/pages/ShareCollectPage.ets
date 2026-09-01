@@ -10,6 +10,7 @@ import { ShareCollectResult, shareCollectService } from '../share/ShareCollectSe
 import { sharePageStorage } from '../share/SharePageStorage';
 import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
+import { AppLocale } from '../core/AppLocale';
 
 enum DatasetIncomingState {
   SAVING = 'saving',
@@ -32,9 +33,9 @@ struct ShareCollectPage {
   @State private ready: boolean = false;
   @State private message: string = '';
   @State private incomingState: DatasetIncomingState = DatasetIncomingState.SAVING;
-  @State private incomingTitle: string = '正在读取分享内容…';
+  @State private incomingTitle: string = AppLocale.text('正在读取分享内容…');
   @State private incomingApiType: string = 'text';
-  @State private incomingTypeLabel: string = '文字';
+  @State private incomingTypeLabel: string = AppLocale.text('文字');
   @State private incomingMeta: string = '';
   private context?: common.UIExtensionContext;
   private datasetStarted: boolean = false;
@@ -47,7 +48,7 @@ struct ShareCollectPage {
     this.context = getContext(this) as common.UIExtensionContext;
     this.initialize().catch((error: Object) => {
       this.message = `分享初始化失败：${String(error)}`;
-      this.incomingTitle = '分享初始化失败';
+      this.incomingTitle = AppLocale.text('分享初始化失败');
       this.incomingState = DatasetIncomingState.FAILED;
       this.ready = true;
     });
@@ -65,8 +66,8 @@ struct ShareCollectPage {
     const accepted: boolean = PrivacyStartup.accepted(
       String(store.getSync('privacyAcceptedVersion', '') ?? ''), AppPreferences.PRIVACY_VERSION);
     if (!accepted) {
-      this.message = '请先打开 VoiceDrop，完成隐私确认和账号初始化后再分享。';
-      this.incomingTitle = '需要先完成应用初始化';
+      this.message = AppLocale.text('请先打开 VoiceDrop，完成隐私确认和账号初始化后再分享。');
+      this.incomingTitle = AppLocale.text('需要先完成应用初始化');
       this.incomingState = DatasetIncomingState.FAILED;
       this.ready = true;
       return;
@@ -96,13 +97,13 @@ struct ShareCollectPage {
   }
 
   private title(): string {
-    if (this.kind === ShareImportKind.AUDIO) return '从这段录音成文';
-    if (this.kind === ShareImportKind.IMAGE) return '看图写一篇';
-    return '风格数据集';
+    if (this.kind === ShareImportKind.AUDIO) return AppLocale.text('从这段录音成文');
+    if (this.kind === ShareImportKind.IMAGE) return AppLocale.text('看图写一篇');
+    return AppLocale.text('风格数据集');
   }
 
   private description(): string {
-    if (this.kind === ShareImportKind.AUDIO) return '确认后上传音频，VoiceDrop 会自动转写并生成文章。';
+    if (this.kind === ShareImportKind.AUDIO) return AppLocale.text('确认后上传音频，VoiceDrop 会自动转写并生成文章。');
     return `${this.uris().length} 张图片，确认后开始看图成文。`;
   }
 
@@ -115,7 +116,7 @@ struct ShareCollectPage {
   private fileName(uri: string): string {
     const clean: string = uri.split('?')[0];
     const raw: string = clean.substring(clean.lastIndexOf('/') + 1);
-    try { return decodeURIComponent(raw) || '分享文档'; } catch (_) { return raw || '分享文档'; }
+    try { return decodeURIComponent(raw) || AppLocale.text('分享文档'); } catch (_) { return raw || AppLocale.text('分享文档'); }
   }
 
   private webHost(value: string): string {
@@ -128,17 +129,17 @@ struct ShareCollectPage {
     const uris: string[] = this.uris();
     if (uris.length > 0) {
       this.incomingApiType = 'doc';
-      this.incomingTypeLabel = '文档';
+      this.incomingTypeLabel = AppLocale.text('文档');
       this.incomingTitle = this.shareTitle.trim() || this.fileName(uris[0]);
       this.incomingMeta = uris.length > 1 ? `${uris.length} 个文档` : this.fileName(uris[0]);
     } else if (ShareImport.isWebUrl(text)) {
       this.incomingApiType = 'web';
-      this.incomingTypeLabel = '网页';
-      this.incomingTitle = '正在解析网页…';
+      this.incomingTypeLabel = AppLocale.text('网页');
+      this.incomingTitle = AppLocale.text('正在解析网页…');
       this.incomingMeta = this.webHost(text);
     } else {
       this.incomingApiType = 'text';
-      this.incomingTypeLabel = '文字';
+      this.incomingTypeLabel = AppLocale.text('文字');
       this.incomingTitle = '正在保存…';
       this.incomingMeta = ShareImport.formatChars(text.length);
     }
@@ -148,8 +149,8 @@ struct ShareCollectPage {
     const explicit: string = this.shareTitle.trim();
     if (explicit.length > 0) return explicit;
     const text: string = this.shareText.trim();
-    if (this.incomingTypeLabel === '网页') return this.webHost(text);
-    if (this.incomingTypeLabel === '文档') return this.fileName(this.uris()[0] ?? '');
+    if (this.incomingTypeLabel === AppLocale.text('网页')) return this.webHost(text);
+    if (this.incomingTypeLabel === AppLocale.text('文档')) return this.fileName(this.uris()[0] ?? '');
     return ShareImport.firstLineTitle(text, '分享的文字');
   }
 
@@ -165,7 +166,7 @@ struct ShareCollectPage {
         this.context, this.shareType, this.uris(), this.shareText, this.shareTitle);
       this.message = result.message;
       if (!result.ok) {
-        this.incomingTitle = this.incomingApiType === 'web' ? '网页解析失败' : '未能保存本次内容';
+        this.incomingTitle = AppLocale.text(this.incomingApiType === 'web' ? '网页解析失败' : '未能保存本次内容');
         this.incomingState = DatasetIncomingState.FAILED;
         return;
       }
@@ -176,12 +177,12 @@ struct ShareCollectPage {
         const added: ShareDatasetItem | undefined = ShareImport.newestAddedDatasetItem(before, this.dataset);
         if (added) this.applyBackendDatasetItem(added);
       } catch (_) {
-        this.message = '内容已保存，但数据集统计刷新失败';
+        this.message = AppLocale.text('内容已保存，但数据集统计刷新失败');
       }
       this.incomingState = DatasetIncomingState.DONE;
     } catch (error) {
       this.message = `分享导入失败：${String(error)}`;
-      this.incomingTitle = '未能保存本次内容';
+      this.incomingTitle = AppLocale.text('未能保存本次内容');
       this.incomingState = DatasetIncomingState.FAILED;
     } finally {
       this.busy = false;
@@ -237,15 +238,15 @@ struct ShareCollectPage {
   }
 
   private typeLabel(type: string): string {
-    if (type === 'web') return '网页';
-    if (type === 'doc') return '文档';
-    return '文字';
+    if (type === 'web') return AppLocale.text('网页');
+    if (type === 'doc') return AppLocale.text('文档');
+    return AppLocale.text('文字');
   }
 
   private collectedDate(value: string): string {
     const date: Date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return `${date.getMonth() + 1}月${date.getDate()}日`;
+    return AppLocale.dateShort(date.getTime());
   }
 
   private existingSubtitle(item: ShareDatasetItem): string {
@@ -256,9 +257,9 @@ struct ShareCollectPage {
 
   private applyBackendDatasetItem(item: ShareDatasetItem): void {
     this.incomingApiType = item.type || this.incomingApiType;
-    if (item.type === 'web') this.incomingTypeLabel = '网页';
-    else if (item.type === 'doc') this.incomingTypeLabel = '文档';
-    else this.incomingTypeLabel = '文字';
+    if (item.type === 'web') this.incomingTypeLabel = AppLocale.text('网页');
+    else if (item.type === 'doc') this.incomingTypeLabel = AppLocale.text('文档');
+    else this.incomingTypeLabel = AppLocale.text('文字');
     this.incomingTitle = item.title.trim() || this.successfulIncomingTitle();
     this.incomingMeta = item.type === 'web' && item.source.trim().length > 0 ?
       item.source.trim() : ShareImport.formatChars(item.chars);
@@ -266,10 +267,10 @@ struct ShareCollectPage {
 
   private incomingSubtitle(): string {
     if (this.incomingState === DatasetIncomingState.DONE) {
-      return `${this.incomingTypeLabel} · ${this.incomingMeta} · 刚刚`;
+      return `${this.incomingTypeLabel} · ${this.incomingMeta} · ${AppLocale.text('刚刚')}`;
     }
     if (this.incomingState === DatasetIncomingState.FAILED) {
-      return `${this.incomingTypeLabel} · ${this.message || '请关闭后重试'}`;
+      return `${this.incomingTypeLabel} · ${this.message || AppLocale.text('请关闭后重试')}`;
     }
     return `${this.incomingTypeLabel} · ${this.incomingMeta}`;
   }
@@ -279,12 +280,12 @@ struct ShareCollectPage {
     Column({ space: 3 }) {
       Row({ space: 12 }) {
         Column({ space: 3 }) {
-          Text('风格数据集')
+          Text(AppLocale.text('风格数据集'))
             .fontSize(21).fontWeight(FontWeight.Bold).fontColor(Theme.INK).width('100%')
-          Text(`已收集 ${this.dataset.count} 项 · ${ShareImport.formatTotalChars(this.dataset.totalChars)}`)
+          Text(`${AppLocale.text('已收集 ')}${this.dataset.count}${AppLocale.text(' 项 · ')}${ShareImport.formatTotalChars(this.dataset.totalChars)}`)
             .fontSize(13).fontColor(Theme.SECONDARY).width('100%')
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        Button('关闭')
+        Button(AppLocale.text('关闭'))
           .height(40).padding({ left: 10, right: 2 }).fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor(Theme.SECONDARY).backgroundColor(Color.Transparent).enabled(!this.busy)
           .onClick(() => this.close(systemShare.ShareAbilityResultCode.BACK))
@@ -359,19 +360,21 @@ struct ShareCollectPage {
           .enabled(!this.busy)
           .onChange((selected: boolean) => this.clearAfter = selected)
         Row() {
-          Text('提取后清空数据集').fontSize(14).fontColor(Theme.SECONDARY)
+          Text(AppLocale.text('提取后清空数据集')).fontSize(14).fontColor(Theme.SECONDARY)
           Blank()
-          Text('下次从零开始').fontSize(12).fontColor('#8A8175')
+          Text(AppLocale.text('下次从零开始')).fontSize(12).fontColor('#8A8175')
         }
           .layoutWeight(1).height('100%').enabled(!this.busy)
           .onClick(() => this.clearAfter = !this.clearAfter)
       }.width('100%').height(52).alignItems(VerticalAlign.Center)
       if (this.ready && this.dataset.count > 0 && !ShareImport.canExtract(this.dataset)) {
-        Text(`素材还太少（共 ${this.dataset.totalChars} 字），攒到 ${ShareImport.MIN_STYLE_CHARS} 字以上再提取`)
+        Text(AppLocale.isEnglish()
+          ? `Not enough material yet (total ${this.dataset.totalChars} characters). Collect at least ${ShareImport.MIN_STYLE_CHARS} characters before extracting.`
+          : `素材还太少（共 ${this.dataset.totalChars} 字），攒到 ${ShareImport.MIN_STYLE_CHARS} 字以上再提取`)
           .fontSize(12).fontColor('#C0682E').width('100%').padding({ bottom: 8 })
       }
       Row({ space: 10 }) {
-        Button('继续收集')
+        Button(AppLocale.text('继续收集'))
           .width(110).height(50).fontSize(15).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
           .backgroundColor(Theme.CARD).border({ width: 1, color: '#E2D8C8' }).borderRadius(11)
           .enabled(!this.busy).onClick(() => this.close(systemShare.ShareAbilityResultCode.CLOSE))
@@ -382,7 +385,7 @@ struct ShareCollectPage {
             } else {
               RemixIcon({ glyph: RI.DOWNLOAD, iconSize: 20, color: Theme.WHITE })
             }
-            Text(this.busy && this.incomingState === DatasetIncomingState.DONE ? '处理中…' : '提取文章风格')
+            Text(AppLocale.text(this.busy && this.incomingState === DatasetIncomingState.DONE ? '处理中…' : '提取文章风格'))
               .fontSize(16).fontWeight(FontWeight.Medium).fontColor(Theme.WHITE)
           }.justifyContent(FlexAlign.Center).width('100%')
         }
@@ -405,7 +408,7 @@ struct ShareCollectPage {
             this.existingDatasetRow(item)
           }, (item: ShareDatasetItem) => item.id)
           Row({ space: 9 }) {
-            Text('本次新增').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
+            Text(AppLocale.text('本次新增')).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#C0682E')
               .letterSpacing(2)
             Divider().vertical(false).strokeWidth(1).color('#E8C9B8').layoutWeight(1)
           }.width('100%').padding({ left: 4, right: 4, top: 16, bottom: 6 })
@@ -428,7 +431,7 @@ struct ShareCollectPage {
     Column() {
       Row() {
         Text(this.title()).fontSize(21).fontWeight(FontWeight.Bold).fontColor(Theme.INK).layoutWeight(1)
-        Button('关闭').fontSize(13).fontColor(Theme.SECONDARY).backgroundColor(Color.Transparent)
+        Button(AppLocale.text('关闭')).fontSize(13).fontColor(Theme.SECONDARY).backgroundColor(Color.Transparent)
           .enabled(!this.busy).onClick(() => this.close(systemShare.ShareAbilityResultCode.BACK))
       }.width('100%')
       Scroll() {
@@ -439,14 +442,14 @@ struct ShareCollectPage {
               .padding(14).backgroundColor('#F4F1EB').borderRadius(12)
           }
           if (this.message.length > 0) {
-            Text(this.message).fontSize(13).lineHeight(20).fontColor('#C44C35').width('100%')
+            Text(AppLocale.text(this.message)).fontSize(13).lineHeight(20).fontColor('#C44C35').width('100%')
           }
         }.width('100%')
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
       Row({ space: 10 }) {
-        Button('取消').layoutWeight(1).height(48).fontColor('#333333').backgroundColor('#E8E8E5')
+        Button(AppLocale.text('取消')).layoutWeight(1).height(48).fontColor('#333333').backgroundColor('#E8E8E5')
           .enabled(!this.busy).onClick(() => this.close(systemShare.ShareAbilityResultCode.BACK))
-        Button(this.busy ? '处理中…' : '开始生成文章')
+        Button(AppLocale.text(this.busy ? '处理中…' : '开始生成文章'))
           .layoutWeight(1).height(48).fontColor(Theme.WHITE).backgroundColor(Theme.ACCENT)
           .enabled(this.ready && !this.busy).onClick(() => this.confirmCompose())
       }.width('100%')
