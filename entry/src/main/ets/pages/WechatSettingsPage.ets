@@ -213,7 +213,7 @@ export struct WechatSettingsPage {
       try { fs.writeSync(output.fd, png); } finally { fs.closeSync(output); }
       const saved: string[] = await photoAccessHelper.getPhotoAccessHelper(context).showAssetsCreationDialog(
         [fileUri.getUriFromPath(path)], [{
-          title: 'VoiceDrop-公众号授权',
+          title: `VoiceDrop-${AppLocale.text('公众号授权')}`,
           fileNameExtension: 'png',
           photoType: photoAccessHelper.PhotoType.IMAGE
         }]);
@@ -397,7 +397,7 @@ export struct WechatSettingsPage {
       this.authorizationContent()
     } else {
       Column() {
-        PageHeader({ title: '微信公众号', onBack: this.onBack })
+        PageHeader({ title: AppLocale.text('微信公众号'), onBack: this.onBack })
         if (this.loading) {
           Column({ space: 14 }) {
             LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)

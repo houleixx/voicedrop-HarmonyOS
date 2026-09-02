@@ -211,7 +211,7 @@ export struct StyleSettingsPage {
 
   build() {
     Column() {
-      PageHeader({ title: '写作风格', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('写作风格'), onBack: this.onBack })
       Column({ space: 12 }) {
         this.versionModeBar()
         Stack({ alignContent: Alignment.TopStart }) {

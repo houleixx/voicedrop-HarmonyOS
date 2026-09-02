@@ -32,7 +32,7 @@ export struct SharedArticlePage {
 
   build() {
     Column() {
-      PageHeader({ title: '分享的文章', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('分享的文章'), onBack: this.onBack })
       if (!this.article || this.article.articles.length === 0) {
         Text(AppLocale.text('这篇分享已不可用')).fontSize(16).fontColor('#888888').margin({ top: 80 })
       } else {

@@ -140,6 +140,7 @@ export struct BookWritingPage {
               .accessibilityText(AppLocale.text('AI生成内容'))
             Text(AppLocale.text('本功能使用人工智能生成书籍内容'))
               .fontSize(12).fontWeight(FontWeight.Medium).fontColor(Theme.SECONDARY)
+              .layoutWeight(1)
           }
             .width('100%').constraintSize({ minHeight: 34 })
             .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -154,8 +155,7 @@ export struct BookWritingPage {
                 Text(AppLocale.text('算力')).fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ top: 12 })
               }.alignItems(VerticalAlign.Center)
               Text(AppLocale.text('写一本书的价钱，提交时一次扣清')).fontSize(12.5).fontColor('#928A80')
-            }.alignItems(HorizontalAlign.Start)
-            Blank()
+            }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             if (this.balance === undefined) {
               Text(AppLocale.text('加载中…')).fontSize(13).fontColor(Theme.FAINT)
             } else {

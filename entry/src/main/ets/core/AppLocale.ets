@@ -29,6 +29,10 @@ export class AppLocale {
       case '署名和挖文章时对你的称呼': return 'Used for bylines and when creating articles';
       case '成文时模仿这套语气': return 'The voice used when creating articles';
       case '提示词': return 'Prompts';
+      case '编辑提示词': return 'Edit prompt';
+      case '分组内的提示词也会一起删除。': return 'Prompts in this group will also be deleted.';
+      case '删除后可以通过恢复默认值找回系统提示词。': return 'Deleted system prompts can be restored from the defaults.';
+      case '公众号授权': return 'WeChat authorization';
       case '自定义长按菜单里的每个动作': return 'Customize every action in the press-and-hold menu';
       case '发布': return 'Publishing';
       case '成文一键推送到草稿箱': return 'Send finished articles to your draft box';
@@ -166,8 +170,8 @@ export class AppLocale {
       case '配图': return 'Images';
       case '开始写了！': return 'Your book is underway!';
       case '现在可以关掉 App。书通常 10–30 分钟写完，过稿一章、上架一章——下拉刷新「写书」书架就能看到。': return 'You can close the app now. Books usually take 10–30 minutes. Each approved chapter appears on the bookshelf — pull to refresh Write a Book to see it.';
-      case 'AI生成': return 'AI-generated';
-      case 'AI生成内容': return 'AI-generated content';
+      case 'AI生成': return 'AI-Generated';
+      case 'AI生成内容': return 'AI-Generated Content';
       case '本功能使用人工智能生成书籍内容': return 'This feature uses AI to generate book content';
       case '写一本书的价钱，提交时一次扣清': return 'The cost to write a book, charged once when submitted';
       case '你现在的算力': return 'Your current credits';
@@ -188,11 +192,11 @@ export class AppLocale {
       case '每章一个写手，费曼式大白话，名词当场讲人话': return 'A dedicated writer handles each chapter in plain language, explaining terms as they appear.';
       case '另一个 AI 只看成稿挑错，不过就打回重写': return 'A separate AI reviews every draft and sends it back for revision when needed.';
       case '过一章发一章到「写书」书架，署你的名字（设置里的「名字」）': return 'Each approved chapter appears on your Write a Book shelf under the name set in Settings.';
-      case 'AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架': return 'AI-generated · You can close the app after submission; it takes 10–30 minutes and appears on your bookshelf.';
+      case 'AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架': return 'AI-Generated · You can close the app after submission; it takes 10–30 minutes and appears on your bookshelf.';
       case 'AI 采访中': return 'AI interview in progress';
       case '正在录音': return 'Recording';
       case '录音结束后将由人工智能转写并生成文章': return 'After recording ends, AI will transcribe it and create an article.';
-      case 'AI生成，录音结束后将由人工智能转写并生成文章': return 'AI-generated. After recording ends, AI will transcribe it and create an article.';
+      case 'AI生成，录音结束后将由人工智能转写并生成文章': return 'AI-Generated. After recording ends, AI will transcribe it and create an article.';
       case '采访': return 'Interview';
       case '点击停止': return 'Tap to stop';
       case '拍照': return 'Take photo';

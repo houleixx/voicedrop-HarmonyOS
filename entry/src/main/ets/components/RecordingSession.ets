@@ -41,7 +41,8 @@ export struct RecordingSession {
               .fontSize(11).lineHeight(16).fontWeight(FontWeight.Medium).fontColor('#9B9388')
               .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           }
-            .margin({ top: 8, left: 20, right: 20 })
+            .margin({ top: 8 })
+            .padding({ left: 20, right: 20 })
             .width('100%')
             .alignItems(VerticalAlign.Top)
             .accessibilityText(AppLocale.text('AI生成，录音结束后将由人工智能转写并生成文章'))

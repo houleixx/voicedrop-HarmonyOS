@@ -367,7 +367,7 @@ export struct AccountPage {
 
   build() {
     Column() {
-      PageHeader({ title: '账户', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('账户'), onBack: this.onBack })
       Scroll() {
         Column() {
           this.identityCard()

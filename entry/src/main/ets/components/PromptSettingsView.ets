@@ -327,8 +327,9 @@ export struct PromptSettingsView {
 
   private async remove(node: PromptNode): Promise<boolean> {
     const result = await promptAction.showDialog({
-      title: `删除“${node.label}”？`, message: node.isGroup() ? '分组内的提示词也会一起删除。' : '删除后可以通过恢复默认值找回系统提示词。',
-      buttons: [{ text: '取消', color: '#666666' }, { text: '删除', color: '#D92D20' }]
+      title: AppLocale.isEnglish() ? `Delete “${node.label}”?` : `删除“${node.label}”？`,
+      message: AppLocale.text(node.isGroup() ? '分组内的提示词也会一起删除。' : '删除后可以通过恢复默认值找回系统提示词。'),
+      buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('删除'), color: '#D92D20' }]
     });
     if (result.index !== 1) return false;
     const error: string = await promptStore.remove(node.id); this.items = promptStore.items();
@@ -902,8 +903,8 @@ export struct PromptSettingsView {
     Column() {
       Stack({ alignContent: Alignment.End }) {
         PageHeader({
-          title: this.originalId.length > 0 ? '编辑提示词' :
-            (this.editing.isGroup() ? '新建分组' : '提示词'),
+          title: AppLocale.text(this.originalId.length > 0 ? '编辑提示词' :
+            (this.editing.isGroup() ? '新建分组' : '提示词')),
           onBack: () => this.closeEditorPage()
         })
         Button(AppLocale.text('保存'))
@@ -1001,7 +1002,7 @@ export struct PromptSettingsView {
                 .onClick(() => this.finishSort())
             }.width('100%').height(56).padding({ left: 10, right: 12 })
           } else {
-            PageHeader({ title: '提示词', onBack: () => this.onBack() })
+            PageHeader({ title: AppLocale.text('提示词'), onBack: () => this.onBack() })
             Button({ type: ButtonType.Normal }) {
               Stack({ alignContent: Alignment.Center }) {
                 Row().width(18).height(2).backgroundColor(Color.White).borderRadius(1)

@@ -13,7 +13,7 @@ export struct BlockedAuthorsPage {
 
   build() {
     Column() {
-      PageHeader({ title: '社区屏蔽管理', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('社区屏蔽管理'), onBack: this.onBack })
       if (this.authors.length === 0) {
         Column() {
           Text(AppLocale.text('没有已屏蔽的作者'))

@@ -61,7 +61,7 @@ export struct AboutPage {
 
   build() {
     Column() {
-      PageHeader({ title: '关于', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('关于'), onBack: this.onBack })
       Scroll() {
         Column() {
           Column() {

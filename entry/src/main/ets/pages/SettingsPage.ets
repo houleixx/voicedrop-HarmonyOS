@@ -316,7 +316,7 @@ export struct SettingsPage {
 
   build() {
     Column() {
-      PageHeader({ title: '设置', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('设置'), onBack: this.onBack })
       Scroll() {
         Column({ space: 10 }) {
           Column() {

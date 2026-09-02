@@ -97,7 +97,9 @@ export default class EntryAbility extends UIAbility implements WXApiEventHandler
         statusBarColor: '#00000000',
         statusBarContentColor: '#2A2521',
         isStatusBarLightIcon: false,
-        navigationBarColor: '#FAF6EF',
+        // Draw the app background behind the gesture indicator. Components still
+        // use TYPE_NAVIGATION_INDICATOR for their interactive-content safe area.
+        navigationBarColor: '#00000000',
         navigationBarContentColor: '#2A2521',
         isNavigationBarLightIcon: false
       }).catch((error: Object) => {

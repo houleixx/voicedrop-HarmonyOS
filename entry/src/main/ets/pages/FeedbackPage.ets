@@ -29,7 +29,7 @@ export struct FeedbackPage {
 
   build() {
     Column() {
-      PageHeader({ title: '意见反馈', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('意见反馈'), onBack: this.onBack })
       Column({ space: 14 }) {
         TextArea({ text: this.draft, placeholder: AppLocale.text('哪里不顺手？想要什么功能？\n写一句就行。') })
           .height(230).fontSize(16).fontColor(Theme.INK).placeholderColor(Theme.FAINT)

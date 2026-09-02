@@ -63,7 +63,7 @@ export struct PrivacyPolicyPage {
 
   build() {
     Column() {
-      PageHeader({ title: '隐私政策', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('隐私政策'), onBack: this.onBack })
       Scroll() {
         Text(privacyText()).fontSize(16).lineHeight(28)
           .padding({ left: 16, right: 16, top: 6, bottom: 16 }).width('100%')

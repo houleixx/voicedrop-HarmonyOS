@@ -9,7 +9,10 @@ export default function appLanguageTest() {
       expect(AppLocale.resolve(AppLanguage.SIMPLIFIED_CHINESE, '设置')).assertEqual('设置');
       expect(AppLocale.dateTime(AppLanguage.ENGLISH, new Date(2026, 8, 1, 9, 5).getTime()))
         .assertEqual('2026-09-01 09:05');
-      expect(AppLocale.resolve(AppLanguage.ENGLISH, 'AI生成')).assertEqual('AI-generated');
+      expect(AppLocale.resolve(AppLanguage.ENGLISH, 'AI生成')).assertEqual('AI-Generated');
+      expect(AppLocale.resolve(AppLanguage.ENGLISH, 'AI生成内容')).assertEqual('AI-Generated Content');
+      expect(AppLocale.resolve(AppLanguage.ENGLISH, 'AI生成 · 提交后可关闭 App，10–30 分钟写完并出现在「写书」书架'))
+        .assertEqual('AI-Generated · You can close the app after submission; it takes 10–30 minutes and appears on your bookshelf.');
       expect(AppLocale.resolve(AppLanguage.ENGLISH, 'VoiceDrop 口述')).assertEqual('VoiceDrop Dictation');
       expect(AppLocale.resolve(AppLanguage.ENGLISH, '扩展成一本书')).assertEqual('Expand into a book');
       expect(AppLocale.resolve(AppLanguage.ENGLISH, '卡通解释图')).assertEqual('Cartoon explainer');

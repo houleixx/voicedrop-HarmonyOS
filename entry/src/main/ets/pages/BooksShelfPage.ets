@@ -204,7 +204,7 @@ export struct BooksShelfPage {
       else if (index <= this.books.length) this.onRead(this.books[index - 1]);
     })
   }
-  @Builder private shelfRow(startIndex: number) {
+  @Builder private shelfRow(startIndex: number, isLast: boolean) {
     Column() {
       Row({ space: 19 }) {
         this.shelfCard(startIndex)
@@ -215,7 +215,7 @@ export struct BooksShelfPage {
         Row().width('100%').height(6)
           .linearGradient({ angle: 180, colors: [['#E3D7C2', 0], ['#C9B99E', 1]] })
           .borderRadius(1).shadow({ radius: 3.5, color: '#2E785F3C', offsetY: 3 })
-      }.width('100%').padding({ left: 14, right: 14, top: 2, bottom: 14 })
+      }.width('100%').padding({ left: 14, right: 14, top: 2, bottom: isLast ? 0 : 14 })
     }.width('100%').padding({ top: startIndex === 0 ? 0 : 8 })
   }
   build() {
@@ -231,11 +231,13 @@ export struct BooksShelfPage {
       else if (this.error.length > 0 && this.books.length === 0) Text(AppLocale.text(this.error)).layoutWeight(1).width('100%').textAlign(TextAlign.Center).fontColor(Theme.SECONDARY)
       else Stack({ alignContent: Alignment.Top }) {
         Refresh({ refreshing: this.refreshing, builder: () => { this.refreshPlaceholder() } }) {
-          List() {
-            ForEach(this.shelfRows(), (startIndex: number) => {
-              ListItem() { this.shelfRow(startIndex) }
-            }, (startIndex: number) => `${startIndex}`)
-          }.width('100%').height('100%').padding({ bottom: 28 }).scrollBar(BarState.Off)
+          Scroll() {
+            Column() {
+              ForEach(this.shelfRows(), (startIndex: number) => {
+                this.shelfRow(startIndex, startIndex + 2 >= this.shelfItemCount())
+              }, (startIndex: number) => `${startIndex}`)
+            }.width('100%').padding({ bottom: 24 })
+          }.width('100%').height('100%').scrollBar(BarState.Off)
         }
           .width('100%').height('100%')
           .onStateChange((status: RefreshStatus) => this.refreshStatus = status)

@@ -163,6 +163,7 @@ struct Index {
   @State private communitySearching: boolean = false;
   @State private communitySearchQuery: string = '';
   @State private selectedTag: string = '';
+  private readonly homeTabScroller: Scroller = new Scroller();
   @State private selected?: Recording = undefined;
   @State private deletingRecordingName: string = '';
   @State private openRecordingSwipeName: string = '';
@@ -1201,11 +1202,33 @@ struct Index {
     this.selectedTag = '';
     this.tab = index;
     if (index === HomeTabIndex.Community) this.ensureCommunityLoaded();
+    this.centerSelectedHomeTab();
   }
 
   private selectHomeTag(tag: string): void {
     this.selectedTag = tag;
     this.tab = HomeTabIndex.Recordings;
+    this.centerSelectedHomeTab();
+  }
+
+  /** Edge tabs stop at the available edge; every other selected tab is centered when possible. */
+  private centerSelectedHomeTab(): void {
+    const keys: string[] = ['recordings', 'community', 'books'].concat(this.homeTags());
+    const selected: string = this.selectedTag.length > 0 ? this.selectedTag
+      : this.tab === HomeTabIndex.Community ? 'community'
+      : this.tab === HomeTabIndex.Books ? 'books' : 'recordings';
+    let leadingWidth: number = 22;
+    for (const key of keys) {
+      const label: string = key === 'recordings' ? AppLocale.text('我的录音')
+        : key === 'community' ? AppLocale.text('VD社区')
+        : key === 'books' ? AppLocale.text('写书') : key;
+      const width: number = Math.max(42, label.length * 12) + 20;
+      if (key === selected) {
+        this.homeTabScroller.scrollTo({ xOffset: Math.max(0, leadingWidth + width / 2 - 180), yOffset: 0, animation: true });
+        return;
+      }
+      leadingWidth += width + 20;
+    }
   }
 
   // Community detail is a nested route. Remove moderated content from every
@@ -1981,7 +2004,7 @@ struct Index {
 
   @Builder
   private homeTabs() {
-    Scroll() {
+    Scroll(this.homeTabScroller) {
       Row({ space: 20 }) {
         Column({ space: 5 }) {
           Text(AppLocale.text('我的录音')).fontSize(20).fontWeight(FontWeight.Medium)

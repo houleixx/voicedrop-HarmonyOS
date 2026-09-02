@@ -58,7 +58,7 @@ export struct UsagePage {
 
   build() {
     Column() {
-      PageHeader({ title: '算力', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('算力'), onBack: this.onBack })
       if (this.loading) {
         Column({ space: 14 }) {
           LoadingProgress().width(40).height(40).color(Theme.ACCENT_STRONG)

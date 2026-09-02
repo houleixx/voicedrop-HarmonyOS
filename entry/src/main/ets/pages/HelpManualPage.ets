@@ -172,7 +172,7 @@ export struct HelpManualPage {
 
   build() {
     Column() {
-      PageHeader({ title: '使用手册', onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('使用手册'), onBack: this.onBack })
       Scroll() {
         Row({ space: 6 }) {
           ForEach(ManualMarkdown.SECTION_LABELS, (label: string, index: number) => {
