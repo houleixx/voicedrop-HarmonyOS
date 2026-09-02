@@ -472,6 +472,13 @@ export class AppLocale {
       case '挖文章': return 'Create article';
       case '语音修改': return 'Voice edit';
       case '活动赠送': return 'Campaign bonus';
+      case '投币奖励': return 'Coin rewards';
+      case '收到投币': return 'Coins received';
+      case '修书': return 'Book revisions';
+      case 'AI 采访': return 'AI interviews';
+      case '文风蒸馏': return 'Style distillation';
+      case '图片编辑': return 'Image editing';
+      case '小红书分享': return 'Xiaohongshu sharing';
       case '你的名字': return 'Your name';
       case '这个名字会出现在文章署名，以及挖文章时对你的称呼。随时可改。': return 'This name appears in article bylines and is used when creating articles. You can change it anytime.';
       case '保存中…': return 'Saving…';

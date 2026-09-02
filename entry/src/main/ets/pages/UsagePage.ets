@@ -93,7 +93,7 @@ export struct UsagePage {
               Text(AppLocale.text('算力来源')).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#777777').width('100%').margin({ top: 6 })
               Column() {
                 ForEach(this.summary.granted, (row: UsageSummaryRow, index: number) => {
-                  Row() { Text(row.reason).fontSize(15).layoutWeight(1); if (row.count > 1) Text(`${row.count}${AppLocale.text('笔')}`).fontSize(12).fontColor('#999999').margin({ right: 8 }); Text(`+${this.amount(row.suanli)}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor('#2F9B68') }.padding(15).width('100%')
+                  Row() { Text(AppLocale.text(row.reason)).fontSize(15).layoutWeight(1); if (row.count > 1) Text(`${row.count}${AppLocale.text('笔')}`).fontSize(12).fontColor('#999999').margin({ right: 8 }); Text(`+${this.amount(row.suanli)}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor('#2F9B68') }.padding(15).width('100%')
                   if (index < this.summary.granted.length - 1) this.itemDivider()
                 }, (row: UsageSummaryRow) => `grant-${row.reasonCode}`)
               }.width('100%').backgroundColor(Color.White).borderRadius(14)
@@ -103,7 +103,7 @@ export struct UsagePage {
               Text(AppLocale.text('花费总结')).fontSize(13).fontWeight(FontWeight.Bold).fontColor('#777777').width('100%').margin({ top: 6 })
               Column() {
                 ForEach(this.summary.spent, (row: UsageSummaryRow, index: number) => {
-                  Row() { Text(row.reason).fontSize(15).layoutWeight(1); if (row.count > 1) Text(`${row.count}${AppLocale.text('笔')}`).fontSize(12).fontColor('#999999').margin({ right: 8 }); Text(`-${this.amount(row.suanli)}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor('#D92D20') }.padding(15).width('100%')
+                  Row() { Text(AppLocale.text(row.reason)).fontSize(15).layoutWeight(1); if (row.count > 1) Text(`${row.count}${AppLocale.text('笔')}`).fontSize(12).fontColor('#999999').margin({ right: 8 }); Text(`-${this.amount(row.suanli)}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor('#D92D20') }.padding(15).width('100%')
                   if (index < this.summary.spent.length - 1) this.itemDivider()
                 }, (row: UsageSummaryRow) => `spent-${row.reasonCode}`)
               }.width('100%').backgroundColor(Color.White).borderRadius(14)
@@ -114,7 +114,7 @@ export struct UsagePage {
               if (this.entries.length === 0) Text(AppLocale.text('暂无记录')).fontSize(14).fontColor('#777777').padding(18).width('100%')
               ForEach(this.entries, (entry: UsageEntry, index: number) => {
                 Row() {
-                  Column({ space: 3 }) { Text(this.entryLabel(entry)).fontSize(15); Text(this.entryTime(entry.ts)).fontSize(12).fontColor('#999999') }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+                  Column({ space: 3 }) { Text(AppLocale.text(this.entryLabel(entry))).fontSize(15); Text(this.entryTime(entry.ts)).fontSize(12).fontColor('#999999') }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                   Text(`${entry.kind === 'grant' ? '+' : '-'}${this.amount(entry.suanli)}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor(entry.kind === 'grant' ? '#2F9B68' : '#D92D20')
                 }.padding(15).width('100%')
                 if (index < this.entries.length - 1 || this.nextCursor.length > 0) this.itemDivider()
