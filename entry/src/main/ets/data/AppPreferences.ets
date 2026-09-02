@@ -63,6 +63,13 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
+  pricesCache(): string { return String(this.store?.getSync('pricesCache.v1', '') ?? ''); }
+
+  async savePricesCache(value: string): Promise<void> {
+    this.store?.putSync('pricesCache.v1', value);
+    await this.store?.flush();
+  }
+
   referralDone(): boolean { return Boolean(this.store?.getSync('referralDone', false) ?? false); }
 
   referralWithinWindow(): boolean {

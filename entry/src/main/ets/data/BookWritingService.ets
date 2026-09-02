@@ -29,15 +29,15 @@ export class BookWritingResult {
 export class BookWritingService {
   static readonly API: string = 'https://lab.jianshuo.dev/api/book';
   static readonly SHELF: string = 'https://voicedrop.cn/books/';
-  static readonly BOOK_SUANLI: number = 320;
+  static readonly FALLBACK_BOOK_SUANLI: number = 160;
 
-  static shouldLoadInvite(balance: number | undefined): boolean {
-    return balance !== undefined && balance < BookWritingService.BOOK_SUANLI;
+  static shouldLoadInvite(balance: number | undefined, price: number = BookWritingService.FALLBACK_BOOK_SUANLI): boolean {
+    return balance !== undefined && balance < price;
   }
 
-  static shortfall(balance: number | undefined): number {
+  static shortfall(balance: number | undefined, price: number = BookWritingService.FALLBACK_BOOK_SUANLI): number {
     if (balance === undefined || !Number.isFinite(balance)) return 0;
-    const amount: number = Math.max(0, BookWritingService.BOOK_SUANLI - balance);
+    const amount: number = Math.max(0, price - balance);
     return Math.ceil(amount);
   }
 
@@ -55,7 +55,8 @@ export class BookWritingService {
     if (code === 402) {
       let body: BookChargeWire = {};
       try { body = JSON.parse(responseText.length > 0 ? responseText : '{}') as BookChargeWire; } catch (_) {}
-      const need: string = BookWritingService.formatSuanli(body.need_suanli, BookWritingService.BOOK_SUANLI);
+      // The 402 payload is authoritative even if our cached display price is stale.
+      const need: string = BookWritingService.formatSuanli(body.need_suanli, BookWritingService.FALLBACK_BOOK_SUANLI);
       const have: string = BookWritingService.formatSuanli(body.suanli, 0);
       return new BookWritingResult(code, false,
         AppLocale.bookWritingCreditsInsufficient(need, have), body.suanli);

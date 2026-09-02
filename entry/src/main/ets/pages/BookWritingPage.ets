@@ -6,6 +6,7 @@ import { usageStore } from '../data/UsageStore';
 import { referralService, InviteLink } from '../data/ReferralService';
 import { BookWritingArticleSeed, BookWritingSeed } from '../core/BookWritingSeed';
 import { AppLocale } from '../core/AppLocale';
+import { prices, Prices } from '../data/Prices';
 
 @Component
 export struct BookWritingPage {
@@ -18,19 +19,21 @@ export struct BookWritingPage {
   @State private submitted: boolean = false;
   @State private message: string = '';
   @State private balance?: number = undefined;
+  @State private price: number = Prices.current().book;
   @State private invite?: InviteLink = undefined;
   @StorageLink('safeAreaBottomPx') private safeAreaBottomPx: number = 0;
 
   aboutToAppear(): void { this.loadContext().catch(() => {}); }
   private async loadContext(): Promise<void> {
+    this.price = (await prices.refreshIfNeeded()).book;
     try { this.balance = (await usageStore.balance()).suanli; } catch (_) {}
     await this.loadInviteIfNeeded();
   }
   private async loadInviteIfNeeded(): Promise<void> {
-    if (!BookWritingService.shouldLoadInvite(this.balance) || this.invite !== undefined) return;
+    if (!BookWritingService.shouldLoadInvite(this.balance, this.price) || this.invite !== undefined) return;
     try { this.invite = await referralService.inviteLink(); } catch (_) {}
   }
-  private shortfall(): number { return BookWritingService.shortfall(this.balance); }
+  private shortfall(): number { return BookWritingService.shortfall(this.balance, this.price); }
   private feedCreditTitle(): string {
     const credits: number = this.invite?.suanliFeedAuthor ?? 0;
     if (AppLocale.isEnglish()) {
@@ -51,12 +54,12 @@ export struct BookWritingPage {
   }
   private submitLabel(): string {
     if (this.sending) return AppLocale.text('提交中…');
-    if (this.shortfall() === 0) return AppLocale.text('开始写书 · 320 算力');
+    if (this.shortfall() === 0) return AppLocale.isEnglish() ? `Start writing · ${this.price} credits` : `开始写书 · ${this.price} 算力`;
     return AppLocale.isEnglish() ? `Need ${this.shortfall()} more credits` : `算力不够 · 还差 ${this.shortfall()}`;
   }
   private canSubmit(): boolean {
     return BookWritingSeed.canSubmit(this.seed, this.seedArticle) && !this.sending && !this.submitted &&
-      (this.balance === undefined || this.balance >= 320);
+      (this.balance === undefined || this.balance >= this.price);
   }
   private safeAreaBottom(): number { return this.getUIContext().px2vp(this.safeAreaBottomPx); }
   private async start(): Promise<void> {
@@ -147,7 +150,7 @@ export struct BookWritingPage {
               Row({ space: 4 }) {
                 RemixIcon({ glyph: RI.FLASHLIGHT, iconSize: 22, color: Theme.AMBER })
                   .translate({ y: -2 })
-                Text('320').fontSize(34).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
+                Text(`${this.price}`).fontSize(34).fontWeight(FontWeight.Bold).fontColor(Theme.INK)
                 Text(AppLocale.text('算力')).fontSize(15).fontWeight(FontWeight.Bold).fontColor(Theme.SECONDARY).margin({ top: 12 })
               }.alignItems(VerticalAlign.Center)
               Text(AppLocale.text('写一本书的价钱，提交时一次扣清')).fontSize(12.5).fontColor('#928A80')

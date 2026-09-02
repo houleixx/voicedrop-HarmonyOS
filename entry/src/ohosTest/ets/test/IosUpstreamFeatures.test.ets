@@ -61,10 +61,10 @@ export default function iosUpstreamFeaturesTest() {
       expect(insufficient.message.includes('要 320 算力')).assertTrue();
       expect(insufficient.message.includes('现在有 12.5')).assertTrue();
       expect(BookWritingService.shouldLoadInvite(undefined)).assertFalse();
-      expect(BookWritingService.shouldLoadInvite(320)).assertFalse();
+      expect(BookWritingService.shouldLoadInvite(160)).assertFalse();
       expect(BookWritingService.shouldLoadInvite(500)).assertFalse();
-      expect(BookWritingService.shouldLoadInvite(319.9)).assertTrue();
-      expect(BookWritingService.shortfall(319.9)).assertEqual(1);
+      expect(BookWritingService.shouldLoadInvite(159.9)).assertTrue();
+      expect(BookWritingService.shortfall(159.9)).assertEqual(1);
     });
 
     it('parsesCurrentIosBookShelfContract', 0, () => {
