@@ -10,6 +10,7 @@ node_modules/
 oh_modules/
 /build/
 /entry/build/
+/entry/.test/
 local.properties
 *.hap
 *.har
