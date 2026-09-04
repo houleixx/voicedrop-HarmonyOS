@@ -261,6 +261,11 @@ export class AppLocale {
       case '账号发送失败，请重试': return 'Could not send account. Please try again.';
       case '没有找到这篇文章': return 'Article not found';
       case '已取消保存': return 'Save canceled';
+      case '这本书暂时不能下载': return 'This book cannot be downloaded right now';
+      case '正在生成 PDF，首次下载约需一分钟': return 'Generating PDF; the first download takes about a minute';
+      case 'PDF 已保存': return 'PDF saved';
+      case '下载失败，请检查网络后重试': return 'Download failed. Check your network and try again.';
+      case '下载 PDF': return 'Download PDF';
       case '录音、文章、字幕和图片已导出': return 'Recordings, articles, captions, and images exported';
       case '无法打开这个链接': return 'Could not open this link';
       case '自动分享配置保存失败': return 'Could not save auto-share settings';

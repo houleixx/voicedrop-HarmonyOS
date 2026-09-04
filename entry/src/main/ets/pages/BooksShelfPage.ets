@@ -1,5 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { systemShare } from '@kit.ShareKit';
@@ -16,6 +17,8 @@ import { RemixIcon, RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
 import { BookRevisePage } from './BookRevisePage';
 import { AppLocale } from '../core/AppLocale';
+import { BookPdfDownloadPolicy } from '../core/BookPdfDownloadPolicy';
+import { httpClient } from '../net/HttpClient';
 
 @Component
 struct CachedBookCoverImage {
@@ -270,6 +273,7 @@ export struct BookReaderPage {
   @State private isMine: boolean = false;
   @State private isHidden: boolean = false;
   @State private changingHidden: boolean = false;
+  @State private downloadingPdf: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
   private currentPageUrl: string = '';
   private currentPageTitle: string = '';
@@ -351,6 +355,37 @@ export struct BookReaderPage {
   private safeAreaTop(): number {
     return this.safeAreaTopPx > 0 ? this.getUIContext().px2vp(this.safeAreaTopPx) : 0;
   }
+  private async downloadBookPdf(url: string = BookPdfDownloadPolicy.url(this.book.slug)): Promise<void> {
+    if (this.downloadingPdf) return;
+    if (!BookPdfDownloadPolicy.isTrustedUrl(url, this.book.slug)) {
+      promptAction.showToast({ message: AppLocale.text('这本书暂时不能下载') });
+      return;
+    }
+    this.downloadingPdf = true;
+    let destinationUri: string = '';
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const options: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
+      options.newFileNames = [BookPdfDownloadPolicy.fileName(this.book.title || this.book.main, this.book.slug)];
+      options.fileSuffixChoices = ['PDF 文档|.pdf'];
+      const uris: string[] = await new picker.DocumentViewPicker(context).save(options);
+      if (uris.length === 0) {
+        promptAction.showToast({ message: AppLocale.text('已取消保存') });
+        return;
+      }
+      destinationUri = uris[0];
+      promptAction.showToast({ message: AppLocale.text('正在生成 PDF，首次下载约需一分钟') });
+      const response = await httpClient.getBytes(url, '', 180000);
+      if (!response.ok() || response.data.byteLength === 0) throw new Error(`HTTP ${response.code}`);
+      const destination: fs.File = fs.openSync(destinationUri, fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try { fs.writeSync(destination.fd, response.data); }
+      finally { fs.closeSync(destination); }
+      promptAction.showToast({ message: AppLocale.text('PDF 已保存') });
+    } catch (_) {
+      if (destinationUri.length > 0) try { fs.unlinkSync(destinationUri); } catch (_) {}
+      promptAction.showToast({ message: AppLocale.text('下载失败，请检查网络后重试') });
+    } finally { this.downloadingPdf = false; }
+  }
   private closeRevise(): void {
     this.showRevise = false;
     try { this.controller.refresh(true); } catch (_) {}
@@ -379,21 +414,24 @@ export struct BookReaderPage {
     } finally { this.changingHidden = false; }
   }
   private moreMenuIds(): string[] {
-    return this.isMine ? ['hidden', 'revise', 'share'] : ['share'];
+    return this.isMine ? ['hidden', 'revise', 'download', 'share'] : ['download', 'share'];
   }
   private runMoreAction(id: string): void {
     this.showMoreMenu = false;
     if (id === 'hidden') this.toggleHidden().catch(() => {});
     else if (id === 'revise') this.showRevise = true;
+    else if (id === 'download') this.downloadBookPdf().catch(() => {});
     else if (id === 'share') this.showShareSheet = true;
   }
   private moreMenuLabel(id: string): string {
     if (id === 'hidden') return AppLocale.text(this.isHidden ? '取消隐藏本书' : '隐藏本书');
-    return AppLocale.text(id === 'revise' ? '修改这本书' : '分享');
+    if (id === 'revise') return AppLocale.text('修改这本书');
+    return AppLocale.text(id === 'download' ? '下载 PDF' : '分享');
   }
   private moreMenuGlyph(id: string): string {
     if (id === 'hidden') return RI.CLOSE;
-    return id === 'revise' ? RI.EDIT : RI.SHARE_FORWARD;
+    if (id === 'revise') return RI.EDIT;
+    return id === 'download' ? RI.DOWNLOAD : RI.SHARE_FORWARD;
   }
   @Builder private moreMenuRow(id: string) {
     Row() {
@@ -455,6 +493,9 @@ export struct BookReaderPage {
             })
             .onErrorReceive((event: OnErrorReceiveEvent): void => {
               if (event.request.isMainFrame()) this.loading = false;
+            })
+            .onDownloadStart((event: OnDownloadStartEvent): void => {
+              this.downloadBookPdf(event.url).catch(() => {});
             })
           if (this.loading) {
             Column() {

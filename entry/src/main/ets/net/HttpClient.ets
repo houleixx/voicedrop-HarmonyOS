@@ -40,7 +40,7 @@ export class HttpClient {
     return this.request(url, 'PATCH' as http.RequestMethod, bearer, body, 'application/json');
   }
 
-  async getBytes(url: string, bearer: string = ''): Promise<BinaryResponse> {
+  async getBytes(url: string, bearer: string = '', timeout: number = 120000): Promise<BinaryResponse> {
     const request: http.HttpRequest = http.createHttp();
     const headers: Record<string, string> = { 'Accept': '*/*', 'X-VD-Platform': 'harmonyos' };
     if (bearer.length > 0) headers['Authorization'] = `Bearer ${bearer}`;
@@ -49,8 +49,8 @@ export class HttpClient {
         method: http.RequestMethod.GET,
         header: headers,
         expectDataType: http.HttpDataType.ARRAY_BUFFER,
-        connectTimeout: 30000,
-        readTimeout: 120000
+        connectTimeout: Math.min(30000, timeout),
+        readTimeout: timeout
       });
       return new BinaryResponse(result.responseCode, result.result as ArrayBuffer);
     } finally {

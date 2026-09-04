@@ -44,6 +44,7 @@ import deviceLinkTransferTest from './DeviceLinkTransfer.test';
 import deviceLinkCryptoInteropTest from './DeviceLinkCryptoInterop.test';
 import appLanguageTest from './AppLanguage.test';
 import pricesTest from './Prices.test';
+import bookPdfDownloadPolicyTest from './BookPdfDownloadPolicy.test';
 
 export default function testsuite() {
   libraryCommandUiTest();
@@ -92,4 +93,5 @@ export default function testsuite() {
   deviceLinkCryptoInteropTest();
   appLanguageTest();
   pricesTest();
+  bookPdfDownloadPolicyTest();
 }
