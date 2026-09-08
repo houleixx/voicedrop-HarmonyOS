@@ -317,6 +317,9 @@ struct Index {
   private holdEditOriginalText: string = '';
   private holdEditShouldSend: boolean = false;
   private holdEditCompleted: boolean = false;
+  private editHoldGeneration: number = 0;
+  private editHoldStarting: boolean = false;
+  private editHoldStop: Promise<void> = Promise.resolve();
   private paragraphEditLine: number = 0;
   private paragraphEditArticleIndex: number = -1;
   private paragraphEditOriginal: string = '';
@@ -460,6 +463,7 @@ struct Index {
     if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
     this.commandHoldTimer = -1;
     this.clearCommandTranscriptConfirmation();
+    ++this.editHoldGeneration;
     ++this.commandDictationGeneration;
     this.commandGestureGate.cancel();
     this.statusSession?.close();
@@ -1076,27 +1080,35 @@ struct Index {
     } catch (_) {}
   }
 
+  private libraryRefreshGeneration: number = 0;
+
   private async refreshLibrary(showLoading: boolean = true, showFailure: boolean = showLoading,
     invalidatedStems?: string[], enrichBeforeDisplay: boolean = false): Promise<void> {
+    const generation: number = ++this.libraryRefreshGeneration;
+    const identity: string = authStore.bearer();
     const displayLoading: boolean =
       ClientReliability.libraryRefreshShowsLoading(showLoading, this.recordings.length > 0);
     if (displayLoading) this.loading = true;
     this.errorText = '';
     try {
       const remote: Recording[] = await libraryStore.load();
-      if (enrichBeforeDisplay) await libraryStore.enrichMissingMetadata(remote, invalidatedStems);
+      if (generation !== this.libraryRefreshGeneration || identity !== authStore.bearer()) return;
       const staleDeleted: Recording[] = remote.filter((recording: Recording) =>
         this.deletedRecordingNames.includes(recording.name));
-      this.recordings = RecordingListUi.afterRefresh(
+      // Merge the last visible values before applying authoritative article metadata.
+      // A successful response may intentionally clear the title, tags or first photo.
+      const next: Recording[] = RecordingListUi.afterRefresh(
         uploader.pendingRecordings(), remote, this.deletedRecordingNames,
-        this.recordings.filter((recording: Recording) => recording.saving), this.recordings,
-        invalidatedStems ?? []);
+        this.recordings.filter((recording: Recording) => recording.saving), this.recordings);
+      if (enrichBeforeDisplay) await libraryStore.enrichMissingMetadata(next, invalidatedStems, true);
+      if (generation !== this.libraryRefreshGeneration || identity !== authStore.bearer()) return;
+      this.recordings = next;
       libraryStore.storeRecordingsSnapshot(this.recordings);
       this.commandSession?.setRefs(this.currentCommandRefs());
       staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
       if (!enrichBeforeDisplay) {
-        libraryStore.enrichMissingMetadata(remote, invalidatedStems).then((changed: boolean) => {
-          if (changed) {
+        libraryStore.enrichMissingMetadata(next, invalidatedStems).then((changed: boolean) => {
+          if (changed && generation === this.libraryRefreshGeneration && identity === authStore.bearer()) {
             this.recordings = this.recordings.slice();
             libraryStore.storeRecordingsSnapshot(this.recordings);
           }
@@ -1105,9 +1117,10 @@ struct Index {
       this.publishReadyReplies();
       this.drainPendingCommunityShare().catch(() => {});
     } catch (error) {
-      this.errorText = ClientReliability.libraryErrorText(error as Object, this.recordings.length > 0, showFailure);
+      if (generation === this.libraryRefreshGeneration && identity === authStore.bearer())
+        this.errorText = ClientReliability.libraryErrorText(error as Object, this.recordings.length > 0, showFailure);
     } finally {
-      if (displayLoading) this.loading = false;
+      if (generation === this.libraryRefreshGeneration) this.loading = false;
     }
   }
 
@@ -1128,7 +1141,8 @@ struct Index {
         const stems: string[] = this.commandLibraryRefreshStems;
         this.commandLibraryRefreshStems = [];
         libraryStore.invalidateArticleStems(stems);
-        await this.refreshLibrary(false, false, stems);
+        this.retryRecordingCovers(stems);
+        await this.refreshLibrary(false, false, stems, true);
       }
     } finally {
       this.commandLibraryRefreshRunning = false;
@@ -1163,7 +1177,8 @@ struct Index {
     this.libraryRefreshing = true;
     try {
       await Promise.all([photoService.retryPending(), uploader.drainPending(), uploader.drainPendingTags()]);
-      await this.refreshLibrary(false, true);
+      this.retryRecordingCovers();
+      await this.refreshLibrary(false, true, undefined, true);
     }
     finally {
       this.libraryRefreshing = false;
@@ -1416,6 +1431,12 @@ struct Index {
         const introduced: string[] = PhotoLoadPolicy.introducedKeys(
           photoService.articlePhotoKeys(this.article), photoService.articlePhotoKeys(updated));
         this.generatedPhotoKeys = Array.from(new Set<string>(this.generatedPhotoKeys.concat(introduced)));
+        for (const key of introduced) {
+          if (!appPreferences.photoWasLoaded(key)) {
+            const started: number = appPreferences.photoWaitStart(key);
+            appPreferences.setPhotoWait(key, started > 0 ? started : Date.now(), true);
+          }
+        }
         if (message.id) this.continuePendingPhotoEdit(message.id, introduced);
         for (const item of message.queue ?? []) {
           if (item.id && item.status === 'done') this.continuePendingPhotoEdit(item.id, introduced);
@@ -1926,6 +1947,20 @@ struct Index {
       : ArticleBody.photoThumbnailUrl(fullKey);
   }
 
+  private recordingCoverRetryGeneration: number = 0;
+
+  private retryRecordingCovers(stems?: string[]): void {
+    this.recordingCoverRetryGeneration++;
+    const keys: string[] = [];
+    this.recordings.forEach((recording: Recording) => {
+      if (stems !== undefined && !stems.includes(recording.stem())) return;
+      keys.push(this.recordingDedicatedCoverFullKey(recording), this.recordingFallbackCoverFullKey(recording));
+    });
+    this.recordingThumbnailFallbackKeys = this.recordingThumbnailFallbackKeys.filter((key: string) => !keys.includes(key));
+    this.recordingPhotoFailureKeys = this.recordingPhotoFailureKeys.filter((key: string) => !keys.includes(key));
+    this.recordingSwipeRevision++;
+  }
+
   private fallbackRecordingCover(fullKey: string): void {
     if (fullKey.length === 0) return;
     if (!this.recordingThumbnailFallbackKeys.includes(fullKey)) {
@@ -1948,7 +1983,7 @@ struct Index {
   }
 
   @Builder
-  private recordingRowIcon(recording: Recording) {
+  private recordingRowIcon(recording: Recording, coverKey: string, generation: number) {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 4 }) {
         Column().width(3).height(11).borderRadius(1.5)
@@ -1959,17 +1994,21 @@ struct Index {
           .backgroundColor(recording.isEmpty ? '#D1C8BD' : Theme.ACCENT_STRONG)
       }.width(44).height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
         .backgroundColor(recording.isEmpty ? '#F4F0EB' : '#FBEAE7').borderRadius(14)
-      if (this.recordingCoverFullKey(recording).length > 0 &&
-        !this.recordingPhotoFailureKeys.includes(this.recordingCoverFullKey(recording))) {
-        Image(this.recordingCoverSource(this.recordingCoverFullKey(recording)))
+      if (coverKey.length > 0 &&
+        !this.recordingPhotoFailureKeys.includes(coverKey)) {
+        Image(this.recordingCoverSource(coverKey))
           .width(this.recordingUsesDedicatedCover(recording) ? 40 : 44)
           .height(this.recordingUsesDedicatedCover(recording) ? 60 : 44)
           .objectFit(ImageFit.Cover)
           .borderRadius(this.recordingUsesDedicatedCover(recording) ? 5 : 14)
           .border({ width: this.recordingUsesDedicatedCover(recording) ? 1 : 0, color: Theme.BORDER })
           .clip(true)
-          .onComplete(() => this.markRecordingCoverLoaded(recording, this.recordingCoverFullKey(recording)))
-          .onError(() => this.fallbackRecordingCover(this.recordingCoverFullKey(recording)))
+          .onComplete(() => {
+            if (generation === this.recordingCoverRetryGeneration) this.markRecordingCoverLoaded(recording, coverKey);
+          })
+          .onError(() => {
+            if (generation === this.recordingCoverRetryGeneration) this.fallbackRecordingCover(coverKey);
+          })
       }
       if (this.commandTalking && this.commandRefNumber(recording) > 0) {
         Text(`${this.commandRefNumber(recording)}`)
@@ -2084,7 +2123,7 @@ struct Index {
               ForEach(this.visibleRecordings(), (item: Recording) => {
                 ListItem() {
                   Row() {
-                    this.recordingRowIcon(item)
+                    this.recordingRowIcon(item, this.recordingCoverFullKey(item), this.recordingCoverRetryGeneration)
                     Column({ space: 5 }) {
                       Text(item.rowTitle()).fontSize(17).fontWeight(FontWeight.Medium)
                         .fontColor(item.isEmpty ? '#6F6A63' : Theme.INK)
@@ -2495,7 +2534,7 @@ struct Index {
     await this.sendLibraryCommandText(text);
   }
 
-  private async toggleDictation(target: string): Promise<void> {
+  private async toggleDictation(target: string, editGeneration: number = this.editHoldGeneration): Promise<void> {
     if (this.dictating) {
       if (this.dictationTarget === target) await this.dictation?.finish();
       else { await this.dictation?.stop(); this.dictating = false; }
@@ -2504,6 +2543,7 @@ struct Index {
     if (!this.context) return;
     const manager = abilityAccessCtrl.createAtManager();
     const permission = await manager.requestPermissionsFromUser(this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
+    if (target === 'edit' && editGeneration !== this.editHoldGeneration) return;
     if (permission.authResults[0] !== 0) {
       if (target === 'edit') {
         this.editText = this.holdEditOriginalText;
@@ -2523,6 +2563,7 @@ struct Index {
     }
     if (this.dictationPrefix.length > 0 && !this.dictationPrefix.endsWith(' ')) this.dictationPrefix += ' ';
     this.dictation = new AsrDictation((text: string, finalResult: boolean) => {
+      if (target === 'edit' && editGeneration !== this.editHoldGeneration) return;
       if (target === 'edit') {
         this.holdEditTranscriptText = text.trim();
         this.editText = this.dictationPrefix + text;
@@ -2534,6 +2575,7 @@ struct Index {
         if (target === 'edit' && this.holdEditShouldSend) this.completeEditHold();
       }
     }, (state: string) => {
+      if (target === 'edit' && editGeneration !== this.editHoldGeneration) return;
       this.dictationState = state;
       if (target === 'edit') {
         if (state === '正在听写…' && !this.holdEditFinishing) {
@@ -2552,6 +2594,7 @@ struct Index {
     try {
       await this.dictation.start();
     } catch (error) {
+      if (target === 'edit' && editGeneration !== this.editHoldGeneration) return;
       this.dictating = false;
       this.dictationState = `${AppLocale.text('听写启动失败：')}${String(error)}`;
       if (target === 'edit') {
@@ -2570,6 +2613,8 @@ struct Index {
 
   private handleEditHold(event: TouchEvent): void {
     if (event.type === TouchType.Down) {
+      ++this.editHoldGeneration;
+      this.editHoldStarting = true;
       this.holdEditPressed = true; this.holdEditCanceled = false; this.holdEditShouldSend = false;
       this.holdEditStartY = this.touchY(event); this.holdEditOriginalText = this.editText;
       this.holdEditFinishing = false; this.holdEditCompleted = false;
@@ -2578,16 +2623,27 @@ struct Index {
       this.startEditHold();
     } else if (event.type === TouchType.Move && this.holdEditPressed) {
       this.holdEditCanceled = this.holdEditStartY - this.touchY(event) >= 64;
-    } else if (event.type === TouchType.Up) {
+    } else if (event.type === TouchType.Up && this.holdEditPressed) {
       this.finishEditHold(false);
-    } else if (event.type === TouchType.Cancel) {
+    } else if (event.type === TouchType.Cancel && this.holdEditPressed) {
       this.finishEditHold(true);
     }
   }
 
   private async startEditHold(): Promise<void> {
-    if (this.dictating) await this.dictation?.stop();
-    await this.toggleDictation('edit');
+    const generation: number = this.editHoldGeneration;
+    if (this.dictating && this.dictation) {
+      const previous: AsrDictation = this.dictation;
+      this.dictation = undefined;
+      this.dictating = false;
+      this.editHoldStop = previous.stop();
+    }
+    // A new press may arrive while cancellation is still releasing the microphone.
+    await this.editHoldStop;
+    if (generation !== this.editHoldGeneration) return;
+    await this.toggleDictation('edit', generation);
+    if (generation !== this.editHoldGeneration) return;
+    this.editHoldStarting = false;
     if (!this.holdEditPressed && this.dictating) await this.finishEditHold(false);
   }
 
@@ -2596,13 +2652,17 @@ struct Index {
     this.holdEditPressed = false; this.holdEditCanceled = false;
     if (cancel) {
       this.holdEditShouldSend = false; this.editText = this.holdEditOriginalText;
-      await this.dictation?.stop(); this.dictating = false; this.dictationState = '';
+      const session: AsrDictation | undefined = this.dictation;
+      this.dictation = undefined;
+      this.dictating = false; this.dictationState = '';
       this.resetEditHold();
+      // Invalidate callbacks before awaiting teardown; never reset a newer press.
+      if (session) this.editHoldStop = session.stop();
       promptAction.showToast({ message: AppLocale.text('已取消语音修改') });
-    } else if (this.dictating) {
+    } else if (this.dictating || this.editHoldStarting) {
       this.holdEditShouldSend = true; this.holdEditFinishing = true;
       this.holdEditPromptText = '正在识别…';
-      await this.dictation?.finish();
+      if (this.dictating) await this.dictation?.finish();
     } else {
       this.completeEditHold();
     }
@@ -2624,6 +2684,8 @@ struct Index {
   }
 
   private resetEditHold(): void {
+    ++this.editHoldGeneration;
+    this.editHoldStarting = false;
     this.holdEditPressed = false;
     this.holdEditCanceled = false;
     this.holdEditFinishing = false;
@@ -3211,7 +3273,8 @@ struct Index {
     const fullKey: string = this.blockPhotoKey(token);
     if (this.pendingPhotoKeys.includes(fullKey)) return 'pending';
     if (this.makingGeneratedPhotoKeys.includes(fullKey)) return 'generatedPending';
-    return this.isGeneratedPhoto(token) ? 'generated' : 'original';
+    return PhotoLoadPolicy.restoredIntent(this.isGeneratedPhoto(token) || appPreferences.photoWasGenerated(fullKey),
+      appPreferences.photoWasLoaded(fullKey));
   }
 
   private startPendingPhotoEdit(id: string, fullKey: string): void {

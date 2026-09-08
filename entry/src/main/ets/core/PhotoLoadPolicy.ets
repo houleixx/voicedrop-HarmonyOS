@@ -1,4 +1,4 @@
-export type PhotoLoadIntent = 'original' | 'generated' | 'pending' | 'generatedPending';
+export type PhotoLoadIntent = 'original' | 'generated' | 'pending' | 'generatedPending' | 'unknown';
 export type PhotoFailureState = 'loadFailed' | 'making';
 export type GeneratedPhotoState = 'loading' | 'making' | 'failed';
 
@@ -12,7 +12,19 @@ export class PhotoLoadPolicy {
   }
 
   static shouldPoll(intent: PhotoLoadIntent): boolean {
-    return PhotoLoadPolicy.failureState(intent) === 'making';
+    return true;
+  }
+
+  static timeoutMs(intent: PhotoLoadIntent): number {
+    return intent === 'original' ? 15000 : PhotoLoadPolicy.POLL_TIMEOUT_MS;
+  }
+
+  static restoredIntent(generated: boolean, displayed: boolean): PhotoLoadIntent {
+    return displayed ? 'original' : generated ? 'generated' : 'unknown';
+  }
+
+  static startedAt(saved: number, now: number, explicitRetry: boolean): number {
+    return !explicitRetry && saved > 0 && saved <= now ? saved : now;
   }
 
   static shouldLoad(intent: PhotoLoadIntent): boolean {

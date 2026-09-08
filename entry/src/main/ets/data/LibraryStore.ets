@@ -127,7 +127,7 @@ export class LibraryStore {
       .sort((left: Recording, right: Recording) => right.uploaded.localeCompare(left.uploaded) || right.name.localeCompare(left.name));
   }
 
-  async enrichMissingMetadata(recordings: Recording[], targetStems?: string[]): Promise<boolean> {
+  async enrichMissingMetadata(recordings: Recording[], targetStems?: string[], forceRefresh: boolean = false): Promise<boolean> {
     let changed: boolean = false;
     const targets: Recording[] = targetStems === undefined ? recordings :
       recordings.filter((recording: Recording): boolean => targetStems.includes(recording.stem()));
@@ -136,7 +136,8 @@ export class LibraryStore {
       await Promise.all(batch.map(async (recording: Recording) => {
         try {
           if (recording.hasArticles) {
-            const doc: ArticleDoc | undefined = await this.fetchArticle(recording);
+            const cached: ArticleDoc | undefined = !forceRefresh && targetStems === undefined ? this.cachedArticle(recording) : undefined;
+            const doc: ArticleDoc | undefined = cached ?? await this.fetchArticle(recording);
             if (doc) {
               recording.title = doc.articles?.[0]?.title ?? '';
               recording.tags = doc.tags ?? [];

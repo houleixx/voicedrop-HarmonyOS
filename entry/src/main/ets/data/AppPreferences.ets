@@ -25,6 +25,33 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
+  photoWaitStart(fullKey: string): number {
+    return Number(this.store?.getSync(`photoWait:${fullKey}`, 0) ?? 0);
+  }
+
+  photoWasGenerated(fullKey: string): boolean {
+    return Boolean(this.store?.getSync(`photoGenerated:${fullKey}`, false) ?? false);
+  }
+
+  photoWasLoaded(fullKey: string): boolean {
+    return Boolean(this.store?.getSync(`photoLoaded:${fullKey}`, false) ?? false);
+  }
+
+  setPhotoWait(fullKey: string, startedAt: number, generated: boolean = false): void {
+    if (!fullKey.startsWith('users/')) return;
+    this.store?.putSync(`photoWait:${fullKey}`, startedAt);
+    if (generated) this.store?.putSync(`photoGenerated:${fullKey}`, true);
+    this.store?.flush().catch(() => {});
+  }
+
+  setPhotoLoaded(fullKey: string): void {
+    if (!fullKey.startsWith('users/')) return;
+    this.store?.putSync(`photoLoaded:${fullKey}`, true);
+    this.store?.deleteSync(`photoWait:${fullKey}`);
+    this.store?.deleteSync(`photoGenerated:${fullKey}`);
+    this.store?.flush().catch(() => {});
+  }
+
   deleteLocalAfterUpload(): boolean { return Boolean(this.store?.getSync('deleteLocalAfterUpload', true) ?? true); }
   classicRecorder(): boolean { return Boolean(this.store?.getSync('classicRecorder', false) ?? false); }
   autoShareCommunity(): boolean { return Boolean(this.store?.getSync('autoShareCommunity', false) ?? false); }

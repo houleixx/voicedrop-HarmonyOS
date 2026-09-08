@@ -1,8 +1,9 @@
 import { PhotoLoadIntent, PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
 import { VoiceDropTheme as Theme } from '../ui/VoiceDropTheme';
 import { AppLocale } from '../core/AppLocale';
+import { appPreferences } from '../data/AppPreferences';
 
-type ArticlePhotoState = 'loading' | 'loaded' | 'making' | 'loadFailed' | 'failed';
+type ArticlePhotoState = 'loading' | 'decoding' | 'fetching' | 'loaded' | 'making' | 'loadFailed' | 'failed';
 
 class ArticlePhotoRequest {
   id: number;
@@ -28,6 +29,7 @@ export struct ArticlePhotoView {
   private makingTimer: number = -1;
   private retryTimer: number = -1;
   private startedAt: number = 0;
+  private deadlineTimer: number = -1;
 
   aboutToAppear(): void {
     this.beginLoad(false);
@@ -49,7 +51,17 @@ export struct ArticlePhotoView {
   private beginLoad(forceRefresh: boolean): void {
     this.clearTimers();
     this.activeRequest = new ArticlePhotoRequest(++this.nextRequestId, '');
-    this.startedAt = Date.now();
+    this.startedAt = PhotoLoadPolicy.startedAt(appPreferences.photoWaitStart(this.photoKey), Date.now(), forceRefresh);
+    if (this.intent !== 'pending') appPreferences.setPhotoWait(this.photoKey, this.startedAt);
+    const remaining: number = this.startedAt + PhotoLoadPolicy.timeoutMs(this.intent) - Date.now();
+    // Reopening after timeout still gets one chance to load a late completed file.
+    this.deadlineTimer = setTimeout(() => {
+      this.deadlineTimer = -1;
+      if (this.state === 'loaded') return;
+      this.clearTimers();
+      this.activeRequest = new ArticlePhotoRequest(++this.nextRequestId, '');
+      this.state = 'failed';
+    }, remaining > 0 ? remaining : 15000);
     this.state = PhotoLoadPolicy.startsMaking(this.intent) ? 'making' : 'loading';
     if (!PhotoLoadPolicy.shouldLoad(this.intent)) return;
     if (PhotoLoadPolicy.shouldPoll(this.intent) && this.state === 'loading') this.scheduleMakingState();
@@ -66,8 +78,9 @@ export struct ArticlePhotoView {
         this.failed(requestId);
         return;
       }
+      this.clearMakingTimer();
       this.activeRequest = new ArticlePhotoRequest(requestId, source);
-      this.loaded(requestId);
+      this.state = 'decoding'; // Keep the original deadline until Image confirms rendering.
     } catch (_) {
       this.failed(requestId);
     }
@@ -88,12 +101,14 @@ export struct ArticlePhotoView {
   private clearTimers(): void {
     this.clearMakingTimer();
     this.clearRetryTimer();
+    if (this.deadlineTimer >= 0) clearTimeout(this.deadlineTimer);
+    this.deadlineTimer = -1;
   }
 
   private loaded(requestId: number): void {
-    if (requestId !== this.activeRequest.id) return;
+    if (requestId !== this.activeRequest.id || this.state !== 'decoding') return;
     this.clearTimers();
-    this.startedAt = 0;
+    appPreferences.setPhotoLoaded(this.photoKey);
     this.state = 'loaded';
     this.onLoaded();
   }
@@ -105,7 +120,15 @@ export struct ArticlePhotoView {
       this.state = 'loadFailed';
       return;
     }
+    this.state = this.waitingState();
     this.scheduleGeneratedRetry();
+  }
+
+  private waitingState(): ArticlePhotoState {
+    if (this.elapsed() >= PhotoLoadPolicy.timeoutMs(this.intent)) return 'failed';
+    if (this.intent === 'original') return 'loading';
+    if (this.intent === 'unknown') return 'fetching';
+    return PhotoLoadPolicy.generatedState(this.elapsed());
   }
 
   private elapsed(): number {
@@ -114,32 +137,33 @@ export struct ArticlePhotoView {
 
   private scheduleMakingState(): void {
     this.clearMakingTimer();
+    if (this.intent === 'original') return;
     const elapsed: number = this.elapsed();
-    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(elapsed);
+    const nextState: ArticlePhotoState = this.waitingState();
     if (nextState === 'failed') {
       this.state = 'failed';
       return;
     }
-    if (nextState === 'making') {
-      if (this.state !== 'loaded') this.state = 'making';
+    if (nextState === 'making' || nextState === 'fetching') {
+      if (this.state !== 'loaded') this.state = nextState;
       return;
     }
     this.makingTimer = setTimeout(() => {
       this.makingTimer = -1;
-      if (this.state === 'loading') this.state = 'making';
+      if (this.state === 'loading') this.state = this.waitingState();
     }, PhotoLoadPolicy.MAKING_GRACE_MS - elapsed);
   }
 
   private scheduleGeneratedRetry(): void {
     this.clearRetryTimer();
     const elapsed: number = this.elapsed();
-    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(elapsed);
+    const nextState: ArticlePhotoState = this.waitingState();
     if (nextState === 'failed') {
       this.clearMakingTimer();
       this.state = 'failed';
       return;
     }
-    if (nextState === 'making') this.state = 'making';
+    this.state = nextState;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = -1;
       this.retryGenerated();
@@ -147,7 +171,7 @@ export struct ArticlePhotoView {
   }
 
   private retryGenerated(): void {
-    const nextState: ArticlePhotoState = PhotoLoadPolicy.generatedState(this.elapsed());
+    const nextState: ArticlePhotoState = this.waitingState();
     if (nextState === 'failed') {
       this.clearMakingTimer();
       this.state = 'failed';
@@ -178,21 +202,25 @@ export struct ArticlePhotoView {
 
   build() {
     Stack() {
-      if (this.state === 'loaded' && this.activeRequest.url.length > 0) {
+      if ((this.state === 'loaded' || this.state === 'decoding') && this.activeRequest.url.length > 0) {
         ForEach([this.activeRequest], (request: ArticlePhotoRequest) => {
           Image(request.url)
             .width('100%')
             .objectFit(ImageFit.Contain)
             .borderRadius(12)
             .draggable(false)
-            .opacity(1)
+            .opacity(this.state === 'loaded' ? 1 : 0)
+            .onComplete((event) => {
+              if (event && event.loadingStatus === 1) this.loaded(request.id);
+            })
             .onError(() => this.failed(request.id))
             .priorityGesture(LongPressGesture().onAction((event: GestureEvent) => this.onLongPress(event)))
         }, (request: ArticlePhotoRequest) => `${request.id}`)
       }
-      if (this.state === 'loading') {
+      if (this.state === 'loading' || this.state === 'decoding' || this.state === 'fetching') {
         Column() {
           LoadingProgress().width(34).height(34).color(Theme.ACCENT_STRONG)
+          if (this.state === 'fetching') Text(AppLocale.text('正在获取图片')).fontSize(13).fontColor('#8A7B60')
         }
           .justifyContent(FlexAlign.Center)
           .width('100%')

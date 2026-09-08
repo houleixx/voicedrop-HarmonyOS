@@ -5,7 +5,8 @@ export default function photoLoadPolicyTest() {
   describe('PhotoLoadPolicy', () => {
     it('reportsOrdinaryPhotoFailureWithoutGenerationPolling', 0, () => {
       expect(PhotoLoadPolicy.failureState('original')).assertEqual('loadFailed');
-      expect(PhotoLoadPolicy.shouldPoll('original')).assertFalse();
+      expect(PhotoLoadPolicy.shouldPoll('original')).assertTrue();
+      expect(PhotoLoadPolicy.timeoutMs('original')).assertEqual(15000);
     });
 
     it('pollsOnlyForAKeyIntroducedByImageGeneration', 0, () => {
@@ -36,6 +37,16 @@ export default function photoLoadPolicyTest() {
       expect(PhotoLoadPolicy.generatedRetryDelay(0)).assertEqual(3000);
       expect(PhotoLoadPolicy.generatedRetryDelay(298500)).assertEqual(1500);
       expect(PhotoLoadPolicy.generatedRetryDelay(300000)).assertEqual(0);
+    });
+
+    it('restoresWaitWithoutResettingTheDeadline', 0, () => {
+      expect(PhotoLoadPolicy.startedAt(1000, 100000, false)).assertEqual(1000);
+      expect(PhotoLoadPolicy.startedAt(1000, 400000, false)).assertEqual(1000);
+      expect(PhotoLoadPolicy.startedAt(1000, 400000, true)).assertEqual(400000);
+      expect(PhotoLoadPolicy.restoredIntent(true, false)).assertEqual('generated');
+      expect(PhotoLoadPolicy.restoredIntent(false, false)).assertEqual('unknown');
+      expect(PhotoLoadPolicy.restoredIntent(true, true)).assertEqual('original');
+      expect(PhotoLoadPolicy.timeoutMs('unknown')).assertEqual(300000);
     });
 
     it('marksOnlyPhotoKeysIntroducedByAnArticleEdit', 0, () => {

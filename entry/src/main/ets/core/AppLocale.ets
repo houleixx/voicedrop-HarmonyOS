@@ -6,6 +6,7 @@ export class AppLocale {
   static resolve(language: string, source: string): string {
     if (AppLanguage.normalized(language) !== AppLanguage.ENGLISH) return source;
     switch (source) {
+      case '正在获取图片': return 'Fetching image';
       case '设置': return 'Settings';
       case '账户': return 'Account';
       case '算力': return 'Credits';
