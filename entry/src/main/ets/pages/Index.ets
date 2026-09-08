@@ -4600,35 +4600,52 @@ struct Index {
             glyph: this.postFed ? RI.FLASHLIGHT_FILL : RI.FLASHLIGHT,
             iconSize: 24,
             color: this.postFed ? Theme.AMBER : Theme.INK
-          })
+          }).opacity(this.communityDetailLoading || this.postFeeding ? 0.45 : 1)
         }
-          .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
+          .width(40).height(40).padding(0).backgroundColor(Theme.CARD)
+          .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11)
+          .shadow({ radius: 7, color: '#19000000', offsetX: 0, offsetY: 2 })
+          .margin({ right: 8 })
+          .stateStyles({
+            normal: { .scale({ x: 1, y: 1 }) },
+            pressed: { .scale({ x: 0.94, y: 0.94 }) }
+          })
           .stateEffect(false)
           .enabled(!this.communityDetailLoading && !this.postFed && !this.postFeeding)
-          .opacity(this.communityDetailLoading || this.postFeeding ? 0.45 : 1)
           .onClick(() => this.feedSelectedPost())
         Button({ type: ButtonType.Normal }) {
           RemixIcon({
             glyph: this.postLiked ? RI.HEART_FILL : RI.HEART,
             iconSize: 24,
             color: this.postLiked ? Theme.ACCENT_STRONG : Theme.INK
-          })
+          }).opacity(this.communityDetailLoading ? 0.45 : 1)
         }
-          .width(40).height(40).padding(0).backgroundColor(Color.Transparent)
+          .width(40).height(40).padding(0).backgroundColor(Theme.CARD)
+          .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11)
+          .shadow({ radius: 7, color: '#19000000', offsetX: 0, offsetY: 2 })
+          .margin({ right: 8 })
+          .stateStyles({
+            normal: { .scale({ x: 1, y: 1 }) },
+            pressed: { .scale({ x: 0.94, y: 0.94 }) }
+          })
           .stateEffect(false)
           .enabled(!this.communityDetailLoading)
-          .opacity(this.communityDetailLoading ? 0.45 : 1)
           .onClick(() => this.togglePostLike())
         Stack({ alignContent: Alignment.Center }) {
           Button({ type: ButtonType.Normal }) {
             RemixIcon({ glyph: RI.MORE, iconSize: 24, color: Theme.SECONDARY })
+              .opacity(this.communityDetailLoading ? 0.45 : 1)
           }
             .width(40).height(40).padding(0).backgroundColor(Theme.CARD)
             .border({ width: 1, color: Theme.BORDER, radius: 11 }).borderRadius(11)
             .shadow({ radius: 7, color: '#19000000', offsetX: 0, offsetY: 2 })
+            .stateEffect(false)
+            .stateStyles({
+              normal: { .scale({ x: 1, y: 1 }) },
+              pressed: { .scale({ x: 0.94, y: 0.94 }) }
+            })
             .enabled(!this.communityDetailLoading)
-            .opacity(this.communityDetailLoading ? 0.45 : 1)
-            .onClick(() => this.showCommunityMenu = !this.showCommunityMenu)
+              .onClick(() => this.showCommunityMenu = !this.showCommunityMenu)
         }
           .width(40).height(40)
       }
