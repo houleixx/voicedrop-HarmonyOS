@@ -1,3 +1,4 @@
+import bookShelfSearchTest from './BookShelfSearch.test';
 import libraryCommandUiTest from './LibraryCommandUi.test';
 import communityTermsTest from './CommunityTerms.test';
 import accountIdentityTest from './AccountIdentity.test';
@@ -88,6 +89,7 @@ export default function testsuite() {
   homeTabPolicyTest();
   bookShelfLoadingPolicyTest();
   bookShelfCachePolicyTest();
+  bookShelfSearchTest();
   bookWritingSeedTest();
   deviceLinkTransferTest();
   deviceLinkCryptoInteropTest();

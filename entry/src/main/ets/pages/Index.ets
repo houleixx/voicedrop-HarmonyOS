@@ -160,6 +160,7 @@ struct Index {
   @State private communityRecommended: CommunityPost[] = [];
   @State private communityLatest: CommunityPost[] = [];
   @State private communityFilter: string = 'latest';
+  @State private shelfAccountRevision: number = 0;
   @State private communitySearching: boolean = false;
   @State private communitySearchQuery: string = '';
   @State private selectedTag: string = '';
@@ -549,6 +550,7 @@ struct Index {
   }
 
   private async applyAccountIdentityChange(clearPendingQueues: boolean): Promise<void> {
+    this.shelfAccountRevision++;
     if (clearPendingQueues) {
       await appPreferences.clearAccountQueues(this.recordings.map((recording: Recording) => recording.name));
     }
@@ -2079,7 +2081,8 @@ struct Index {
       .scrollable(ScrollDirection.Horizontal)
       .scrollBar(BarState.Off)
       .width('100%')
-      .margin({ bottom: 10 })
+      // Filter rows already provide vertical space around their centered labels.
+      .margin({ bottom: this.tab === HomeTabIndex.Recordings ? 10 : 0 })
   }
 
   @Builder
@@ -2781,38 +2784,41 @@ struct Index {
   @Builder
   private communityPage() {
     Column() {
-      if (this.communitySearching) {
-        Row({ space: 10 }) {
-          TextInput({ text: this.communitySearchQuery, placeholder: AppLocale.text('搜索标题、作者或内容') })
-            .height(34).layoutWeight(1).fontSize(14).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
-            .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 0.5, color: Theme.BORDER })
-            .onChange((value: string) => this.updateCommunitySearch(value))
-          Text(AppLocale.text('取消')).fontSize(14).fontColor(Theme.INK).onClick(() => this.closeCommunitySearch())
-        }.height(CommunitySearchLayout.toolbarHeight(true)).padding({ left: 14, right: 18 }).width('100%')
-      } else {
-      Row({ space: 12 }) {
-        Text(AppLocale.text('推荐')).fontSize(15).fontWeight(this.communityFilter === 'recommended' ? FontWeight.Bold : FontWeight.Normal)
-          .fontColor(this.communityFilter === 'recommended' ? Theme.INK : Theme.SECONDARY)
-          .padding({ left: 4, right: 4, top: 4, bottom: 4 })
-          .onClick(() => this.selectCommunityFilter('recommended'))
-        Text(AppLocale.text('最新')).fontSize(15).fontWeight(this.communityFilter === 'latest' ? FontWeight.Bold : FontWeight.Normal)
-          .fontColor(this.communityFilter === 'latest' ? Theme.INK : Theme.SECONDARY)
-          .padding({ left: 4, right: 4, top: 4, bottom: 4 })
-          .onClick(() => this.selectCommunityFilter('latest'))
-        Text(AppLocale.text('回应')).fontSize(15).fontWeight(this.communityFilter === 'replies' ? FontWeight.Bold : FontWeight.Normal)
-          .fontColor(this.communityFilter === 'replies' ? Theme.INK : Theme.SECONDARY)
-          .padding({ left: 4, right: 4, top: 4, bottom: 4 })
-          .onClick(() => this.selectCommunityFilter('replies'))
-        Blank()
-        Row() {
-          RemixIcon({ glyph: RI.SEARCH, iconSize: 20, color: Theme.SECONDARY })
+      // Keep filtering and searching in the same slot so content never moves on toggle.
+      Stack({ alignContent: Alignment.Top }) {
+        if (this.communitySearching) {
+          Row({ space: 10 }) {
+            TextInput({ text: this.communitySearchQuery, placeholder: AppLocale.text('搜索标题、作者或内容') })
+              .height(34).layoutWeight(1).fontSize(14).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
+              .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 0.5, color: Theme.BORDER })
+              .onChange((value: string) => this.updateCommunitySearch(value))
+            Text(AppLocale.text('取消')).fontSize(14).fontColor(Theme.INK).onClick(() => this.closeCommunitySearch())
+          }.height(CommunitySearchLayout.toolbarHeight(true)).padding({ left: 14, right: 18 }).width('100%')
+        } else {
+        Row({ space: 12 }) {
+          Text(AppLocale.text('推荐')).fontSize(15).fontWeight(this.communityFilter === 'recommended' ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.communityFilter === 'recommended' ? Theme.INK : Theme.SECONDARY)
+            .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+            .onClick(() => this.selectCommunityFilter('recommended'))
+          Text(AppLocale.text('最新')).fontSize(15).fontWeight(this.communityFilter === 'latest' ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.communityFilter === 'latest' ? Theme.INK : Theme.SECONDARY)
+            .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+            .onClick(() => this.selectCommunityFilter('latest'))
+          Text(AppLocale.text('回应')).fontSize(15).fontWeight(this.communityFilter === 'replies' ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.communityFilter === 'replies' ? Theme.INK : Theme.SECONDARY)
+            .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+            .onClick(() => this.selectCommunityFilter('replies'))
+          Blank()
+          Row() {
+            RemixIcon({ glyph: RI.SEARCH, iconSize: 20, color: Theme.SECONDARY })
+          }
+            .width(40).height(40)
+            .justifyContent(FlexAlign.Center)
+            .alignItems(VerticalAlign.Center)
+            .onClick(() => this.communitySearching = true)
+        }.height(CommunitySearchLayout.toolbarHeight(false)).padding({ left: 14, right: 14 }).width('100%')
         }
-          .width(40).height(40)
-          .justifyContent(FlexAlign.Center)
-          .alignItems(VerticalAlign.Center)
-          .onClick(() => this.communitySearching = true)
-      }.height(CommunitySearchLayout.toolbarHeight(false)).padding({ left: 14, right: 14 }).width('100%')
-      }
+      }.width('100%').height(46).padding({ bottom: 4 })
       if (this.posts.length === 0) {
         this.pageLoadingState()
         Blank()
@@ -5297,6 +5303,7 @@ struct Index {
         }
         TabContent() {
           BooksShelfPage({
+            accountRevision: this.shelfAccountRevision,
             onWrite: () => { this.bookWritingArticleSeed = undefined; this.navigateTo('books'); },
             onRead: (book: ShelfBook) => { this.selectedBook = book; this.navigateTo('bookReader'); }
           })

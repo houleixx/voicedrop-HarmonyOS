@@ -1,3 +1,5 @@
+import { authStore } from '../data/AuthStore';
+import { BookShelfSearch, ShelfSearchEntry, BookSearchRequestState } from '../core/BookShelfSearch';
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
@@ -98,7 +100,20 @@ struct CachedBookCoverImage {
 export struct BooksShelfPage {
   onWrite: () => void = () => {};
   onRead: (book: ShelfBook) => void = () => {};
+  @Prop @Watch('onAccountChanged') accountRevision: number = 0;
   @State private books: ShelfBook[] = [];
+  @State private visibleBooks: ShelfBook[] = [];
+  @StorageProp('appDisplayLanguage') private displayLanguage: string = AppLocale.currentLanguage();
+  @State private filter: string = '全部';
+  @State private searching: boolean = false;
+  @State private query: string = '';
+  @State private searchLoading: boolean = false;
+  @State private searchFailed: boolean = false;
+  private searchEntries: ShelfSearchEntry[] = [];
+  private searchRequest: BookSearchRequestState = new BookSearchRequestState();
+  private searchInput: TextInputController = new TextInputController();
+  private loadGeneration: number = 0;
+  private active: boolean = false;
   @State private loading: boolean = true;
   @State private refreshing: boolean = false;
   @State private refreshStatus: RefreshStatus = RefreshStatus.Inactive;
@@ -106,15 +121,122 @@ export struct BooksShelfPage {
   @State private error: string = '';
 
   aboutToAppear(): void {
+    this.active = true;
+    this.onAccountChanged();
+  }
+  aboutToDisappear(): void {
+    this.active = false; this.loadGeneration++;
+    this.searchRequest.invalidate(''); this.searchEntries = [];
+  }
+  private onAccountChanged(): void {
+    this.invalidateSearch();
     this.books = booksService.cached(); this.loading = this.books.length === 0;
-    this.load().catch(() => {});
+    this.updateVisible();
+    if (this.active) this.load().catch(() => {});
+  }
+  private invalidateSearch(): void {
+    this.searchRequest.invalidate(authStore.bookShelfCacheIdentity());
+    this.searchEntries = []; this.searchLoading = false; this.searchFailed = false;
+  }
+  private updateVisible(): void {
+    this.visibleBooks = this.books.filter((book: ShelfBook) => BookShelfSearch.matchesFilter(book, this.filter) &&
+      BookShelfSearch.hit(book, this.query, this.searchEntries.find((entry: ShelfSearchEntry) => entry.slug === book.slug)) !== undefined);
   }
   private async load(): Promise<void> {
-    try { this.books = await booksService.load(); this.error = ''; }
-    catch (_) { if (this.books.length === 0) this.error = AppLocale.text('书架加载失败，下拉重试'); }
-    finally { this.loading = false; this.refreshing = false; }
+    const generation: number = ++this.loadGeneration;
+    this.invalidateSearch(); this.updateVisible();
+    try {
+      const books: ShelfBook[] = await booksService.load();
+      if (!this.active || generation !== this.loadGeneration) return;
+      this.books = books; this.error = '';
+      if (!BookShelfSearch.filters(this.books).includes(this.filter)) this.filter = '全部';
+      this.updateVisible();
+    } catch (_) {
+      if (this.active && generation === this.loadGeneration && this.books.length === 0) this.error = AppLocale.text('书架加载失败，下拉重试');
+    } finally {
+      if (this.active && generation === this.loadGeneration) {
+        this.loading = false; this.refreshing = false;
+        this.loadSearch().catch(() => {});
+      }
+    }
   }
-  private shelfItemCount(): number { return this.books.length + 1; }
+  private async loadSearch(retry: boolean = false): Promise<void> {
+    const generation: number = this.searchRequest.begin(this.query, retry);
+    if (generation < 0) return;
+    this.searchLoading = true; this.searchFailed = false;
+    try {
+      const entries: ShelfSearchEntry[] = await booksService.searchIndex();
+      if (!this.active || !this.searchRequest.finish(generation, authStore.bookShelfCacheIdentity(), true)) return;
+      this.searchEntries = entries; this.updateVisible();
+    } catch (_) {
+      if (!this.active || !this.searchRequest.finish(generation, authStore.bookShelfCacheIdentity(), false)) return;
+      this.searchFailed = true;
+    } finally {
+      if (this.searchRequest.accepts(generation, authStore.bookShelfCacheIdentity())) this.searchLoading = false;
+    }
+  }
+  private updateQuery(value: string): void {
+    this.query = value; this.updateVisible();
+    if (!this.loading && !this.refreshing) this.loadSearch().catch(() => {});
+  }
+  private cancelSearch(): void {
+    this.searchInput.stopEditing();
+    this.searching = false; this.query = ''; this.updateVisible();
+    if (this.searchRequest.failed) this.invalidateSearch();
+  }
+  private bookIndex(index: number): number { return index - (BookShelfSearch.showWrite(this.query) ? 1 : 0); }
+  private shelfItemCount(): number { return this.visibleBooks.length + (BookShelfSearch.showWrite(this.query) ? 1 : 0); }
+  private bookDetail(book: ShelfBook): string {
+    const hit: string = BookShelfSearch.hit(book, this.query,
+      this.searchEntries.find((entry: ShelfSearchEntry) => entry.slug === book.slug)) ?? '';
+    if (hit.length > 0) return `↳ ${hit}`;
+    return [book.chapters > 0 ? `${book.chapters}${AppLocale.text('章')}` : book.sub, AppLocale.resolve(this.displayLanguage, book.category)].filter((part: string) => part.length > 0).join(' · ') || book.sub;
+  }
+  @Builder private searchToolbar() {
+    // Keep filtering and searching in the same slot so content never moves on toggle.
+    Stack({ alignContent: Alignment.Top }) {
+      if (this.searching) {
+        Row({ space: 10 }) {
+          TextInput({ text: this.query, placeholder: AppLocale.text('搜书名、作者、章节'), controller: this.searchInput })
+            .id('bookShelfSearchInput')
+            .onAppear(() => {
+              setTimeout(() => { if (this.searching) focusControl.requestFocus('bookShelfSearchInput'); }, 50);
+            })
+            .height(34).layoutWeight(1).fontSize(14).fontColor(Theme.INK).placeholderColor(Theme.FAINT)
+            .backgroundColor(Theme.CARD).borderRadius(18).border({ width: 0.5, color: Theme.BORDER })
+            .onChange((value: string) => this.updateQuery(value))
+          Text(AppLocale.text('取消')).fontSize(14).fontColor(Theme.INK).onClick(() => this.cancelSearch())
+        }.height(42).padding({ left: 14, right: 18 }).width('100%')
+      } else {
+        Row({ space: 4 }) {
+          Scroll() {
+            Row({ space: 12 }) {
+              ForEach(BookShelfSearch.filters(this.books), (filter: string) => {
+                Text(AppLocale.resolve(this.displayLanguage, filter))
+                  .fontSize(15).fontWeight(this.filter === filter ? FontWeight.Bold : FontWeight.Normal)
+                  .fontColor(this.filter === filter ? Theme.INK : Theme.SECONDARY)
+                  .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+                  .onClick(() => { this.filter = filter; this.updateVisible(); })
+              }, (filter: string) => `${filter}:${this.displayLanguage}`)
+            }
+          }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).layoutWeight(1)
+          Row() { RemixIcon({ glyph: RI.SEARCH, iconSize: 20, color: Theme.SECONDARY }) }
+            .width(40).height(40).justifyContent(FlexAlign.Center)
+            .accessibilityText(AppLocale.text('搜索')).onClick(() => this.searching = true)
+        }.height(42).padding({ left: 14, right: 14 }).width('100%')
+      }
+    }.width('100%').height(46).padding({ bottom: 4 })
+    if (this.query.trim().length > 0 && (this.searchLoading || this.searchFailed)) {
+      Text(AppLocale.text(this.searchLoading ? '正在翻章节…' : '章节搜索暂不可用，点此重试'))
+        .fontSize(12).fontColor(Theme.SECONDARY).padding(8)
+        .onClick(() => { if (this.searchFailed) this.loadSearch(true).catch(() => {}); })
+    }
+  }
+  private emptyMessage(): string {
+    if (this.searchLoading && this.query.trim().length > 0) return AppLocale.text('正在翻章节…');
+    if (this.query.trim().length > 0) return `${AppLocale.text('没有找到：')}${this.query.trim()}`;
+    return AppLocale.text(this.filter === '我的' ? '还没有你的书，点「写书」开始' : '书架还没有书，点「写书」开始');
+  }
   private shelfRows(): number[] {
     const rows: number[] = [];
     for (let index: number = 0; index < this.shelfItemCount(); index += 2) rows.push(index);
@@ -187,24 +309,24 @@ export struct BooksShelfPage {
   }
   @Builder private shelfCard(index: number) {
     Column({ space: 7 }) {
-      if (index === 0) {
+      if (this.bookIndex(index) < 0) {
         this.writeCover()
         Column() {
           Text(AppLocale.text('写一本新书')).fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
             .maxLines(1).width('100%')
         }.height(40).width('100%').alignItems(HorizontalAlign.Start)
-      } else if (index <= this.books.length) {
-        this.bookCover(this.books[index - 1])
+      } else if (this.bookIndex(index) < this.visibleBooks.length) {
+        this.bookCover(this.visibleBooks[this.bookIndex(index)])
         Column({ space: 1 }) {
-          Text(this.books[index - 1].main).fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium)
+          Text(this.visibleBooks[this.bookIndex(index)].main).fontFamily('serif').fontSize(14.5).fontWeight(FontWeight.Medium)
             .fontColor(Theme.INK).maxLines(1).width('100%')
-          Text(this.books[index - 1].chapters > 0 ? `${this.books[index - 1].chapters}${AppLocale.text('章')}` : this.books[index - 1].sub)
+          Text(this.bookDetail(this.visibleBooks[this.bookIndex(index)]))
             .fontSize(12.5).fontColor('#A89E8E').maxLines(1).width('100%')
         }.height(40).width('100%').alignItems(HorizontalAlign.Start)
       }
     }.layoutWeight(1).onClick(() => {
-      if (index === 0) this.onWrite();
-      else if (index <= this.books.length) this.onRead(this.books[index - 1]);
+      if (this.bookIndex(index) < 0) this.onWrite();
+      else if (this.bookIndex(index) < this.visibleBooks.length) this.onRead(this.visibleBooks[this.bookIndex(index)]);
     })
   }
   @Builder private shelfRow(startIndex: number, isLast: boolean) {
@@ -223,6 +345,7 @@ export struct BooksShelfPage {
   }
   build() {
     Column() {
+      this.searchToolbar()
       if (BookShelfLoadingPolicy.shouldShowExclusiveLoading(this.loading, this.books.length)) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(Theme.ACCENT_STRONG)
@@ -236,11 +359,14 @@ export struct BooksShelfPage {
         Refresh({ refreshing: this.refreshing, builder: () => { this.refreshPlaceholder() } }) {
           Scroll() {
             Column() {
+              if (this.visibleBooks.length === 0) {
+                Text(this.emptyMessage()).fontSize(14).fontColor(Theme.SECONDARY).padding(24).width('100%').textAlign(TextAlign.Center)
+              }
               ForEach(this.shelfRows(), (startIndex: number) => {
                 this.shelfRow(startIndex, startIndex + 2 >= this.shelfItemCount())
-              }, (startIndex: number) => `${startIndex}`)
+              }, (startIndex: number) => BookShelfSearch.rowKey(this.visibleBooks, this.query, startIndex))
             }.width('100%').padding({ bottom: 24 })
-          }.width('100%').height('100%').scrollBar(BarState.Off)
+          }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.TopStart)
         }
           .width('100%').height('100%')
           .onStateChange((status: RefreshStatus) => this.refreshStatus = status)

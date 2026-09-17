@@ -2,9 +2,10 @@ import { httpClient, HttpResponse } from '../net/HttpClient';
 import { appPreferences } from './AppPreferences';
 import { Api } from '../core/Api';
 import { authStore } from './AuthStore';
+import { BookShelfSearch, ShelfSearchEntry, SearchableShelfBook } from '../core/BookShelfSearch';
 import { BookShelfCachePolicy } from '../core/BookShelfCachePolicy';
 
-interface ShelfBookWire { slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; mine?: boolean; }
+interface ShelfBookWire { category?: string; slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; mine?: boolean; }
 interface ShelfIndexWire { books?: ShelfBookWire[]; }
 interface BookOwnershipWire { mine?: boolean; hidden?: boolean; }
 
@@ -24,9 +25,9 @@ class BookHiddenUpdate {
   constructor(hidden: boolean) { this.hidden = hidden; }
 }
 
-export class ShelfBook {
+export class ShelfBook implements SearchableShelfBook {
   slug: string; title: string; main: string; sub: string; c: string; c2: string; cover: boolean; chapters: number;
-  author: string; createdAt: number; coverAt: number; hidden: boolean; mine: boolean;
+  category: string; author: string; createdAt: number; coverAt: number; hidden: boolean; mine: boolean;
   constructor(wire: ShelfBookWire = {}) {
     this.slug = wire.slug ?? ''; this.title = wire.title ?? ''; this.main = wire.main ?? wire.title ?? '未命名';
     this.sub = wire.sub ?? ''; this.c = wire.c ?? '#8B6652'; this.c2 = wire.c2 ?? '#4B342C';
@@ -35,6 +36,7 @@ export class ShelfBook {
     this.coverAt = Math.max(0, wire.coverAt ?? 0);
     this.hidden = wire.hidden === true;
     this.mine = wire.mine === true;
+    this.category = typeof wire.category === 'string' ? wire.category : '';
   }
   readerUrl(): string { return `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(this.slug)}/`; }
   shareUrl(): string { return `https://voicedrop.cn/books/${encodeURIComponent(this.slug)}/`; }
@@ -66,6 +68,15 @@ export class BooksService {
       throw new Error('书架加载期间账号已切换，请重试');
     }
     return books;
+  }
+  async searchIndex(): Promise<ShelfSearchEntry[]> {
+    const identity: string = authStore.bookShelfCacheIdentity();
+    const response: HttpResponse = await httpClient.get(`${Api.PUBLIC_WEB_BASE}/books/?format=search`, authStore.bearer());
+    if (!BookShelfCachePolicy.shouldAcceptResponse(identity, authStore.bookShelfCacheIdentity())) {
+      throw new Error('书架搜索期间账号已切换');
+    }
+    if (!response.ok()) throw new Error(`书架搜索加载失败 HTTP ${response.code}`);
+    return BookShelfSearch.parse(response.text);
   }
   async ownership(slug: string): Promise<BookOwnership> {
     const response: HttpResponse = await httpClient.get(this.hiddenUrl(slug), authStore.bearer());

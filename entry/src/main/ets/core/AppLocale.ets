@@ -6,6 +6,21 @@ export class AppLocale {
   static resolve(language: string, source: string): string {
     if (AppLanguage.normalized(language) !== AppLanguage.ENGLISH) return source;
     switch (source) {
+      case '全部': return 'All';
+      case '我的': return 'Mine';
+      case '商业': return 'Business';
+      case '投资': return 'Investing';
+      case '科学': return 'Science';
+      case '人文': return 'Humanities';
+      case '身心': return 'Wellness';
+      case '生活': return 'Lifestyle';
+      case '故事': return 'Stories';
+      case '搜书名、作者、章节': return 'Search books, authors, chapters';
+      case '正在翻章节…': return 'Searching chapters…';
+      case '章节搜索暂不可用，点此重试': return 'Chapter search unavailable. Tap to retry';
+      case '没有找到：': return 'No matches: ';
+      case '还没有你的书，点「写书」开始': return 'No books of your own yet. Tap Write a Book to start';
+      case '书架还没有书，点「写书」开始': return 'No books yet. Tap Write a Book to start';
       case '正在获取图片': return 'Fetching image';
       case '设置': return 'Settings';
       case '账户': return 'Account';
