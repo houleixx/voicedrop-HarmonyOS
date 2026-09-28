@@ -1,5 +1,4 @@
 import bookShelfSearchTest from './BookShelfSearch.test';
-import libraryCommandUiTest from './LibraryCommandUi.test';
 import communityTermsTest from './CommunityTerms.test';
 import accountIdentityTest from './AccountIdentity.test';
 import recordingListUiTest from './RecordingListUi.test';
@@ -21,7 +20,6 @@ import styleRewriteUiTest from './StyleRewriteUi.test';
 import photoJpegTest from './PhotoJpeg.test';
 import restyleRequestTest from './RestyleRequest.test';
 import pendingAudioFramesTest from './PendingAudioFrames.test';
-import holdToTalkTest from './HoldToTalk.test';
 import asrResponseGateTest from './AsrResponseGate.test';
 import wechatAuthResponseTest from './WechatAuthResponse.test';
 import wechatLoginStateTest from './WechatLoginState.test';
@@ -48,7 +46,6 @@ import pricesTest from './Prices.test';
 import bookPdfDownloadPolicyTest from './BookPdfDownloadPolicy.test';
 
 export default function testsuite() {
-  libraryCommandUiTest();
   communityTermsTest();
   accountIdentityTest();
   recordingListUiTest();
@@ -70,7 +67,6 @@ export default function testsuite() {
   photoJpegTest();
   restyleRequestTest();
   pendingAudioFramesTest();
-  holdToTalkTest();
   asrResponseGateTest();
   wechatAuthResponseTest();
   wechatLoginStateTest();

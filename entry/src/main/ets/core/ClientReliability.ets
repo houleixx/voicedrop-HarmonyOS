@@ -6,16 +6,12 @@ export class ClientReliability {
     return type === 'updated' || type === 'error' || (type === 'snapshot' && snapshotResolved);
   }
 
-  static commandMessageRequiresRefresh(type: string): boolean {
-    return type === 'updated' || type === 'snapshot';
-  }
-
   static libraryRefreshShowsLoading(requested: boolean, hasExistingRows: boolean): boolean {
     return requested && !hasExistingRows;
   }
 
   static isLongLivedSocketPath(path: string): boolean {
-    return path === '/status' || path === '/command' || path.startsWith('/edit?');
+    return path === '/status' || path.startsWith('/edit?');
   }
 
   static shouldStartConnection(connected: boolean, connecting: boolean): boolean {

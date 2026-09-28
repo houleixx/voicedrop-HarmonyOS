@@ -222,7 +222,7 @@ export class AppLocale {
       case '图库指令已完成': return 'Gallery command completed';
       case '指令已完成': return 'Command completed';
       case '图库指令执行失败': return 'Gallery command failed';
-      case '轻点录音 · 长按说话': return 'Tap to record · Hold to talk';
+      case '轻点录音': return 'Tap to record';
       case '上滑取消 · 松开放弃': return 'Slide up to cancel · Release to discard';
       case '松开发送 · 上滑取消': return 'Release to send · Slide up to cancel';
       case '松手取消图库指令': return 'Released: gallery command canceled';

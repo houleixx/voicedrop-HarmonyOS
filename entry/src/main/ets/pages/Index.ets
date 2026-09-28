@@ -1,4 +1,5 @@
-import { bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { vibrator } from '@kit.SensorServiceKit';
+import { common, Permissions } from '@kit.AbilityKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
 import { ColorMetrics, FrameNode, LengthMetrics, promptAction, window } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
@@ -20,7 +21,6 @@ import { ArticleVersionNavigation } from '../core/ArticleVersionNavigation';
 import { Api } from '../core/Api';
 import { AccountIdentity } from '../core/AccountIdentity';
 import { PhotoLoadIntent, PhotoLoadPolicy } from '../core/PhotoLoadPolicy';
-import { LibraryCommandEvent, LibraryCommandFeedback, LibraryCommandGestureAction, LibraryCommandTarget, LibraryCommandTone, LibraryCommandUi } from '../core/LibraryCommandUi';
 import { PromptNode, PromptTree } from '../core/PromptTree';
 import { RecordingListUi } from '../core/RecordingListUi';
 import { RecordingName } from '../core/RecordingName';
@@ -55,7 +55,7 @@ import { uploader } from '../audio/Uploader';
 import { audioPlayback } from '../audio/AudioPlayback';
 import { AsrDictation } from '../audio/AsrDictation';
 import { RealtimeInterviewer } from '../audio/RealtimeInterviewer';
-import { ArticleEditSession, EditAnchor, EditImage, StatusSession, LibraryCommandSession, CommandRef } from '../net/AgentSocket';
+import { ArticleEditSession, EditAnchor, EditImage, StatusSession } from '../net/AgentSocket';
 import { AboutPage } from './AboutPage';
 import { BookWritingPage } from './BookWritingPage';
 import { BooksShelfPage, BookReaderPage } from './BooksShelfPage';
@@ -86,8 +86,6 @@ import { PageHeader } from '../ui/PageHeader';
 import { AiGeneratedLabel } from '../ui/AiGeneratedLabel';
 import { ClientReliability } from '../core/ClientReliability';
 import { WechatAuthResponse } from '../core/WechatAuthResponse';
-import { CommandGestureGate, CommandGestureState } from '../core/CommandGestureGate';
-import { HoldToTalkTranscript } from '../core/HoldToTalkTranscript';
 import { DetailShareUi } from '../core/DetailShareUi';
 import { PrivacyStartup, PrivacyStartupSurface } from '../core/PrivacyStartup';
 import { HomeTabIndex, HomeTabPolicy } from '../core/HomeTabPolicy';
@@ -97,15 +95,6 @@ import { CommunityReplyRecordingDock } from '../components/CommunityReplyRecordi
 import { RecordingSession } from '../components/RecordingSession';
 import { ShareBottomSheet, ShareSheetTarget } from '../components/ShareBottomSheet';
 
-interface CommandMessage {
-  type: string;
-  id?: string;
-  text?: string;
-  message?: string;
-  summary?: string;
-  state?: string;
-  stems?: string[];
-}
 interface StatusMessage {
   type?: string;
   pairingId?: string;
@@ -240,13 +229,6 @@ struct Index {
   @State private promptTargetValue: string = '';
   @State private promptTargetIndex: number = -1;
   @State private promptTargetLine: number = 0;
-  @State private libraryCommand: string = '';
-  @State private commandState: string = '';
-  @State private commandStateTone: LibraryCommandTone = LibraryCommandTone.Hidden;
-  @State private commandTalking: boolean = false;
-  @State private commandCanceled: boolean = false;
-  @State private commandTranscriptText: string = '';
-  @State private commandTranscriptConfirming: boolean = false;
   @State private paragraphEditing: boolean = false;
   @State private paragraphEditText: string = '';
   @State private paragraphEditSaving: boolean = false;
@@ -295,22 +277,12 @@ struct Index {
   private recordingMeterSampling: boolean = false;
   private statusSession?: StatusSession;
   private editSession?: ArticleEditSession;
-  private commandSession?: LibraryCommandSession;
   private dictation?: AsrDictation;
-  private commandHoldPressed: boolean = false;
-  private commandLongPressed: boolean = false;
-  private commandHoldStartY: number = 0;
-  private commandHoldTimer: number = -1;
-  private commandTranscriptConfirmTimer: number = -1;
-  private commandRecognizing: boolean = false;
-  private commandFinalized: boolean = false;
-  private commandGestureGate: CommandGestureGate = new CommandGestureGate();
-  private commandTranscript: HoldToTalkTranscript = new HoldToTalkTranscript();
-  private commandPrimePromise?: Promise<boolean>;
-  private commandDictationGeneration: number = 0;
-  private commandLibraryRefreshRunning: boolean = false;
-  private commandLibraryRefreshQueued: boolean = false;
-  private commandLibraryRefreshStems: string[] = [];
+  private recordFabPressed: boolean = false;
+  private recordFabStartX: number = 0;
+  private recordFabStartY: number = 0;
+  private recordFabTimer: number = -1;
+  private recordLaunchGeneration: number = 0;
   private interviewer?: RealtimeInterviewer;
   private dictationTarget: string = '';
   private dictationPrefix: string = '';
@@ -357,6 +329,8 @@ struct Index {
     }
     const paths: string[] = this.pathStack.getAllPathName();
     if (paths.length > 0 && paths[paths.length - 1] === target) return;
+    this.cancelRecordFabPress();
+    ++this.recordLaunchGeneration;
     this.pathStack.pushPath({ name: target });
   }
 
@@ -459,17 +433,18 @@ struct Index {
     this.initialize();
   }
 
+  onPageHide(): void {
+    this.cancelRecordFabPress();
+    ++this.recordLaunchGeneration;
+  }
+
   aboutToDisappear(): void {
+    this.cancelRecordFabPress();
+    ++this.recordLaunchGeneration;
     if (this.timer >= 0) clearInterval(this.timer);
-    if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
-    this.commandHoldTimer = -1;
-    this.clearCommandTranscriptConfirmation();
     ++this.editHoldGeneration;
-    ++this.commandDictationGeneration;
-    this.commandGestureGate.cancel();
     this.statusSession?.close();
     this.editSession?.close();
-    this.commandSession?.close();
     this.dictation?.stop();
     this.interviewer?.stop();
     audioPlayback.stop().catch(() => {});
@@ -531,21 +506,13 @@ struct Index {
       if (typeof message === 'string') this.handleStatusMessage(message);
     });
     this.statusSession.connect().catch(() => {});
-    this.commandSession = new LibraryCommandSession((message: string | ArrayBuffer) => {
-      if (typeof message === 'string') this.handleCommandMessage(message);
-    }, () => {});
-    this.commandSession.setRefs(this.currentCommandRefs());
-    this.commandSession.connect().catch(() => {});
   }
 
   private reconnectAgentSessions(): void {
     this.statusSession?.close();
     this.editSession?.close();
-    this.commandSession?.close();
     this.statusSession = undefined;
     this.editSession = undefined;
-    this.commandSession = undefined;
-    this.applyCommandFeedback(new LibraryCommandFeedback());
     this.startAgentSessions();
   }
 
@@ -665,7 +632,6 @@ struct Index {
       (recording: Recording) => recording.stem() === stem);
     if (!target) return;
     this.recordings = RecordingListUi.applyStatus(this.recordings, stem, status);
-    this.commandSession?.setRefs(this.currentCommandRefs());
     libraryStore.storeRecordingsSnapshot(this.recordings);
     if (status === 'ready') {
       await this.loadReadyRecordingMetadata(stem);
@@ -685,7 +651,6 @@ struct Index {
       if (doc && title.length > 0) {
         this.recordings = RecordingListUi.applyArticleMetadata(this.recordings, stem, title, doc.tags ?? []);
         libraryStore.storeRecordingsSnapshot(this.recordings);
-        this.commandSession?.setRefs(this.currentCommandRefs());
         return;
       }
     }
@@ -1106,7 +1071,6 @@ struct Index {
       if (generation !== this.libraryRefreshGeneration || identity !== authStore.bearer()) return;
       this.recordings = next;
       libraryStore.storeRecordingsSnapshot(this.recordings);
-      this.commandSession?.setRefs(this.currentCommandRefs());
       staleDeleted.forEach((recording: Recording) => libraryStore.delete(recording).catch(() => false));
       if (!enrichBeforeDisplay) {
         libraryStore.enrichMissingMetadata(next, invalidatedStems).then((changed: boolean) => {
@@ -1123,32 +1087,6 @@ struct Index {
         this.errorText = ClientReliability.libraryErrorText(error as Object, this.recordings.length > 0, showFailure);
     } finally {
       if (generation === this.libraryRefreshGeneration) this.loading = false;
-    }
-  }
-
-  private queueCommandLibraryRefresh(stems: string[]): void {
-    const merged: Set<string> = new Set<string>(this.commandLibraryRefreshStems);
-    stems.forEach((stem: string) => { if (stem.length > 0) merged.add(stem); });
-    this.commandLibraryRefreshStems = Array.from(merged);
-    this.commandLibraryRefreshQueued = true;
-    if (!this.commandLibraryRefreshRunning) this.drainCommandLibraryRefresh().catch(() => {});
-  }
-
-  private async drainCommandLibraryRefresh(): Promise<void> {
-    if (this.commandLibraryRefreshRunning) return;
-    this.commandLibraryRefreshRunning = true;
-    try {
-      while (this.commandLibraryRefreshQueued) {
-        this.commandLibraryRefreshQueued = false;
-        const stems: string[] = this.commandLibraryRefreshStems;
-        this.commandLibraryRefreshStems = [];
-        libraryStore.invalidateArticleStems(stems);
-        this.retryRecordingCovers(stems);
-        await this.refreshLibrary(false, false, stems, true);
-      }
-    } finally {
-      this.commandLibraryRefreshRunning = false;
-      if (this.commandLibraryRefreshQueued) this.drainCommandLibraryRefresh().catch(() => {});
     }
   }
 
@@ -1216,6 +1154,8 @@ struct Index {
   }
 
   private selectHomeTab(index: number): void {
+    this.cancelRecordFabPress();
+    ++this.recordLaunchGeneration;
     this.selectedTag = '';
     this.tab = index;
     if (index === HomeTabIndex.Community) this.ensureCommunityLoaded();
@@ -1223,6 +1163,8 @@ struct Index {
   }
 
   private selectHomeTag(tag: string): void {
+    this.cancelRecordFabPress();
+    ++this.recordLaunchGeneration;
     this.selectedTag = tag;
     this.tab = HomeTabIndex.Recordings;
     this.centerSelectedHomeTab();
@@ -1616,10 +1558,12 @@ struct Index {
       return;
     }
     this.recordingTransitioning = true;
+    const generation: number = this.recordLaunchGeneration;
     try {
       const manager = abilityAccessCtrl.createAtManager();
       const result = await manager.requestPermissionsFromUser(
         this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
+      if (generation !== this.recordLaunchGeneration) return;
       if (result.authResults[0] !== 0) {
         promptAction.showToast({ message: AppLocale.text('需要麦克风权限才能录音') });
         return;
@@ -1714,7 +1658,6 @@ struct Index {
       pending.uploading = true;
       pending.tags = tags;
       this.recordings = RecordingListUi.finishSaving(this.recordings, savingName, pending);
-      this.commandSession?.setRefs(this.currentCommandRefs());
       if (communityReply) {
         const uploaded: boolean = await this.continueRecordingUpload(path, audioName, photos, false);
         promptAction.showToast({ message: CommunityReplyUi.savedMessage(uploaded) });
@@ -1753,7 +1696,6 @@ struct Index {
       if (uploaded) {
         this.recordings = RecordingListUi.applyStatus(this.recordings,
           audioName.endsWith('.m4a') ? audioName.substring(0, audioName.length - 4) : audioName, 'asr');
-        this.commandSession?.setRefs(this.currentCommandRefs());
         libraryStore.storeRecordingsSnapshot(this.recordings);
       }
       return uploaded;
@@ -2012,12 +1954,6 @@ struct Index {
             if (generation === this.recordingCoverRetryGeneration) this.fallbackRecordingCover(coverKey);
           })
       }
-      if (this.commandTalking && this.commandRefNumber(recording) > 0) {
-        Text(`${this.commandRefNumber(recording)}`)
-          .fontSize(12).fontWeight(FontWeight.Bold).fontColor(Theme.WHITE)
-          .width(24).height(24).textAlign(TextAlign.Center)
-          .backgroundColor(Theme.ACCENT_STRONG).borderRadius(12)
-      }
     }.width(44).height(this.recordingUsesDedicatedCover(recording) ? 60 : 44).margin({ right: 14 })
   }
 
@@ -2200,9 +2136,6 @@ struct Index {
         .backgroundColor(Theme.BG)
       if (!this.recording) {
         Column() {
-          if (this.displayedCommandFeedback().visible()) {
-            this.libraryCommandStatus()
-          }
           this.recordingFab()
         }.width('100%').margin({ bottom: this.safeAreaBottom() + 20 }).hitTestBehavior(HitTestMode.Transparent)
       }
@@ -2210,18 +2143,6 @@ struct Index {
       .width('100%')
       .height('100%')
       .backgroundColor(Theme.BG)
-  }
-
-  @Builder
-  private libraryCommandStatus() {
-    Row() {
-      Text(AppLocale.text(this.displayedCommandFeedback().text)).fontSize(13).fontWeight(FontWeight.Medium)
-        .fontColor(this.displayedCommandFeedback().tone === LibraryCommandTone.Error ? '#B42318' :
-          (this.displayedCommandFeedback().tone === LibraryCommandTone.Active ? Theme.INK : Theme.SECONDARY))
-        .textAlign(TextAlign.Center).padding({ left: 18, right: 18, top: 9, bottom: 9 })
-        .backgroundColor(this.displayedCommandFeedback().tone === LibraryCommandTone.Error ? '#FFEBE8' : Theme.ACCENT_SOFT)
-        .borderRadius(14).layoutWeight(1)
-    }.width('100%').padding({ left: 16, right: 16, bottom: 10 }).hitTestBehavior(HitTestMode.Transparent)
   }
 
   @Builder
@@ -2242,9 +2163,21 @@ struct Index {
           .enabled(!this.recordingTransitioning)
           .monopolizeEvents(true)
           .onTouch((event: TouchEvent) => this.handleRecordFabTouch(event))
+          .accessibilityText(AppLocale.text('录音'))
+          .onDisAppear(() => this.cancelRecordFabPress())
       }.justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
-      Text(LibraryCommandUi.recordButtonLabel(this.commandTalking, this.commandCanceled))
-        .fontSize(13).fontColor(this.commandTalking ? Theme.ACCENT_STRONG : Theme.SECONDARY)
+      Text(AppLocale.text('轻点录音'))
+        .fontSize(13).fontColor('#8A8175')
+        .textShadow([
+          { radius: 0.5, color: Theme.BG, offsetX: -2, offsetY: 0 },
+          { radius: 0.5, color: Theme.BG, offsetX: 2, offsetY: 0 },
+          { radius: 0.5, color: Theme.BG, offsetX: 0, offsetY: -2 },
+          { radius: 0.5, color: Theme.BG, offsetX: 0, offsetY: 2 },
+          { radius: 0.5, color: Theme.BG, offsetX: -1.5, offsetY: -1.5 },
+          { radius: 0.5, color: Theme.BG, offsetX: 1.5, offsetY: -1.5 },
+          { radius: 0.5, color: Theme.BG, offsetX: -1.5, offsetY: 1.5 },
+          { radius: 0.5, color: Theme.BG, offsetX: 1.5, offsetY: 1.5 }
+        ])
         .hitTestBehavior(HitTestMode.Transparent)
     }.alignItems(HorizontalAlign.Center).width('100%').hitTestBehavior(HitTestMode.Transparent)
   }
@@ -2262,279 +2195,47 @@ struct Index {
       this.recordings.filter((recording: Recording) => recording.tags.includes(this.selectedTag));
   }
 
-  private currentCommandRefs(): CommandRef[] {
-    const targets: LibraryCommandTarget[] = this.visibleRecordings().map((recording: Recording) =>
-      new LibraryCommandTarget(recording.stem(), recording.rowTitle(), recording.uploading || recording.saving));
-    return LibraryCommandUi.commandRefs(targets).map((ref) => new CommandRef(ref.number, ref.stem, ref.title));
+  private cancelRecordFabPress(): void {
+    this.recordFabPressed = false;
+    if (this.recordFabTimer >= 0) clearTimeout(this.recordFabTimer);
+    this.recordFabTimer = -1;
   }
 
-  private commandRefNumber(recording: Recording): number {
-    const refs: CommandRef[] = this.currentCommandRefs();
-    const target: CommandRef | undefined = refs.find((ref: CommandRef) => ref.stem === recording.stem());
-    return target?.n ?? 0;
-  }
-
-  private applyCommandFeedback(feedback: LibraryCommandFeedback): void {
-    this.commandState = feedback.text;
-    this.commandStateTone = feedback.tone;
-  }
-
-  private displayedCommandFeedback(): LibraryCommandFeedback {
-    return LibraryCommandUi.displayedFeedback(
-      new LibraryCommandFeedback(this.commandState, this.commandStateTone),
-      this.commandTranscriptText,
-      this.commandTalking || this.commandRecognizing || this.commandTranscriptConfirming
-    );
-  }
-
-  private clearCommandTranscriptConfirmation(): void {
-    if (this.commandTranscriptConfirmTimer >= 0) clearTimeout(this.commandTranscriptConfirmTimer);
-    this.commandTranscriptConfirmTimer = -1;
-    this.commandTranscriptConfirming = false;
-    this.commandTranscriptText = '';
-  }
-
-  private confirmCommandTranscript(text: string, generation: number): void {
-    this.clearCommandTranscriptConfirmation();
-    const transcript: string = text.trim();
-    if (transcript.length === 0) return;
-    this.commandTranscriptText = transcript;
-    this.commandTranscriptConfirming = true;
-    this.commandTranscriptConfirmTimer = setTimeout(() => {
-      this.commandTranscriptConfirmTimer = -1;
-      if (generation !== this.commandDictationGeneration) return;
-      this.commandTranscriptConfirming = false;
-      this.commandTranscriptText = '';
-    }, LibraryCommandUi.transcriptConfirmationMs());
-  }
-
-  private async sendLibraryCommandText(value: string): Promise<void> {
-    const text: string = value.trim();
-    if (text.length === 0) { this.applyCommandFeedback(new LibraryCommandFeedback()); return; }
-    if (!this.commandSession) {
-      this.applyCommandFeedback(new LibraryCommandFeedback(AppLocale.text('指令服务暂不可用，请稍后重试'), LibraryCommandTone.Error));
-      return;
+  private launchHomeRecorder(haptic: boolean): void {
+    if (this.recording || this.recordingTransitioning || this.pathStack.size() > 0 ||
+      this.tab !== HomeTabIndex.Recordings) return;
+    if (haptic) {
+      try {
+        vibrator.startVibration({ type: 'time', duration: 30 }, { usage: 'touch' }, () => {});
+      } catch (_) {}
     }
-    const sent: boolean = await this.commandSession.instruct(`${Date.now()}`, text, this.currentCommandRefs());
-    this.applyCommandFeedback(sent
-      ? new LibraryCommandFeedback(AppLocale.text('正在执行图库指令…'), LibraryCommandTone.Active)
-      : new LibraryCommandFeedback(AppLocale.text('发送失败，请稍后重试'), LibraryCommandTone.Error));
-  }
-
-  private commandTouchY(event: TouchEvent): number {
-    if (event.touches.length > 0) return event.touches[0].screenY;
-    if (event.changedTouches.length > 0) return event.changedTouches[0].screenY;
-    return this.commandHoldStartY;
+    this.toggleRecording();
   }
 
   private handleRecordFabTouch(event: TouchEvent): void {
     event.stopPropagation();
     if (event.type === TouchType.Down) {
-      if (this.recordingTransitioning || this.commandTalking || this.commandRecognizing) return;
-      if (!this.commandGestureGate.beginPress()) return;
-      this.commandHoldPressed = true;
-      this.commandLongPressed = false;
-      this.commandCanceled = false;
-      this.commandFinalized = false;
-      this.clearCommandTranscriptConfirmation();
-      this.commandTranscript.clear();
-      this.commandHoldStartY = this.commandTouchY(event);
-      const generation: number = ++this.commandDictationGeneration;
-      this.commandPrimePromise = this.primeLibraryCommandTalk(generation);
-      if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
-      this.commandHoldTimer = setTimeout(() => {
-        this.commandHoldTimer = -1;
-        if (!this.commandHoldPressed || !this.commandGestureGate.confirmLongPress()) return;
-        this.commandLongPressed = true;
-        this.commandTalking = true;
-        this.applyCommandFeedback(LibraryCommandUi.dictationFeedback('', false));
-        this.startLibraryCommandTalk(generation);
-      }, 300);
+      if (this.recording || this.recordingTransitioning || this.recordFabPressed || event.touches.length === 0) return;
+      this.recordFabPressed = true;
+      this.recordFabStartX = event.touches[0].screenX;
+      this.recordFabStartY = event.touches[0].screenY;
+      this.recordFabTimer = setTimeout(() => {
+        if (!this.recordFabPressed) return;
+        this.cancelRecordFabPress();
+        this.launchHomeRecorder(true);
+      }, 400);
       return;
     }
-    if (event.type === TouchType.Move && this.commandHoldPressed && this.commandLongPressed) {
-      this.commandCanceled = this.commandHoldStartY - this.commandTouchY(event) >= 64;
-      this.applyCommandFeedback(LibraryCommandUi.dictationFeedback(this.commandTranscriptText, this.commandCanceled));
+    if (event.type === TouchType.Move && this.recordFabPressed && event.touches.length > 0) {
+      const dx: number = event.touches[0].screenX - this.recordFabStartX;
+      const dy: number = event.touches[0].screenY - this.recordFabStartY;
+      if (dx * dx + dy * dy > 24 * 24) this.cancelRecordFabPress();
       return;
     }
     if (event.type !== TouchType.Up && event.type !== TouchType.Cancel) return;
-    const action: LibraryCommandGestureAction = LibraryCommandUi.gestureAction(
-      this.commandLongPressed, this.commandCanceled, event.type === TouchType.Cancel);
-    this.commandHoldPressed = false;
-    this.commandLongPressed = false;
-    if (this.commandHoldTimer >= 0) clearTimeout(this.commandHoldTimer);
-    this.commandHoldTimer = -1;
-    if (action === LibraryCommandGestureAction.Send || action === LibraryCommandGestureAction.Cancel) {
-      if (action === LibraryCommandGestureAction.Send && !this.commandGestureGate.beginFinish()) return;
-      if (action === LibraryCommandGestureAction.Cancel) this.commandGestureGate.cancel();
-      this.finishLibraryCommandTalk(action === LibraryCommandGestureAction.Cancel);
-    } else if (action === LibraryCommandGestureAction.Record) {
-      if (this.commandGestureGate.beginHandoff()) this.cancelPrimedLibraryCommandTalk(true);
-    } else {
-      this.commandGestureGate.cancel();
-      this.cancelPrimedLibraryCommandTalk(false);
-    }
-  }
-
-  private microphonePermissionGranted(): boolean {
-    try {
-      const info = bundleManager.getBundleInfoForSelfSync(
-        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
-      const manager = abilityAccessCtrl.createAtManager();
-      return manager.checkAccessTokenSync(info.appInfo.accessTokenId,
-        'ohos.permission.MICROPHONE' as Permissions) === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  private async primeLibraryCommandTalk(generation: number): Promise<boolean> {
-    if (!this.context || this.recording || !this.microphonePermissionGranted()) return false;
-    if (generation !== this.commandDictationGeneration) return false;
-    if (this.dictating) {
-      return this.dictationTarget === 'command' && this.dictation?.isRunning() === true;
-    }
-    const session = new AsrDictation((text: string, finalResult: boolean) => {
-      if (generation !== this.commandDictationGeneration || this.dictationTarget !== 'command') return;
-      this.commandTranscript.accept(text, finalResult);
-      this.commandTranscriptText = this.commandTranscript.bestText();
-      if (this.commandTalking || this.commandRecognizing) {
-        this.applyCommandFeedback(
-          LibraryCommandUi.dictationFeedback(this.commandTranscriptText, this.commandCanceled));
-      }
-    }, (state: string) => {
-      if (generation !== this.commandDictationGeneration || this.dictationTarget !== 'command') return;
-      if (state.includes('失败') || state.includes('关闭')) {
-        this.dictating = false;
-        if (this.commandTalking || this.commandRecognizing) {
-          this.commandTalking = false;
-          this.commandRecognizing = false;
-          this.commandGestureGate.cancel();
-          this.applyCommandFeedback(
-            new LibraryCommandFeedback(AppLocale.text(state.length > 0 ? state : '听写失败'), LibraryCommandTone.Error));
-        }
-      } else if (state.length === 0 && this.commandRecognizing) {
-        this.finalizeLibraryCommandTalk(generation);
-      } else if (this.commandTalking && this.commandTranscriptText.length === 0) {
-        this.applyCommandFeedback(LibraryCommandUi.dictationFeedback('', this.commandCanceled));
-      }
-    });
-    this.dictationTarget = 'command';
-    this.dictation = session;
-    this.dictating = true;
-    try {
-      await session.start();
-    } catch (error) {
-      if (generation === this.commandDictationGeneration) {
-        this.dictating = false;
-        this.commandTalking = false;
-        this.commandGestureGate.cancel();
-        this.applyCommandFeedback(
-          new LibraryCommandFeedback(`${AppLocale.text('听写启动失败：')}${String(error)}`, LibraryCommandTone.Error));
-      }
-      return false;
-    }
-    if (generation !== this.commandDictationGeneration) {
-      await session.stop();
-      return false;
-    }
-    return session.isRunning();
-  }
-
-  private async startLibraryCommandTalk(generation: number): Promise<void> {
-    if (!this.context || !this.commandTalking ||
-      this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
-    if (this.recording) {
-      this.commandTalking = false;
-      this.commandGestureGate.cancel();
-      this.applyCommandFeedback(
-        new LibraryCommandFeedback(AppLocale.text('请先结束当前录音'), LibraryCommandTone.Error));
-      return;
-    }
-    if (!this.microphonePermissionGranted()) {
-      const manager = abilityAccessCtrl.createAtManager();
-      const permission = await manager.requestPermissionsFromUser(
-        this.context, ['ohos.permission.MICROPHONE'] as Permissions[]);
-      if (permission.authResults[0] !== 0) {
-        this.commandTalking = false;
-        this.commandHoldPressed = false;
-        this.commandGestureGate.cancel();
-        this.applyCommandFeedback(
-          new LibraryCommandFeedback(AppLocale.text('需要麦克风权限才能使用语音指令'), LibraryCommandTone.Error));
-        return;
-      }
-      if (generation !== this.commandDictationGeneration || !this.commandTalking ||
-        this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
-      this.commandPrimePromise = this.primeLibraryCommandTalk(generation);
-    }
-    const primePromise: Promise<boolean> | undefined = this.commandPrimePromise;
-    const ready: boolean = primePromise ? await primePromise :
-      await this.primeLibraryCommandTalk(generation);
-    if (generation !== this.commandDictationGeneration || !this.commandTalking ||
-      this.commandGestureGate.currentState() !== CommandGestureState.TALKING) return;
-    if (!ready) {
-      this.commandTalking = false;
-      this.commandGestureGate.cancel();
-      this.applyCommandFeedback(new LibraryCommandFeedback(AppLocale.text('听写启动失败，请重试'), LibraryCommandTone.Error));
-    }
-  }
-
-  private async cancelPrimedLibraryCommandTalk(startRecording: boolean): Promise<void> {
-    const generation: number = ++this.commandDictationGeneration;
-    const session: AsrDictation | undefined =
-      this.dictationTarget === 'command' ? this.dictation : undefined;
-    if (session) {
-      this.dictation = undefined;
-      this.dictationTarget = '';
-      this.dictating = false;
-      await session.stop();
-    }
-    this.commandTranscript.clear();
-    this.commandTranscriptText = '';
-    this.commandPrimePromise = undefined;
-    if (generation !== this.commandDictationGeneration) return;
-    this.commandGestureGate.complete();
-    if (startRecording) await this.toggleRecording();
-  }
-
-  private async finishLibraryCommandTalk(cancel: boolean): Promise<void> {
-    this.commandTalking = false;
-    this.commandCanceled = false;
-    if (cancel) {
-      this.commandRecognizing = false;
-      this.commandFinalized = true;
-      this.clearCommandTranscriptConfirmation();
-      this.dictating = false;
-      this.dictationTarget = '';
-      const session: AsrDictation | undefined = this.dictation;
-      this.dictation = undefined;
-      ++this.commandDictationGeneration;
-      await session?.stop();
-      this.commandTranscript.clear();
-      this.commandPrimePromise = undefined;
-      this.applyCommandFeedback(new LibraryCommandFeedback());
-      return;
-    }
-    this.commandRecognizing = true;
-    this.applyCommandFeedback(new LibraryCommandFeedback('正在识别…', LibraryCommandTone.Active));
-    if (this.dictation?.isRunning()) await this.dictation.finish();
-    else await this.finalizeLibraryCommandTalk(this.commandDictationGeneration);
-  }
-
-  private async finalizeLibraryCommandTalk(generation: number): Promise<void> {
-    if (generation !== this.commandDictationGeneration) return;
-    if (this.commandFinalized) return;
-    this.commandFinalized = true;
-    const text: string = this.commandTranscript.bestText();
-    this.commandRecognizing = false;
-    this.dictating = false;
-    this.dictationTarget = '';
-    this.dictation = undefined;
-    this.commandPrimePromise = undefined;
-    this.commandTranscript.clear();
-    this.commandGestureGate.complete();
-    this.confirmCommandTranscript(text, generation);
-    await this.sendLibraryCommandText(text);
+    const launch: boolean = this.recordFabPressed && event.type === TouchType.Up;
+    this.cancelRecordFabPress();
+    if (launch) this.launchHomeRecorder(false);
   }
 
   private async toggleDictation(target: string, editGeneration: number = this.editHoldGeneration): Promise<void> {
@@ -2561,8 +2262,6 @@ struct Index {
     if (target === 'edit') {
       this.editText = '';
       this.dictationPrefix = '';
-    } else {
-      this.dictationPrefix = this.libraryCommand;
     }
     if (this.dictationPrefix.length > 0 && !this.dictationPrefix.endsWith(' ')) this.dictationPrefix += ' ';
     this.dictation = new AsrDictation((text: string, finalResult: boolean) => {
@@ -2570,8 +2269,6 @@ struct Index {
       if (target === 'edit') {
         this.holdEditTranscriptText = text.trim();
         this.editText = this.dictationPrefix + text;
-      } else {
-        this.libraryCommand = this.dictationPrefix + text;
       }
       if (finalResult) {
         this.dictating = false; this.dictationState = '听写完成';
@@ -2695,30 +2392,6 @@ struct Index {
     this.holdEditPromptText = '';
     this.holdEditTranscriptText = '';
     this.showArticleLines = false;
-  }
-
-  private handleCommandMessage(raw: string): void {
-    try {
-      const message: CommandMessage = JSON.parse(raw) as CommandMessage;
-      if (message.type === 'confirm' && message.id) {
-        const id: string = message.id; const summary: string = message.summary ?? message.text ?? message.message ?? '确认执行这条图库指令？';
-        promptAction.showDialog({ title: AppLocale.text('确认操作'), message: summary,
-          buttons: [{ text: AppLocale.text('取消'), color: '#666666' }, { text: AppLocale.text('删除'), color: '#D92D20' }]
-        }).then((result) => result.index === 1 ? this.commandSession?.confirm(id) : this.commandSession?.cancel(id));
-        return;
-      }
-      const event: LibraryCommandEvent = new LibraryCommandEvent(message.type, message.state, message.text, message.message);
-      const feedback: LibraryCommandFeedback = LibraryCommandUi.feedbackForEvent(event);
-      this.applyCommandFeedback(feedback);
-      if (ClientReliability.commandMessageRequiresRefresh(message.type ?? '')) {
-        this.queueCommandLibraryRefresh(message.stems ?? []);
-      }
-      if (feedback.visible() && (message.type === 'reply' || message.type === 'error')) {
-        promptAction.showToast({ message: feedback.text });
-      }
-    } catch (_) {
-      this.applyCommandFeedback(new LibraryCommandFeedback('收到无法识别的图库指令响应', LibraryCommandTone.Error));
-    }
   }
 
   private communityCardColor(post: CommunityPost): string {
@@ -5313,6 +4986,10 @@ struct Index {
         .scrollable(false)
         .cachedMaxCount(3, TabsCacheMode.CACHE_BOTH_SIDE)
         .onChange((index: number) => {
+          if (this.tab !== index) {
+            this.cancelRecordFabPress();
+            ++this.recordLaunchGeneration;
+          }
           this.tab = index;
           if (index === HomeTabIndex.Community) this.ensureCommunityLoaded();
         })

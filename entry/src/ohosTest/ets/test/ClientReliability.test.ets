@@ -29,13 +29,7 @@ export default function clientReliabilityTest() {
       expect(ClientReliability.shouldRefreshResolvedArticle('reply', false, false)).assertFalse();
     });
 
-    it('refreshesTheLibraryForUpdatedAndSnapshotCommandMessages', 0, () => {
-      expect(ClientReliability.commandMessageRequiresRefresh('updated')).assertTrue();
-      expect(ClientReliability.commandMessageRequiresRefresh('snapshot')).assertTrue();
-      expect(ClientReliability.commandMessageRequiresRefresh('reply')).assertFalse();
-    });
-
-    it('keepsExistingLibraryRowsVisibleDuringCommandRefresh', 0, () => {
+    it('keepsExistingLibraryRowsVisibleDuringRefresh', 0, () => {
       expect(ClientReliability.libraryRefreshShowsLoading(true, false)).assertTrue();
       expect(ClientReliability.libraryRefreshShowsLoading(true, true)).assertFalse();
       expect(ClientReliability.libraryRefreshShowsLoading(false, false)).assertFalse();
@@ -44,7 +38,7 @@ export default function clientReliabilityTest() {
     it('keepsSocketsAliveEvery25SecondsAndScopesPromptCachesByAccount', 0, () => {
       expect(ClientReliability.HEARTBEAT_MS).assertEqual(25000);
       expect(ClientReliability.isLongLivedSocketPath('/status')).assertTrue();
-      expect(ClientReliability.isLongLivedSocketPath('/command')).assertTrue();
+      expect(ClientReliability.isLongLivedSocketPath('/command')).assertFalse();
       expect(ClientReliability.isLongLivedSocketPath('/edit?stem=VoiceDrop-a')).assertTrue();
       expect(ClientReliability.isLongLivedSocketPath('/asr')).assertFalse();
       expect(ClientReliability.shouldStartConnection(false, false)).assertTrue();

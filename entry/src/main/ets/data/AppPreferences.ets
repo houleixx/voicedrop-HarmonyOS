@@ -151,24 +151,6 @@ export class AppPreferences {
     await this.store?.flush();
   }
 
-  pendingCommands(): string { return String(this.store?.getSync('pendingLibraryCommands', '[]') ?? '[]'); }
-
-  async savePendingCommands(value: string): Promise<void> {
-    this.store?.putSync('pendingLibraryCommands', value);
-    await this.store?.flush();
-  }
-
-  pendingCommandControls(): string { return String(this.store?.getSync('pendingLibraryCommandControls', '[]') ?? '[]'); }
-  pendingCommandConfirmations(): string { return String(this.store?.getSync('pendingLibraryCommandConfirmations', '[]') ?? '[]'); }
-
-  async savePendingCommandControls(value: string): Promise<void> {
-    this.store?.putSync('pendingLibraryCommandControls', value); await this.store?.flush();
-  }
-
-  async savePendingCommandConfirmations(value: string): Promise<void> {
-    this.store?.putSync('pendingLibraryCommandConfirmations', value); await this.store?.flush();
-  }
-
   async clearAccountQueues(recordingNames: string[]): Promise<void> {
     this.store?.deleteSync('pendingCommunityShare');
     this.store?.deleteSync('pendingLibraryCommands');
