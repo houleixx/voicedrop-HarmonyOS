@@ -35,6 +35,7 @@ export class RemixIconGlyph {
   static readonly LOADER: string = '\uEEC6';
   static readonly MAGIC: string = '\uEEEA';
   static readonly MIC: string = '\uEF50';
+  static readonly FONT_SIZE: string = '\uED8D';
   static readonly MORE: string = '\uEF78';
   static readonly PLAY: string = '\uF00A';
   static readonly QUILL_PEN: string = '\uF04A';

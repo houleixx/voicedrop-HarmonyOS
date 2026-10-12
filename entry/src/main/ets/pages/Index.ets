@@ -32,6 +32,8 @@ import { RestyleResult } from '../core/RestyleRequest';
 import { Recording, ArticleDoc, ArticleHistory, ArticleVersion, FollowupQuestion, MinedArticle, CommunityPost } from '../model/Models';
 import { authStore } from '../data/AuthStore';
 import { appCacheStore } from '../data/AppCacheStore';
+import { ReadingFontSheet } from '../ui/ReadingFont';
+import { ReadingFontScale } from '../core/ReadingFontScale';
 import { appPreferences } from '../data/AppPreferences';
 import { apiRoute } from '../core/ApiRoute';
 import { umengAnalytics } from '../data/UmengAnalytics';
@@ -133,6 +135,18 @@ class IncomingShareDraft {
 @Entry
 @Component
 struct Index {
+  private readingFontDialog: CustomDialogController = new CustomDialogController({
+    builder: ReadingFontSheet(),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Bottom,
+    width: '100%',
+    maskColor: '#66000000',
+    openAnimation: { duration: 240, curve: Curve.EaseOut },
+    closeAnimation: { duration: 180, curve: Curve.EaseIn }
+  });
+
+  @StorageLink('readingFontScale') private readingFontScale: number = 1;
   @StorageLink('safeAreaTopPx') private safeAreaTopPx: number = 0;
   @StorageLink('safeAreaBottomPx') private safeAreaBottomPx: number = 0;
   @StorageLink('windowWidthPx') private windowWidthPx: number = 0;
@@ -439,6 +453,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.readingFontDialog.close();
     this.cancelRecordFabPress();
     ++this.recordLaunchGeneration;
     if (this.timer >= 0) clearInterval(this.timer);
@@ -2722,13 +2737,18 @@ struct Index {
     return this.detailTitleFontSize(title, preferred) + 10;
   }
 
+  private communityReadingScale(): number {
+    return ReadingFontScale.forCommunity(this.isCommunityDetailActive(),
+      this.selectedPost?.kind === 'prompt', this.readingFontScale);
+  }
+
   @Builder
   private communityDetailSummary() {
     Column() {
       Text(this.selectedPost?.title ?? AppLocale.text('(无题)'))
-        .fontSize(this.detailTitleFontSize(this.selectedPost?.title ?? '(无题)', 26))
+        .fontSize(this.detailTitleFontSize(this.selectedPost?.title ?? '(无题)', 26) * this.communityReadingScale())
         .fontWeight(FontWeight.Bold).fontColor(Theme.INK)
-        .lineHeight(this.detailTitleLineHeight(this.selectedPost?.title ?? '(无题)', 26)).width('100%')
+        .lineHeight(this.detailTitleLineHeight(this.selectedPost?.title ?? '(无题)', 26) * this.communityReadingScale()).width('100%')
       Row({ space: 8 }) {
         Text(this.communityAuthor(this.selectedPost))
           .fontSize(14).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT_STRONG)
@@ -2782,8 +2802,8 @@ struct Index {
         }))
     } else {
       Text(ArticleBody.markdownDisplayText(block.value))
-        .fontSize(this.articleHeadingFontSize(block.value))
-        .lineHeight(this.articleHeadingLineHeight(block.value))
+        .fontSize(this.articleHeadingFontSize(block.value) * this.communityReadingScale())
+        .lineHeight(this.articleHeadingLineHeight(block.value) * this.communityReadingScale())
         .fontWeight(FontWeight.Bold)
         .fontColor(Theme.INK)
         .width('100%')
@@ -2908,8 +2928,8 @@ struct Index {
         this.articleHeadingBlock(block, false, blockIndex, lineNumber)
       } else {
         Text(ArticleBody.markdownRenderedText(block.value))
-          .fontSize(16)
-          .lineHeight(28)
+          .fontSize(16 * this.communityReadingScale())
+          .lineHeight(28 * this.communityReadingScale())
           .fontColor(ArticleBody.markdownBlockKind(block.value) === 'quote' ? Theme.SECONDARY : Theme.INK)
           .width('100%')
           .padding({ left: ArticleBody.markdownBlockKind(block.value) === 'quote' ? 13 : 0, bottom: 8 })
@@ -4007,6 +4027,8 @@ struct Index {
       await this.beginCommunityReply();
     } else if (action === 'share') {
       this.showCommunityShareSheet = true;
+    } else if (action === 'readingFont') {
+      if (this.selectedPost?.kind !== 'prompt') this.readingFontDialog.open();
     } else if (action === 'report') {
       await this.reportSelectedCommunityPost();
     } else if (action === 'block') {
@@ -4512,7 +4534,7 @@ struct Index {
             }.width('100%')
           } else {
             Text(this.selectedPost?.excerpt ?? '')
-              .fontSize(16).lineHeight(28).fontColor(Theme.INK).width('100%')
+              .fontSize(16 * this.communityReadingScale()).lineHeight(28 * this.communityReadingScale()).fontColor(Theme.INK).width('100%')
           }
           if (this.communityReplies.length > 0) {
             Row({ space: 12 }) {
@@ -4600,6 +4622,10 @@ struct Index {
       }
       this.communityMenuRow('分享', RI.SHARE_BOX, 'share')
       Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
+      if (this.selectedPost?.kind !== 'prompt') {
+        this.communityMenuRow('字号', RI.FONT_SIZE, 'readingFont')
+        Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
+      }
       this.communityMenuRow('举报', RI.FLAG, 'report', true)
       Divider().color('#E7E0D5').margin({ left: 14, right: 14 })
       this.communityMenuRow('屏蔽此用户', RI.HAND_HEART, 'block', true)

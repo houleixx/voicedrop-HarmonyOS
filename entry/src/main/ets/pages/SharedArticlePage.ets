@@ -1,3 +1,5 @@
+import { ReadingFontSheet } from '../ui/ReadingFont';
+import { RemixIconGlyph as RI } from '../ui/RemixIcon';
 import { ArticleBlock, ArticleBody } from '../core/ArticleBody';
 import { ArticleDoc, MinedArticle } from '../model/Models';
 import { PageHeader } from '../ui/PageHeader';
@@ -6,9 +8,25 @@ import { AiGeneratedLabel } from '../ui/AiGeneratedLabel';
 
 @Component
 export struct SharedArticlePage {
+  private readingFontDialog: CustomDialogController = new CustomDialogController({
+    builder: ReadingFontSheet(),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Bottom,
+    width: '100%',
+    maskColor: '#66000000',
+    openAnimation: { duration: 240, curve: Curve.EaseOut },
+    closeAnimation: { duration: 180, curve: Curve.EaseIn }
+  });
+
   onBack: () => void = () => {};
   @Prop article?: ArticleDoc = undefined;
   @Link selectedIndex: number;
+  @StorageLink('readingFontScale') private readingFontScale: number = 1;
+
+  aboutToDisappear(): void {
+    this.readingFontDialog.close();
+  }
 
   private photoUrl(token: string): string {
     if (!this.article) return '';
@@ -26,13 +44,15 @@ export struct SharedArticlePage {
         Image(this.photoUrl(block.value)).width('100%').objectFit(ImageFit.Contain).borderRadius(12).margin({ top: 10, bottom: 10 })
       }
     } else {
-      Text(block.value).fontSize(17).lineHeight(30).fontColor('#252525').width('100%').copyOption(CopyOptions.LocalDevice)
+      Text(block.value).fontSize(17 * this.readingFontScale).lineHeight(30 * this.readingFontScale).fontColor('#252525').width('100%').copyOption(CopyOptions.LocalDevice)
     }
   }
 
   build() {
     Column() {
-      PageHeader({ title: AppLocale.text('分享的文章'), onBack: this.onBack })
+      PageHeader({ title: AppLocale.text('分享的文章'), onBack: this.onBack,
+        actionGlyph: RI.FONT_SIZE, actionLabel: AppLocale.text('字号'), actionFilled: false,
+        onAction: (): void => { this.readingFontDialog.open(); } })
       if (!this.article || this.article.articles.length === 0) {
         Text(AppLocale.text('这篇分享已不可用')).fontSize(16).fontColor('#888888').margin({ top: 80 })
       } else {
@@ -48,7 +68,7 @@ export struct SharedArticlePage {
                 }
               }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%')
             }
-            Text(this.article!.articles[this.selectedIndex].title).fontSize(28).fontWeight(FontWeight.Bold).width('100%')
+            Text(this.article!.articles[this.selectedIndex].title).fontSize(28 * this.readingFontScale).fontWeight(FontWeight.Bold).width('100%')
             Row() {
               Blank()
               AiGeneratedLabel()

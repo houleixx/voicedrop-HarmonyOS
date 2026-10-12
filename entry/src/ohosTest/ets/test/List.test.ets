@@ -1,3 +1,4 @@
+import readingFontScaleTest from './ReadingFontScale.test';
 import bookShelfSearchTest from './BookShelfSearch.test';
 import communityTermsTest from './CommunityTerms.test';
 import accountIdentityTest from './AccountIdentity.test';
@@ -46,6 +47,7 @@ import pricesTest from './Prices.test';
 import bookPdfDownloadPolicyTest from './BookPdfDownloadPolicy.test';
 
 export default function testsuite() {
+  readingFontScaleTest();
   communityTermsTest();
   accountIdentityTest();
   recordingListUiTest();

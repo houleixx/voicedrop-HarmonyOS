@@ -34,6 +34,15 @@ export class AppLocale {
       case '使用手册': return 'User Guide';
       case '分享的文章': return 'Shared Article';
       case '社区屏蔽管理': return 'Blocked Authors';
+      case '阅读字号': return 'Reading font size';
+      case '字号': return 'Font size';
+      case '社区文章、分享文章和书的正文大小': return 'Text size in community articles, shared articles and books';
+      case '小': return 'Small';
+      case '标准': return 'Standard';
+      case '大': return 'Large';
+      case '特大': return 'Extra large';
+      case '超大': return 'Largest';
+      case '字号保存失败，请重试': return 'Could not save font size. Please retry.';
       case '语言': return 'Language';
       case '已登录微信账号': return 'Signed in with WeChat';
       case '匿名 ID 保存在本机': return 'Anonymous ID is stored on this device';

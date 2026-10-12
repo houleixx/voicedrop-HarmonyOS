@@ -1,3 +1,5 @@
+import { ReadingFontSheet } from '../ui/ReadingFont';
+import { ReadingFontScale } from '../core/ReadingFontScale';
 import { authStore } from '../data/AuthStore';
 import { BookShelfSearch, ShelfSearchEntry, BookSearchRequestState } from '../core/BookShelfSearch';
 import { webview } from '@kit.ArkWeb';
@@ -388,6 +390,18 @@ export struct BooksShelfPage {
 
 @Component
 export struct BookReaderPage {
+  private readingFontDialog: CustomDialogController = new CustomDialogController({
+    builder: ReadingFontSheet(),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Bottom,
+    width: '100%',
+    maskColor: '#66000000',
+    openAnimation: { duration: 240, curve: Curve.EaseOut },
+    closeAnimation: { duration: 180, curve: Curve.EaseIn }
+  });
+
+  @StorageLink('readingFontScale') private readingFontScale: number = 1;
   @StorageLink('safeAreaTopPx') private safeAreaTopPx: number = 0;
   @StorageLink('safeAreaBottomPx') private safeAreaBottomPx: number = 0;
   book: ShelfBook = new ShelfBook();
@@ -410,6 +424,10 @@ export struct BookReaderPage {
     this.isHidden = this.book.hidden;
     this.loadOwnership().catch(() => {});
   }
+  aboutToDisappear(): void {
+    this.readingFontDialog.close();
+  }
+
   private currentShare(): WechatBookShareTargetValue {
     return WechatBookShare.target(this.book.shareUrl(), this.currentPageUrl, this.currentPageTitle,
       this.book.title || this.book.main, this.book.author);
@@ -540,7 +558,7 @@ export struct BookReaderPage {
     } finally { this.changingHidden = false; }
   }
   private moreMenuIds(): string[] {
-    return this.isMine ? ['hidden', 'revise', 'download', 'share'] : ['download', 'share'];
+    return this.isMine ? ['hidden', 'revise', 'download', 'share', 'readingFont'] : ['download', 'share', 'readingFont'];
   }
   private runMoreAction(id: string): void {
     this.showMoreMenu = false;
@@ -548,13 +566,16 @@ export struct BookReaderPage {
     else if (id === 'revise') this.showRevise = true;
     else if (id === 'download') this.downloadBookPdf().catch(() => {});
     else if (id === 'share') this.showShareSheet = true;
+    else if (id === 'readingFont') this.readingFontDialog.open();
   }
   private moreMenuLabel(id: string): string {
+    if (id === 'readingFont') return AppLocale.text('字号');
     if (id === 'hidden') return AppLocale.text(this.isHidden ? '取消隐藏本书' : '隐藏本书');
     if (id === 'revise') return AppLocale.text('修改这本书');
     return AppLocale.text(id === 'download' ? '下载 PDF' : '分享');
   }
   private moreMenuGlyph(id: string): string {
+    if (id === 'readingFont') return RI.FONT_SIZE;
     if (id === 'hidden') return RI.CLOSE;
     if (id === 'revise') return RI.EDIT;
     return id === 'download' ? RI.DOWNLOAD : RI.SHARE_FORWARD;
@@ -600,6 +621,8 @@ export struct BookReaderPage {
         }).backgroundColor(Theme.BOOK_READER_BG)
         Stack({ alignContent: Alignment.Top }) {
           Web({ src: this.book.readerUrl(), controller: this.controller })
+            // Text-only zoom reflows content and stays active across chapter navigation.
+            .textZoomRatio(ReadingFontScale.percent(this.readingFontScale))
             .width('100%').height('100%')
             .javaScriptAccess(true).domStorageAccess(true).fileAccess(false).mixedMode(MixedMode.None)
             .onPageBegin((event: OnPageBeginEvent): void => {

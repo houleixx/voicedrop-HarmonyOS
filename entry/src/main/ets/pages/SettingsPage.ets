@@ -1,3 +1,5 @@
+import { ReadingFontSheet } from '../ui/ReadingFont';
+import { ReadingFontScale } from '../core/ReadingFontScale';
 import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { settingsStore, StyleSettings } from '../data/SettingsStore';
 import { appCacheStore } from '../data/AppCacheStore';
@@ -101,6 +103,17 @@ export type SettingsTarget = 'account' | 'usage' | 'style' | 'prompts' | 'wechat
 
 @Component
 export struct SettingsPage {
+  private readingFontDialog: CustomDialogController = new CustomDialogController({
+    builder: ReadingFontSheet(),
+    autoCancel: true,
+    customStyle: true,
+    alignment: DialogAlignment.Bottom,
+    width: '100%',
+    maskColor: '#66000000',
+    openAnimation: { duration: 240, curve: Curve.EaseOut },
+    closeAnimation: { duration: 180, curve: Curve.EaseIn }
+  });
+
   onBack: () => void = () => {};
   onNavigate: (target: SettingsTarget) => void = () => {};
   onInvite: () => void = () => {};
@@ -113,6 +126,7 @@ export struct SettingsPage {
   preparingInvite: boolean = false;
   exporting: boolean = false;
   @Prop @Watch('onCacheRefreshVersionChanged') cacheRefreshVersion: number = 0;
+  @StorageLink('readingFontScale') private readingFontScale: number = 1;
   @State private currentName: string = '';
   @State private cacheSizeText: string = '计算中…';
   @State private cacheClearing: boolean = false;
@@ -142,6 +156,7 @@ export struct SettingsPage {
   }
 
   aboutToDisappear(): void {
+    this.readingFontDialog.close();
     this.pageActive = false;
     this.cacheRequestId++;
   }
@@ -377,6 +392,17 @@ export struct SettingsPage {
             this.divider()
             this.row('语言', '跟随系统或固定为中文、English', 'language', RI.GLOBE_LINE,
               Theme.TILE_NEUTRAL, Theme.SECONDARY)
+            this.divider()
+            Row({ space: 12 }) {
+              this.settingIcon(RI.FONT_SIZE, Theme.TILE_NEUTRAL, Theme.SECONDARY)
+              Column({ space: 2 }) {
+                Text(AppLocale.text('阅读字号')).fontSize(17).fontWeight(FontWeight.Medium).lineHeight(24).fontColor(Theme.INK)
+                Text(AppLocale.text('社区文章、分享文章和书的正文大小')).fontSize(13).lineHeight(19).fontColor(Theme.SECONDARY)
+              }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+              Text(AppLocale.text(ReadingFontScale.label(this.readingFontScale))).fontSize(14).fontColor(Theme.SECONDARY)
+              RemixIcon({ glyph: RI.ARROW_RIGHT, iconSize: 20, color: Theme.FAINT })
+            }.constraintSize({ minHeight: 68 }).padding({ left: 16, right: 16, top: 11, bottom: 11 })
+              .alignItems(VerticalAlign.Center).width('100%').onClick(() => this.readingFontDialog.open())
             this.divider()
             this.cacheRow()
             this.divider()

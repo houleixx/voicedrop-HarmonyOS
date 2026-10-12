@@ -1,3 +1,4 @@
+import { ReadingFontScale } from '../core/ReadingFontScale';
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { CommunityLikeState } from '../core/CommunityLikeState';
@@ -12,6 +13,24 @@ export class AppPreferences {
 
   async initialize(context: common.Context): Promise<void> {
     this.store = await preferences.getPreferences(context, { name: 'voicedrop.prefs' });
+    AppStorage.setOrCreate<number>('readingFontScale', this.readingFontScale());
+  }
+
+  readingFontScale(): number {
+    return ReadingFontScale.normalize(Number(this.store?.getSync('readingFontScale', 1) ?? 1));
+  }
+
+  async setReadingFontScale(value: number): Promise<void> {
+    if (!this.store) throw new Error('preferences unavailable');
+    const previous: number = this.readingFontScale();
+    const next: number = ReadingFontScale.normalize(value);
+    this.store.putSync('readingFontScale', next);
+    try { await this.store.flush(); }
+    catch (error) {
+      this.store.putSync('readingFontScale', previous);
+      throw new Error("reading font preference could not be saved");
+    }
+    AppStorage.setOrCreate<number>('readingFontScale', next);
   }
 
   privacyAccepted(): boolean {
