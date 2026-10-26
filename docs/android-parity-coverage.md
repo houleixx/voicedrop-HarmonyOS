@@ -90,3 +90,16 @@
 2026-07-22 使用 DevEco Studio 6.0.2 内置 HarmonyOS API 22 SDK 执行 `assembleHap`，同步 Android 最新提示词菜单、市场详情和采访永久错误处理后结果为 `BUILD SUCCESSFUL`，生成 `entry-default-unsigned.hap`。
 
 2026-07-26 使用 DevEco Studio 6.0.2 内置 HarmonyOS API 22 SDK 执行无签名 `assembleHap`，写作风格与提示词设置界面对齐 Android 后结果为 `BUILD SUCCESSFUL`，生成 `entry-default-unsigned.hap`。恢复本机既有签名选择后，签名阶段仍因本机 keystore 解析失败，需在 DevEco Studio 中重新生成或选择可用调试签名后进行设备安装验证。
+
+
+## 2026-10-26 写书作者与创建隐藏同步
+
+- 对齐 iOS 0c76b37 的作者框、名字同步与隐藏选项，撤下“怎么写成”卡片。作者预填 `/files/api/style` 的 `name`；用户已编辑（含清空）时，晚到响应不会覆盖草稿。
+- 修改作者先 `PUT /files/api/style {name}`，检查网络与 HTTP 成功后才 `POST /api/book {seed, hidden, author?}`；空作者先保存空名字，再省略 `author` 以适配后端 profile 回落。名字没变不保存。
+- 首次读取失败且作者未填，提交前重新读取；仍失败不下单并保留输入。成功读取缺省 name 视作已知空；非对象/损坏响应作为失败。明确填写新作者可直接保存后下单。账号在 await 期间切换会中止后续下单。
+- `hidden` 默认 false；文案说明“不上公开列表，已有链接仍可阅读”，不承诺私密权限；既有文章种子、算力门和 202/402 结果处理保留。动画网页本次无需客户端接口同步。
+- 新增 `BookWritingOptions.ets` 规则及 `scripts/test-book-writing.cjs` 的 14 项可执行测试，覆盖作者状态、先保存后下单、失败不下单、profile 重试、隐藏请求、账号切换和 402；`node --test scripts/test-*.cjs` 全部 **59 项通过**。
+- Debug HAP：使用 DevEco JBR/SDK，`hvigorw --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon` 成功；完整日志 `/private/tmp/voicedrop-harmony-port-build.log`。
+- 模拟器验证：启动现有 VoiceDrop_API22（HarmonyOS 6.0.2/API 22），`hdc -t 127.0.0.1:5555 install -r entry/build/default/outputs/default/entry-default-signed.hap` 增量安装成功，`aa start -a EntryAbility -b com.baixingai.voicedrop.hm` 成功且 aa dump 显示前台。已进入新书表单、输入临时作者 HarmonyAuthor、打开隐藏开关；UI dump 确认作者草稿保留和 Toggle checked=true，未点击收费提交。
+- 截图 `/private/tmp/harmony-writing-form.png`（默认关闭）、`/private/tmp/harmony-writing-edited.png`（作者草稿与隐藏开启）；布局证据 `/private/tmp/harmony-writing-form2.json`、`/private/tmp/harmony-writing-input.json`、`/private/tmp/harmony-writing-toggle.json`。
+- 未验证真实网络改名/扣费创建、服务器成书隐藏结果、真机和动画播放；失败与顺序由 mock 单元测试验证。未提交、推送或发布。

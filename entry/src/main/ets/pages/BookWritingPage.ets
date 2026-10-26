@@ -7,6 +7,7 @@ import { referralService, InviteLink } from '../data/ReferralService';
 import { BookWritingArticleSeed, BookWritingSeed } from '../core/BookWritingSeed';
 import { AppLocale } from '../core/AppLocale';
 import { prices, Prices } from '../data/Prices';
+import { BookWritingOptions } from '../core/BookWritingOptions';
 
 @Component
 export struct BookWritingPage {
@@ -15,6 +16,12 @@ export struct BookWritingPage {
   onInvite: () => void = () => {};
   seedArticle?: BookWritingArticleSeed = undefined;
   @State private seed: string = '';
+  @State private authorDraft: string = '';
+  @State private loadedAuthor: string | undefined = undefined;
+  @State private loadingAuthor: boolean = false;
+  @State private authorLoadFailed: boolean = false;
+  @State private hidden: boolean = false;
+  private authorEdited: boolean = false;
   @State private sending: boolean = false;
   @State private submitted: boolean = false;
   @State private message: string = '';
@@ -23,7 +30,24 @@ export struct BookWritingPage {
   @State private invite?: InviteLink = undefined;
   @StorageLink('safeAreaBottomPx') private safeAreaBottomPx: number = 0;
 
-  aboutToAppear(): void { this.loadContext().catch(() => {}); }
+  aboutToAppear(): void {
+    this.loadContext().catch(() => {});
+    this.loadAuthor().catch(() => {});
+  }
+  private async loadAuthor(): Promise<void> {
+    if (this.loadingAuthor) return;
+    this.loadingAuthor = true;
+    this.authorLoadFailed = false;
+    try {
+      const name: string = await bookWritingService.loadAuthor();
+      // A late profile reply must not restore a name the user deliberately cleared.
+      if (!this.sending) {
+        this.loadedAuthor = name;
+        this.authorDraft = BookWritingOptions.loadedDraft(this.authorDraft, this.authorEdited, name);
+      }
+    } catch (_) { this.authorLoadFailed = true; }
+    finally { this.loadingAuthor = false; }
+  }
   private async loadContext(): Promise<void> {
     this.price = (await prices.refreshIfNeeded()).book;
     try { this.balance = (await usageStore.balance()).suanli; } catch (_) {}
@@ -67,7 +91,7 @@ export struct BookWritingPage {
     if (!this.canSubmit()) return;
     this.sending = true; this.message = '';
     let result: BookWritingResult = new BookWritingResult(0, false, '没连上服务器，请检查网络后重试。');
-    try { result = await bookWritingService.start(value); } catch (_) {}
+    try { result = await bookWritingService.start(value, this.authorDraft, this.loadedAuthor, this.hidden, this.authorEdited); } catch (_) {}
     this.sending = false;
     if (result.accepted) this.submitted = true;
     else {
@@ -98,19 +122,6 @@ export struct BookWritingPage {
         Text(AppLocale.text(copy)).fontSize(12.5).lineHeight(19).fontColor(Theme.SECONDARY).width('100%')
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').alignItems(VerticalAlign.Top)
-  }
-  @Builder private step(number: string, title: string, copy: string) {
-    Row({ space: 10 }) {
-      Text(number).width(28).height(28).fontSize(13).fontWeight(FontWeight.Bold).fontColor(Theme.ACCENT)
-        .textAlign(TextAlign.Center).backgroundColor('#F9E5DE').borderRadius(9)
-      Column({ space: 1 }) {
-        Text(AppLocale.text(title)).fontSize(14.5).fontWeight(FontWeight.Bold).lineHeight(20).fontColor(Theme.INK).width('100%')
-        Text(AppLocale.text(copy)).fontSize(12.5).lineHeight(18).fontColor(Theme.SECONDARY).width('100%')
-      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-    }.width('100%').padding({ left: 12, right: 12, top: 9, bottom: 9 }).alignItems(VerticalAlign.Top)
-  }
-  @Builder private stepDivider() {
-    Divider().strokeWidth(0.5).color(Theme.BORDER).margin({ left: 50, right: 12 })
   }
   build() {
     Column() {
@@ -215,18 +226,36 @@ export struct BookWritingPage {
             .onChange((value: string) => this.seed = value.substring(0, 20000))
           }.width('100%').alignItems(HorizontalAlign.Start)
           Column({ space: 8 }) {
-          this.sectionLabel('怎么写成')
-          Column() {
-          this.step('1', '拆大纲', 'AI 建筑师把中心思想拆成一环扣一环的章节')
-          this.stepDivider()
-          this.step('2', '并行写', '每章一个写手，费曼式大白话，名词当场讲人话')
-          this.stepDivider()
-          this.step('3', '独立评审', '另一个 AI 只看成稿挑错，不过就打回重写')
-          this.stepDivider()
-          this.step('4', '上你的架', '过一章发一章到「写书」书架，署你的名字（设置里的「名字」）')
+            Row({ space: 12 }) {
+              Text(AppLocale.text('作者')).fontSize(15).fontWeight(FontWeight.Medium).fontColor(Theme.INK)
+              TextInput({ text: this.authorDraft, placeholder: AppLocale.text(this.loadingAuthor ? '加载中…' : '留空则不署名') })
+                .layoutWeight(1).fontSize(15).fontColor(Theme.INK).textAlign(TextAlign.End)
+                .backgroundColor(Color.Transparent).padding(0).enabled(!this.sending)
+                .onChange((value: string) => { this.authorEdited = true; this.authorDraft = value; })
+            }.width('100%').padding({ left: 15, right: 15, top: 10, bottom: 10 })
+            if (this.authorLoadFailed) {
+              Row({ space: 8 }) {
+                Text(AppLocale.text('作者名字未读到；提交前会重试，填写新名字会同步到设置。'))
+                  .fontSize(12).fontColor(Theme.SECONDARY).layoutWeight(1)
+                Button(AppLocale.text('重试')).fontSize(12).enabled(!this.sending && !this.loadingAuthor)
+                  .onClick(() => this.loadAuthor())
+              }.padding({ left: 15, right: 15, bottom: 10 }).width('100%')
+            } else {
+              Text(AppLocale.text('修改作者也会更新设置里的名字。')).fontSize(12).fontColor(Theme.SECONDARY)
+                .padding({ left: 15, right: 15, bottom: 10 }).width('100%')
+            }
+            Divider().strokeWidth(0.5).color(Theme.BORDER).margin({ left: 15, right: 15 })
+            Row({ space: 12 }) {
+              Column({ space: 3 }) {
+                Text(AppLocale.text('隐藏')).fontSize(15).fontWeight(FontWeight.Medium).fontColor(Theme.INK).width('100%')
+                Text(AppLocale.text('不上公开列表，已有链接仍可阅读；以后可在书页里修改。'))
+                  .fontSize(12).lineHeight(18).fontColor(Theme.SECONDARY).width('100%')
+              }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+              Toggle({ type: ToggleType.Switch, isOn: this.hidden }).selectedColor(Theme.ACCENT)
+                .enabled(!this.sending).onChange((value: boolean) => { this.hidden = value; })
+            }.width('100%').padding({ left: 15, right: 15, top: 10, bottom: 10 })
           }.width('100%').backgroundColor(Theme.CARD).borderRadius(12)
-            .border({ width: 0.5, color: Theme.BORDER })
-          }.width('100%').alignItems(HorizontalAlign.Start)
+            .border({ width: 0.5, color: Theme.BORDER }).alignItems(HorizontalAlign.Start)
           if (this.message.length > 0) Text(AppLocale.text(this.message)).fontSize(13).fontColor('#D64532').width('100%')
         }.padding({ left: 16, right: 16, top: 4, bottom: 30 }).width('100%').alignItems(HorizontalAlign.Start) }
           .layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })

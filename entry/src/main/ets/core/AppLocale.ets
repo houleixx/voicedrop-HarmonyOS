@@ -484,6 +484,13 @@ export class AppLocale {
       case '好': return 'OK';
       case '人': return ' people';
       case '写一本新书': return 'Write a new book';
+      case '作者': return 'Author';
+      case '留空则不署名': return 'Leave blank for no byline';
+      case '修改作者也会更新设置里的名字。': return 'Changing the author also updates your name in Settings.';
+      case '作者名字未读到；提交前会重试，填写新名字会同步到设置。': return 'Could not load your name. We will retry before submitting; a new name will also be saved in Settings.';
+      case '不上公开列表，已有链接仍可阅读；以后可在书页里修改。': return 'Hide from public listings. Existing links remain readable; you can change this on the book page.';
+      case '作者名字读取失败，请检查网络后重试。': return 'Could not load your author name. Check your connection and try again.';
+      case '身份已变化，请返回后重试。': return 'Your account changed. Go back and try again.';
       case '隐藏': return 'Hidden';
       case '章': return ' chapters';
       case '正在整理书架…': return 'Organizing your bookshelf…';
