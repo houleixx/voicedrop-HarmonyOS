@@ -28,6 +28,7 @@ local.properties
 /agent.md
 
 # Local environment and credentials
+build-profile.json5
 .env
 .env.*
 !.env.example
