@@ -8,6 +8,7 @@ export class AppLocale {
     switch (source) {
       case '全部': return 'All';
       case '我的': return 'Mine';
+      case '视频': return 'Video';
       case '商业': return 'Business';
       case '投资': return 'Investing';
       case '科学': return 'Science';

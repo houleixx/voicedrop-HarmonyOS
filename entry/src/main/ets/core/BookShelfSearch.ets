@@ -1,5 +1,5 @@
 export interface SearchableShelfBook {
-  slug: string; title: string; main: string; sub: string; author: string; category: string; mine: boolean;
+  slug: string; title: string; main: string; sub: string; author: string; category: string; mine: boolean; video?: boolean;
 }
 interface ChapterWire { t?: string; b?: string; }
 interface SearchWire { slug?: string; sub?: string; intro?: string; toc?: ChapterWire[]; }
@@ -30,10 +30,16 @@ export class BookShelfSearch {
       .map((entry: SearchWire) => new ShelfSearchEntry(entry)).filter((entry: ShelfSearchEntry) => entry.slug.length > 0);
   }
   static filters(books: SearchableShelfBook[]): string[] {
-    return ['全部', '我的'].concat(BookShelfSearch.CATEGORIES.filter((category: string) =>
+    const filters: string[] = ['全部', '我的'];
+    if (books.some((book: SearchableShelfBook) => book.video === true)) filters.push('视频');
+    return filters.concat(BookShelfSearch.CATEGORIES.filter((category: string) =>
       books.some((book: SearchableShelfBook) => book.category === category)));
   }
+  static validFilter(books: SearchableShelfBook[], filter: string): string {
+    return BookShelfSearch.filters(books).includes(filter) ? filter : '全部';
+  }
   static matchesFilter(book: SearchableShelfBook, filter: string): boolean {
+    if (filter === '视频') return book.video === true;
     return filter === '全部' || (filter === '我的' ? book.mine === true : book.category === filter);
   }
   // undefined means no match; an empty hit means book metadata matched first.

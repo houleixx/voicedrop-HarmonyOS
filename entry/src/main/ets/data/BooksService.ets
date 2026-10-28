@@ -5,7 +5,7 @@ import { authStore } from './AuthStore';
 import { BookShelfSearch, ShelfSearchEntry, SearchableShelfBook } from '../core/BookShelfSearch';
 import { BookShelfCachePolicy } from '../core/BookShelfCachePolicy';
 
-interface ShelfBookWire { category?: string; slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; mine?: boolean; }
+interface ShelfBookWire { category?: string; slug?: string; title?: string; main?: string; sub?: string; c?: string; c2?: string; cover?: boolean; coverAt?: number; chapters?: number; author?: string; createdAt?: number; hidden?: boolean; mine?: boolean; video?: boolean; }
 interface ShelfIndexWire { books?: ShelfBookWire[]; }
 interface BookOwnershipWire { mine?: boolean; hidden?: boolean; }
 
@@ -27,7 +27,7 @@ class BookHiddenUpdate {
 
 export class ShelfBook implements SearchableShelfBook {
   slug: string; title: string; main: string; sub: string; c: string; c2: string; cover: boolean; chapters: number;
-  category: string; author: string; createdAt: number; coverAt: number; hidden: boolean; mine: boolean;
+  category: string; author: string; createdAt: number; coverAt: number; hidden: boolean; mine: boolean; video: boolean;
   constructor(wire: ShelfBookWire = {}) {
     this.slug = wire.slug ?? ''; this.title = wire.title ?? ''; this.main = wire.main ?? wire.title ?? '未命名';
     this.sub = wire.sub ?? ''; this.c = wire.c ?? '#8B6652'; this.c2 = wire.c2 ?? '#4B342C';
@@ -36,6 +36,7 @@ export class ShelfBook implements SearchableShelfBook {
     this.coverAt = Math.max(0, wire.coverAt ?? 0);
     this.hidden = wire.hidden === true;
     this.mine = wire.mine === true;
+    this.video = wire.video === true;
     this.category = typeof wire.category === 'string' ? wire.category : '';
   }
   readerUrl(): string { return `${Api.PUBLIC_WEB_BASE}/books/${encodeURIComponent(this.slug)}/`; }

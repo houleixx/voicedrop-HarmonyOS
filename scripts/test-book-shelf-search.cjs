@@ -17,9 +17,10 @@ const core = load('core/BookShelfSearch.ets');
 const { BookShelfSearch: search, BookSearchRequestState: State } = core;
 let identity = 'account-a', bearer = 'test-bearer', response;
 const calls = [];
+const shelfCache = new Map();
 const { ShelfBook, BooksService } = load('data/BooksService.ets', {
   '../net/HttpClient': { httpClient: {get: async (...args) => { calls.push(args); return typeof response === 'function' ? response() : response; }} },
-  './AppPreferences': {appPreferences: {}}, '../core/Api': {Api: {PUBLIC_WEB_BASE: 'https://example.invalid'}},
+  './AppPreferences': {appPreferences: {bookShelfCache: key => shelfCache.get(key) || '', saveBookShelfCache: async (key, raw) => shelfCache.set(key, raw)}}, '../core/Api': {Api: {PUBLIC_WEB_BASE: 'https://example.invalid'}},
   './AuthStore': {authStore: {bookShelfCacheIdentity: () => identity, bearer: () => bearer}},
   '../core/BookShelfSearch': core,
   '../core/BookShelfCachePolicy': load('core/BookShelfCachePolicy.ets')
@@ -129,4 +130,35 @@ test('shelf filter labels translate without changing canonical category keys', (
   assert.deepEqual(Array.from(search.filters(books)),keys);
   assert.equal(search.matchesFilter(books[0],'商业'),true);
   assert.equal(AppLocale.resolve('en','未知分类'),'未知分类');
+});
+
+
+test('video is strict optional boolean and survives account-scoped raw response cache', async () => {
+  const service = new BooksService();
+  const raw = JSON.stringify({books:[{slug:'video',video:true},{slug:'legacy'},{slug:'false',video:false},{slug:'string',video:'true'},{slug:'number',video:1}]});
+  response={ok:()=>true,text:raw};
+  const fresh=await service.load();
+  assert.deepEqual(Array.from(fresh,b=>b.video),[true,false,false,false,false]);
+  assert.deepEqual(Array.from(service.cached(),b=>b.video),[true,false,false,false,false]);
+  shelfCache.set(identity,'{"books":[{"slug":"old-cache"}]}');
+  assert.equal(service.cached()[0].video,false);
+});
+test('video tab follows mine only when a video book exists and stale selection falls back', () => {
+  const video=new ShelfBook({slug:'video',video:true,category:'AI'});
+  const plain=new ShelfBook({slug:'plain',category:'科学'});
+  assert.deepEqual(Array.from(search.filters([plain,video])),['全部','我的','视频','AI','科学']);
+  assert.equal(search.validFilter([video],'视频'),'视频');
+  assert.equal(search.validFilter([plain],'视频'),'全部');
+  assert.equal(search.filters([]).includes('视频'),false);
+  assert.equal(search.filters([plain]).includes('视频'),false);
+  assert.equal(AppLocale.resolve('en','视频'),'Video');
+});
+test('video filter combines metadata and chapter searches without reordering', () => {
+  const books=[new ShelfBook({slug:'one',video:true,title:'Alice'}),new ShelfBook({slug:'plain',title:'Alice'}),new ShelfBook({slug:'two',video:true,title:'Other'})];
+  const index=search.parse('{"books":[{"slug":"two","toc":[{"t":"Alice chapter","b":"text"}]}]}');
+  const visible=books.filter(b=>search.matchesFilter(b,'视频') && search.hit(b,'alice',index.find(e=>e.slug===b.slug))!==undefined);
+  assert.deepEqual(visible.map(b=>b.slug),['one','two']);
+  assert.equal(search.matchesFilter(new ShelfBook({slug:'legacy'}),'视频'),false);
+  assert.equal(search.matchesFilter(new ShelfBook({slug:'false',video:false}),'视频'),false);
+  assert.equal(search.showWrite(''),true);
 });

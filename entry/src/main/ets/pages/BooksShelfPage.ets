@@ -141,6 +141,7 @@ export struct BooksShelfPage {
     this.searchEntries = []; this.searchLoading = false; this.searchFailed = false;
   }
   private updateVisible(): void {
+    this.filter = BookShelfSearch.validFilter(this.books, this.filter);
     this.visibleBooks = this.books.filter((book: ShelfBook) => BookShelfSearch.matchesFilter(book, this.filter) &&
       BookShelfSearch.hit(book, this.query, this.searchEntries.find((entry: ShelfSearchEntry) => entry.slug === book.slug)) !== undefined);
   }
@@ -151,7 +152,6 @@ export struct BooksShelfPage {
       const books: ShelfBook[] = await booksService.load();
       if (!this.active || generation !== this.loadGeneration) return;
       this.books = books; this.error = '';
-      if (!BookShelfSearch.filters(this.books).includes(this.filter)) this.filter = '全部';
       this.updateVisible();
     } catch (_) {
       if (this.active && generation === this.loadGeneration && this.books.length === 0) this.error = AppLocale.text('书架加载失败，下拉重试');
@@ -295,6 +295,14 @@ export struct BooksShelfPage {
         .width('100%').height('100%')
         .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 5, bottomRight: 5 }).clip(true)
         .shadow({ radius: 2, color: '#333C2D1E', offsetY: 2 })
+      if (book.video) {
+        Text('▶').fontSize(16).fontColor('#D9FFFFFF').textAlign(TextAlign.Center)
+          .width(40).height(40).padding({ left: 2 })
+          .backgroundColor('#2E000000').borderRadius(20)
+          .border({ width: 1.2, color: '#99FFFFFF' })
+          .hitTestBehavior(HitTestMode.None)
+          .accessibilityLevel('no')
+      }
       if (book.hidden) {
         Text(AppLocale.text('隐藏'))
           .fontSize(11)

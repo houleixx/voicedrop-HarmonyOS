@@ -11,6 +11,17 @@ export default function bookShelfSearchTest() {
       expect(BookShelfSearch.hit(book, ' ai ')).assertEqual('');
       expect(BookShelfSearch.filters([book]).join(',')).assertEqual('全部,我的,AI');
     });
+    it('supportsVideoFilterAndLegacyBooks', 0, () => {
+      const video: ShelfBook = new ShelfBook({ slug: 'a', video: true, category: 'AI' });
+      const old: ShelfBook = new ShelfBook({ slug: 'b' });
+      expect(video.video).assertTrue();
+      expect(old.video).assertFalse();
+      expect(BookShelfSearch.filters([video, old]).join(',')).assertEqual('全部,我的,视频,AI');
+      expect(BookShelfSearch.matchesFilter(video, '视频')).assertTrue();
+      expect(BookShelfSearch.matchesFilter(old, '视频')).assertFalse();
+      expect(BookShelfSearch.validFilter([old], '视频')).assertEqual('全部');
+      expect(BookShelfSearch.validFilter([video], '视频')).assertEqual('视频');
+    });
     it('findsChapterBriefAndPreservesWriteEntryOnlyForBlankInput', 0, () => {
       const book: ShelfBook = new ShelfBook({ slug: 'a', title: '标题' });
       const entries = BookShelfSearch.parse('{"books":[{"slug":"a","toc":[{"t":"第一章","b":"章节摘要"}]}]}');
